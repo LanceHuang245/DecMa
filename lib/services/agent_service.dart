@@ -44,16 +44,9 @@ class AgentService {
     if (llmApiKey == null || llmApiKey.isEmpty) {
       throw Exception('Please save an LLM API key in secure storage first.');
     }
-    final coinGlassApiKey = mcp.useCoinglass
-        ? await _keyStore.readCoinGlassKey()
-        : null;
     final nansenApiKey = mcp.useNansen ? await _keyStore.readNansenKey() : null;
     final systemPrompt = await rootBundle.loadString('sys_prompt.md');
-    final tools = await _mcpHub.connect(
-      mcp,
-      coinGlassApiKey: coinGlassApiKey,
-      nansenApiKey: nansenApiKey,
-    );
+    final tools = await _mcpHub.connect(mcp, nansenApiKey: nansenApiKey);
     final context = _marketContext(prompt, symbol, candles, _mcpHub.warnings);
     try {
       // Surface a compact progress line without exposing model reasoning.

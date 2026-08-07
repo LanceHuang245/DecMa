@@ -33,13 +33,11 @@ class LlmSettings {
 class McpSettings {
   const McpSettings({
     required this.useBybit,
-    required this.useCoinglass,
     required this.useNansen,
     required this.useOpenWebSearch,
   });
 
   final bool useBybit;
-  final bool useCoinglass;
   final bool useNansen;
   final bool useOpenWebSearch;
 }

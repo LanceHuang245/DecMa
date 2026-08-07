@@ -33,16 +33,13 @@ class AgentSettingsDialog extends StatefulWidget {
 class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   late LlmProvider _provider;
   late bool _useBybit;
-  late bool _useCoinglass;
   late bool _useNansen;
   late bool _useOpenWebSearch;
   late final TextEditingController _endpoint;
   late final TextEditingController _apiKey;
   late final TextEditingController _model;
-  late final TextEditingController _coinglassKey;
   late final TextEditingController _nansenKey;
   late final String? _llmMask;
-  late final String? _coinglassMask;
   late final String? _nansenMask;
   bool _saving = false;
   String? _saveError;
@@ -52,15 +49,12 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     super.initState();
     _provider = widget.llm.provider;
     _useBybit = widget.nodeAvailable && widget.mcp.useBybit;
-    _useCoinglass = widget.mcp.useCoinglass;
     _useNansen = widget.mcp.useNansen;
     _useOpenWebSearch = widget.nodeAvailable && widget.mcp.useOpenWebSearch;
     _endpoint = TextEditingController(text: widget.llm.endpoint);
     _llmMask = _newMask(widget.keyStatus.hasLlmKey);
     _apiKey = TextEditingController(text: _llmMask);
     _model = TextEditingController(text: widget.llm.model);
-    _coinglassMask = _newMask(widget.keyStatus.hasCoinGlassKey);
-    _coinglassKey = TextEditingController(text: _coinglassMask);
     _nansenMask = _newMask(widget.keyStatus.hasNansenKey);
     _nansenKey = TextEditingController(text: _nansenMask);
   }
@@ -70,7 +64,6 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _endpoint.dispose();
     _apiKey.dispose();
     _model.dispose();
-    _coinglassKey.dispose();
     _nansenKey.dispose();
     super.dispose();
   }
@@ -158,24 +151,6 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               ),
               const SizedBox(height: 8),
               ToggleSwitch(
-                checked: _useCoinglass,
-                content: const Text('CoinGlass MCP'),
-                onChanged: (value) => setState(() => _useCoinglass = value),
-              ),
-              if (_useCoinglass) ...[
-                const SizedBox(height: 6),
-                InfoLabel(
-                  label: 'CoinGlass API Key',
-                  child: TextBox(
-                    controller: _coinglassKey,
-                    obscureText: true,
-                    placeholder: '输入新密钥以加密保存',
-                    onTap: () => _selectMask(_coinglassKey, _coinglassMask),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              ToggleSwitch(
                 checked: _useNansen,
                 content: const Text('Nansen MCP'),
                 onChanged: (value) => setState(() => _useNansen = value),
@@ -254,18 +229,15 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
         ),
         McpSettings(
           useBybit: _useBybit,
-          useCoinglass: _useCoinglass,
           useNansen: _useNansen,
           useOpenWebSearch: _useOpenWebSearch,
         ),
         ApiKeyUpdates(
           llmKey: _newKey(_apiKey, _llmMask),
-          coinGlassKey: _newKey(_coinglassKey, _coinglassMask),
           nansenKey: _newKey(_nansenKey, _nansenMask),
         ),
       );
       _apiKey.clear();
-      _coinglassKey.clear();
       _nansenKey.clear();
       if (mounted) Navigator.pop(context);
     } catch (error) {

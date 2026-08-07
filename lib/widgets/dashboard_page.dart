@@ -54,7 +54,6 @@ class _DashboardPageState extends State<DashboardPage> {
   late LlmSettings _llm;
   McpSettings _mcp = const McpSettings(
     useBybit: true,
-    useCoinglass: false,
     useNansen: false,
     useOpenWebSearch: true,
   );
@@ -73,7 +72,6 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!widget.nodeAvailable) {
       _mcp = const McpSettings(
         useBybit: false,
-        useCoinglass: false,
         useNansen: false,
         useOpenWebSearch: false,
       );

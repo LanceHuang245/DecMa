@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import '../models/trading_models.dart';
 import 'bybit_mcp.dart';
-import 'coinglass_mcp.dart';
 import 'mcp_types.dart';
 import 'nansen_mcp.dart';
 import 'open_websearch_mcp.dart';
@@ -17,24 +16,15 @@ class McpHub {
   // Discover every configured server at runtime instead of maintaining tool lists in the app.
   Future<List<McpTool>> connect(
     McpSettings settings, {
-    String? coinGlassApiKey,
     String? nansenApiKey,
   }) async {
     await close();
     warnings.clear();
-    if (settings.useCoinglass &&
-        (coinGlassApiKey == null || coinGlassApiKey.isEmpty)) {
-      warnings.add('CoinGlass MCP: API Key 未配置。');
-    }
     if (settings.useNansen && (nansenApiKey == null || nansenApiKey.isEmpty)) {
       warnings.add('Nansen MCP: API Key 未配置。');
     }
     final connections = <McpConnection>[
       if (settings.useBybit) BybitMcp(),
-      if (settings.useCoinglass &&
-          coinGlassApiKey != null &&
-          coinGlassApiKey.isNotEmpty)
-        CoinGlassMcp(coinGlassApiKey),
       if (settings.useNansen && nansenApiKey != null && nansenApiKey.isNotEmpty)
         NansenMcp(nansenApiKey),
       if (settings.useOpenWebSearch) OpenWebSearchMcp(),
@@ -116,7 +106,7 @@ class McpHub {
       serverName: 'DecMa MCP bridge',
       name: _discoverTools,
       description:
-          'Search the live tools exposed by the configured Bybit, CoinGlass, Nansen, and OpenWebSearch MCP servers. Call this before calling an MCP tool.',
+          'Search the live tools exposed by the configured Bybit, Nansen, and OpenWebSearch MCP servers. Call this before calling an MCP tool.',
       inputSchema: {
         'type': 'object',
         'properties': {
