@@ -44,9 +44,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# System Prompt
-sys_prompt.md
-
 # Agent
 AGENTS.md
 CLAUDE.md

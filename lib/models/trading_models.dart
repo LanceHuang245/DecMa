@@ -66,6 +66,7 @@ class TradePlan {
   const TradePlan({
     required this.decision,
     required this.summary,
+    required this.parsedJson,
     this.entryLow,
     this.entryHigh,
     this.stopLoss,
@@ -74,6 +75,7 @@ class TradePlan {
 
   final String decision;
   final String summary;
+  final String parsedJson;
   final double? entryLow;
   final double? entryHigh;
   final double? stopLoss;
@@ -85,57 +87,65 @@ class TradePlan {
       stopLoss != null ||
       takeProfits.isNotEmpty;
 
-  // Extract the schema required by sys_prompt.md while tolerating text before it.
+  // Select the final plan-shaped JSON object after the user-readable analysis.
   static TradePlan? fromResponse(String response) {
-    final jsonText = _firstJsonObject(response);
-    if (jsonText == null) return null;
-    try {
-      final data = jsonDecode(jsonText) as Map<String, dynamic>;
-      final decision = _map(data['decision']);
-      final entry = _map(data['entry_plan']);
-      final risk = _map(data['risk_plan']);
-      final takeProfits = (_list(data['take_profit_plan']))
-          .map(_map)
-          .map((item) => _number(item['price']))
-          .whereType<double>()
-          .toList();
-      return TradePlan(
-        decision: decision['type']?.toString() ?? 'UNKNOWN',
-        summary: decision['summary']?.toString() ?? '',
-        entryLow: _number(entry['entry_zone_low']),
-        entryHigh: _number(entry['entry_zone_high']),
-        stopLoss: _number(risk['stop_loss']),
-        takeProfits: takeProfits,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static String? _firstJsonObject(String text) {
-    final start = text.indexOf('{');
-    if (start < 0) return null;
-    var depth = 0;
-    var inString = false;
-    var escaped = false;
-    for (var index = start; index < text.length; index++) {
-      final char = text[index];
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (char == r'\') {
-          escaped = true;
-        } else if (char == '"') {
-          inString = false;
-        }
+    for (final jsonText in _jsonObjects(response).toList().reversed) {
+      try {
+        final decoded = jsonDecode(jsonText);
+        if (decoded is! Map) continue;
+        final data = _map(decoded);
+        final decision = _map(data['decision']);
+        if (decision.isEmpty) continue;
+        final entry = _map(data['entry_plan']);
+        final risk = _map(data['risk_plan']);
+        final takeProfits = (_list(data['take_profit_plan']))
+            .map(_map)
+            .map((item) => _number(item['price']))
+            .whereType<double>()
+            .toList();
+        return TradePlan(
+          decision: decision['type']?.toString() ?? 'UNKNOWN',
+          summary: decision['summary']?.toString() ?? '',
+          parsedJson: const JsonEncoder.withIndent('  ').convert(data),
+          entryLow: _number(entry['entry_zone_low']),
+          entryHigh: _number(entry['entry_zone_high']),
+          stopLoss: _number(risk['stop_loss']),
+          takeProfits: takeProfits,
+        );
+      } catch (_) {
         continue;
       }
-      if (char == '"') inString = true;
-      if (char == '{') depth++;
-      if (char == '}') depth--;
-      if (depth == 0) return text.substring(start, index + 1);
     }
     return null;
+  }
+
+  static Iterable<String> _jsonObjects(String text) sync* {
+    for (var start = 0; start < text.length; start++) {
+      if (text[start] != '{') continue;
+      var depth = 0;
+      var inString = false;
+      var escaped = false;
+      for (var index = start; index < text.length; index++) {
+        final char = text[index];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (char == r'\') {
+            escaped = true;
+          } else if (char == '"') {
+            inString = false;
+          }
+          continue;
+        }
+        if (char == '"') inString = true;
+        if (char == '{') depth++;
+        if (char == '}') depth--;
+        if (depth == 0) {
+          yield text.substring(start, index + 1);
+          break;
+        }
+      }
+    }
   }
 
   static Map<String, dynamic> _map(Object? value) => value is Map

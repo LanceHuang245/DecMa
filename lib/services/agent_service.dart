@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
@@ -74,7 +75,14 @@ class AgentService {
           tools,
         ),
       };
-      return AgentResult(text: await text, warnings: List.of(_mcpHub.warnings));
+      // Emit the final response without exposing request headers or API keys.
+      final reply = await text;
+      debugPrint('LLM reply:\n$reply');
+      return AgentResult(text: reply, warnings: List.of(_mcpHub.warnings));
+    } catch (error, stackTrace) {
+      debugPrint('LLM request failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
     } finally {
       await _mcpHub.close();
     }

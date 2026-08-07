@@ -134,10 +134,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
-                '内置数据 MCP',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
+              const Text('MCP', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
               const Text(
                 'API Key 使用系统加密凭据存储。Bybit 仅以无凭据模式启动。',

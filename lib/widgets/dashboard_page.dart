@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../models/trading_models.dart';
 import '../services/agent_service.dart';
@@ -41,7 +42,6 @@ class _DashboardPageState extends State<DashboardPage> {
   var _symbols = <String>[];
   TradePlan? _plan;
   String? _result;
-  String? _status;
   String? _chartError;
   var _chartVersion = 0;
   bool _loadingChart = false;
@@ -212,15 +212,12 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _runAgent() async {
     if (_loadingAgent) return;
     if (!_llm.isComplete || !_apiKeyStatus.hasLlmKey) {
-      setState(() => _status = '请先在设置中填写 LLM Endpoint、Model 并保存 API Key。');
+      setState(() => _result = '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。');
       return;
     }
     if (_candles.isEmpty) await _loadChart();
     if (!mounted) return;
-    setState(() {
-      _loadingAgent = true;
-      _status = 'Agent 正在调用数据 MCP 并分析市场…';
-    });
+    setState(() => _loadingAgent = true);
     try {
       final answer = await _agent.run(
         prompt: _prompt.text.trim(),
@@ -231,14 +228,13 @@ class _DashboardPageState extends State<DashboardPage> {
       );
       if (!mounted) return;
       setState(() {
-        _result = answer.text;
+        _result = answer.warnings.isEmpty
+            ? answer.text
+            : '${answer.text}\n\n> MCP 提示：${answer.warnings.join(' | ')}';
         _plan = TradePlan.fromResponse(answer.text);
-        _status = answer.warnings.isEmpty
-            ? '分析完成。'
-            : '分析完成；部分 MCP 不可用：${answer.warnings.join(' | ')}';
       });
     } catch (error) {
-      if (mounted) setState(() => _status = 'Agent 请求失败：$error');
+      if (mounted) setState(() => _result = '> Agent 请求失败：$error');
     } finally {
       if (mounted) setState(() => _loadingAgent = false);
     }
@@ -291,7 +287,6 @@ class _DashboardPageState extends State<DashboardPage> {
             _llm = llm;
             _mcp = mcp;
             _apiKeyStatus = status;
-            _status = '设置已保存，API Key 已加密存储。';
           });
         },
       ),
@@ -440,6 +435,39 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildAgentPanel(BuildContext context) {
+    final resources = FluentTheme.of(context).resources;
+    // Keep generated Markdown readable in Fluent light and dark themes.
+    final resultStyle = MarkdownStyleSheet(
+      p: TextStyle(
+        fontSize: 13,
+        height: 1.4,
+        color: resources.textFillColorPrimary,
+      ),
+      h1: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        color: resources.textFillColorPrimary,
+      ),
+      h2: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: resources.textFillColorPrimary,
+      ),
+      h3: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: resources.textFillColorPrimary,
+      ),
+      code: TextStyle(
+        fontFamily: 'monospace',
+        color: resources.textFillColorPrimary,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: resources.layerFillColorDefault,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      blockquote: TextStyle(color: resources.textFillColorSecondary),
+    );
     return Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -458,16 +486,6 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
           const SizedBox(height: 8),
-          if (_status != null)
-            Text(
-              _status!,
-              style: TextStyle(
-                fontSize: 12,
-                color: _status!.contains('失败')
-                    ? Colors.errorPrimaryColor
-                    : null,
-              ),
-            ),
           if (_plan != null) ...[const SizedBox(height: 8), _buildPlanCard()],
           const SizedBox(height: 8),
           Expanded(
@@ -476,9 +494,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 context,
               ).resources.subtleFillColorSecondary,
               child: SingleChildScrollView(
-                child: SelectableText(
-                  _result!,
-                  style: const TextStyle(fontSize: 13, height: 1.4),
+                padding: const EdgeInsets.all(8),
+                child: MarkdownBody(
+                  data: _result ?? 'Agent 分析结果将显示在这里。',
+                  selectable: true,
+                  styleSheet: resultStyle,
                 ),
               ),
             ),
@@ -498,8 +518,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       SizedBox(width: 16, height: 16, child: ProgressRing()),
-                      SizedBox(width: 8),
-                      Text('发送中…'),
                     ],
                   )
                 : const Text('发送'),
