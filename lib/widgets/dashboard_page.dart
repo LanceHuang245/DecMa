@@ -55,6 +55,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _loadingChart = false;
   bool _showChartLoading = false;
   bool _loadingAgent = false;
+  AgentMode _agentMode = AgentMode.analysis;
   bool _conversationWasAtBottom = true;
   bool _showScrollToBottom = false;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
@@ -306,20 +307,29 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
     final prompt = _prompt.text.trim();
+    final mode = _agentMode;
     setState(() {
       _loadingAgent = true;
       _conversation.add(_ConversationMessage.user(prompt));
       _conversation.add(
-        const _ConversationMessage.activity('• Thinking - 分析中…'),
+        _ConversationMessage.activity(
+          mode == AgentMode.analysis
+              ? '• Thinking - 分析中…'
+              : '• Thinking - 回答中…',
+        ),
       );
       _prompt.clear();
     });
     _scheduleConversationScroll();
     try {
-      final analysisSymbol = await _resolveAnalysisSymbol(prompt);
-      final analysisCandles = await _prepareAnalysisChart(analysisSymbol);
+      final analysisSymbol = mode == AgentMode.analysis
+          ? await _resolveAnalysisSymbol(prompt)
+          : _activeSymbol;
+      final analysisCandles = mode == AgentMode.analysis
+          ? await _prepareAnalysisChart(analysisSymbol)
+          : const <Candle>[];
       if (!mounted) return;
-      if (analysisCandles.isEmpty) {
+      if (mode == AgentMode.analysis && analysisCandles.isEmpty) {
         throw Exception('$analysisSymbol 没有可分析的 K 线。');
       }
       final answer = await _agent.run(
@@ -329,26 +339,31 @@ class _DashboardPageState extends State<DashboardPage> {
         llm: _llm,
         mcp: _mcp,
         api: _api,
+        mode: mode,
         onActivity: _recordActivity,
       );
       if (!mounted) return;
       setState(() {
-        final plan = TradePlan.fromResponse(answer.text);
-        final notices = [...answer.warnings];
-        final matchesResponse =
-            plan?.symbol == null || plan!.symbol == analysisSymbol;
-        final matchesChart = _activeSymbol == analysisSymbol;
-        if (!matchesResponse) {
-          notices.add('结果 JSON 的币种与分析币种 $analysisSymbol 不一致，未添加图表标记。');
+        if (mode == AgentMode.analysis) {
+          final plan = TradePlan.fromResponse(answer.text);
+          final notices = [...answer.warnings];
+          final matchesResponse =
+              plan?.symbol == null || plan!.symbol == analysisSymbol;
+          final matchesChart = _activeSymbol == analysisSymbol;
+          if (!matchesResponse) {
+            notices.add('结果 JSON 的币种与分析币种 $analysisSymbol 不一致，未添加图表标记。');
+          }
+          if (!matchesChart) {
+            notices.add('当前图表已切换为 $_activeSymbol，未添加 $analysisSymbol 的图表标记。');
+          }
+          final displayText = notices.isEmpty
+              ? answer.text
+              : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
+          _conversation.add(_ConversationMessage.agent(displayText));
+          _plan = matchesResponse && matchesChart ? plan : null;
+        } else {
+          _conversation.add(_ConversationMessage.agent(answer.text));
         }
-        if (!matchesChart) {
-          notices.add('当前图表已切换为 $_activeSymbol，未添加 $analysisSymbol 的图表标记。');
-        }
-        final displayText = notices.isEmpty
-            ? answer.text
-            : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
-        _conversation.add(_ConversationMessage.agent(displayText));
-        _plan = matchesResponse && matchesChart ? plan : null;
       });
       _scheduleConversationScroll();
     } catch (error) {
@@ -728,6 +743,35 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 10),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ToggleButton(
+                checked: _agentMode == AgentMode.analysis,
+                onChanged: _loadingAgent
+                    ? null
+                    : (checked) {
+                        if (checked) {
+                          setState(() => _agentMode = AgentMode.analysis);
+                        }
+                      },
+                child: const Text('分析'),
+              ),
+              const SizedBox(width: 4),
+              ToggleButton(
+                checked: _agentMode == AgentMode.conversation,
+                onChanged: _loadingAgent
+                    ? null
+                    : (checked) {
+                        if (checked) {
+                          setState(() => _agentMode = AgentMode.conversation);
+                        }
+                      },
+                child: const Text('对话'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Stack(
             children: [
               TextBox(
@@ -735,8 +779,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 minLines: 3,
                 maxLines: 5,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 46),
-                placeholder:
-                    '请输入分析请求，例如：\n“请分析 BTCUSDT 的 15 分钟 K 线，并给出开仓、止损和止盈建议。”',
+                placeholder: '请输入对话或分析请求',
               ),
               Positioned(
                 right: 8,
@@ -746,8 +789,11 @@ class _DashboardPageState extends State<DashboardPage> {
                       ? null
                       : () {
                           // Reuse the normal send path for identical validation.
-                          _prompt.text =
-                              '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
+                          setState(() {
+                            _agentMode = AgentMode.analysis;
+                            _prompt.text =
+                                '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
+                          });
                           unawaited(_runAgent());
                         },
                   child: const Text('分析当前合约'),

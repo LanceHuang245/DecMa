@@ -1,14 +1,16 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/trading_models.dart';
+import 'agent_prompts.dart';
 import 'coinalyze_api_tools.dart';
 import 'mcp_hub.dart';
 import 'mcp_types.dart';
 import 'secure_key_store.dart';
+
+enum AgentMode { conversation, analysis }
 
 class AgentResult {
   const AgentResult({required this.text, required this.warnings});
@@ -18,8 +20,8 @@ class AgentResult {
 }
 
 class AgentService {
-  // Allow a full market-analysis workflow to complete across available sources.
-  static const _maxToolRounds = 20;
+  static const _maxAnalysisToolRounds = 24;
+  static const _maxConversationToolRounds = 24;
 
   AgentService({
     McpHub? mcpHub,
@@ -43,6 +45,7 @@ class AgentService {
     required LlmSettings llm,
     required McpSettings mcp,
     required ApiSettings api,
+    required AgentMode mode,
     void Function(String activity)? onActivity,
   }) async {
     if (!llm.isComplete) {
@@ -56,19 +59,27 @@ class AgentService {
     final coinalyzeApiKey = api.useCoinalyze
         ? await _keyStore.readCoinalyzeKey()
         : null;
-    final systemPrompt = await rootBundle.loadString('sys_prompt.md');
-    final mcpTools = await _mcpHub.connect(mcp, nansenApiKey: nansenApiKey);
+    final isAnalysis = mode == AgentMode.analysis;
+    final systemPrompt = isAnalysis ? analysisPrompt : conversationPrompt;
+    final mcpTools = isAnalysis
+        ? await _mcpHub.connect(mcp, nansenApiKey: nansenApiKey)
+        : await _mcpHub.prepare(mcp, nansenApiKey: nansenApiKey);
     // Coinalyze is an in-process Agent tool and is never registered with MCP.
     final coinalyzeTools = _coinalyze.configure(
       enabled: api.useCoinalyze,
       apiKey: coinalyzeApiKey,
     );
-    final warnings = [..._mcpHub.warnings, ..._coinalyze.warnings];
+    final warnings = isAnalysis
+        ? [..._mcpHub.warnings, ..._coinalyze.warnings]
+        : const <String>[];
     final tools = [...mcpTools, ...coinalyzeTools];
-    final context = _marketContext(prompt, symbol, candles, warnings);
+    final context = isAnalysis
+        ? _marketContext(prompt, symbol, candles, warnings)
+        : _conversationContext(prompt, symbol);
+    final maxToolRounds = isAnalysis
+        ? _maxAnalysisToolRounds
+        : _maxConversationToolRounds;
     try {
-      // Surface a compact progress line without exposing model reasoning.
-      onActivity?.call('• Thinking - 分析中…');
       final text = switch (llm.provider) {
         LlmProvider.anthropic => _runAnthropic(
           llm,
@@ -76,6 +87,7 @@ class AgentService {
           systemPrompt,
           context,
           tools,
+          maxToolRounds,
           onActivity,
         ),
         LlmProvider.openAiResponses => _runOpenAiResponses(
@@ -84,6 +96,7 @@ class AgentService {
           systemPrompt,
           context,
           tools,
+          maxToolRounds,
           onActivity,
         ),
         LlmProvider.openAiCompletions => _runOpenAiCompletions(
@@ -92,6 +105,7 @@ class AgentService {
           systemPrompt,
           context,
           tools,
+          maxToolRounds,
           onActivity,
         ),
       };
@@ -111,6 +125,11 @@ class AgentService {
       _coinalyze.clear();
     }
   }
+
+  String _conversationContext(String prompt, String symbol) =>
+      '''User message: $prompt
+
+The currently displayed contract is $symbol. This is conversation mode: do not treat chart prices as current market evidence unless you choose and call an appropriate tool.''';
 
   // Send the chart snapshot with the request so advice still has current prices.
   String _marketContext(
@@ -148,12 +167,13 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''
     String system,
     String input,
     List<McpTool> tools,
+    int maxToolRounds,
     void Function(String activity)? onActivity,
   ) async {
     final messages = <Map<String, dynamic>>[
       {'role': 'user', 'content': input},
     ];
-    for (var turn = 0; turn < _maxToolRounds; turn++) {
+    for (var turn = 0; turn < maxToolRounds; turn++) {
       final response = await _post(
         _anthropicUri(settings.endpoint),
         {'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
@@ -203,9 +223,7 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''
         ],
       });
     }
-    throw Exception(
-      'Agent reached the maximum of $_maxToolRounds tool rounds.',
-    );
+    throw Exception('Agent reached the maximum of $maxToolRounds tool rounds.');
   }
 
   Future<String> _runOpenAiCompletions(
@@ -214,13 +232,14 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''
     String system,
     String input,
     List<McpTool> tools,
+    int maxToolRounds,
     void Function(String activity)? onActivity,
   ) async {
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': system},
       {'role': 'user', 'content': input},
     ];
-    for (var turn = 0; turn < _maxToolRounds; turn++) {
+    for (var turn = 0; turn < maxToolRounds; turn++) {
       final response = await _post(
         _openAiUri(settings.endpoint, 'chat/completions'),
         {'Authorization': 'Bearer $apiKey'},
@@ -259,9 +278,7 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''
         });
       }
     }
-    throw Exception(
-      'Agent reached the maximum of $_maxToolRounds tool rounds.',
-    );
+    throw Exception('Agent reached the maximum of $maxToolRounds tool rounds.');
   }
 
   Future<String> _runOpenAiResponses(
@@ -270,6 +287,7 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''
     String system,
     String input,
     List<McpTool> tools,
+    int maxToolRounds,
     void Function(String activity)? onActivity,
   ) async {
     var response = await _post(
@@ -287,7 +305,7 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''
               .toList(),
       },
     );
-    for (var turn = 0; turn < _maxToolRounds; turn++) {
+    for (var turn = 0; turn < maxToolRounds; turn++) {
       final calls = _list(response['output'])
           .map(_map)
           .where((item) => item['type'] == 'function_call')
@@ -318,9 +336,7 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''
         },
       );
     }
-    throw Exception(
-      'Agent reached the maximum of $_maxToolRounds tool rounds.',
-    );
+    throw Exception('Agent reached the maximum of $maxToolRounds tool rounds.');
   }
 
   Future<List<_ToolResult>> _callTools(

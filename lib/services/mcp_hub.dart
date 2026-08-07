@@ -12,21 +12,46 @@ class McpHub {
   final Map<String, McpConnection> _connections = {};
   final Map<String, McpTool> _tools = {};
   final List<String> warnings = [];
+  McpSettings? _settings;
+  String? _nansenApiKey;
+  bool _didConnect = false;
 
-  // Discover every configured server at runtime instead of maintaining tool lists in the app.
+  // Eagerly discover tools for the full market-analysis workflow.
   Future<List<McpTool>> connect(
+    McpSettings settings, {
+    String? nansenApiKey,
+  }) async {
+    await prepare(settings, nansenApiKey: nansenApiKey);
+    await _ensureConnected();
+    return _tools.isEmpty ? const [] : _bridgeTools;
+  }
+
+  // Defer remote schema discovery until a conversation model asks for data.
+  Future<List<McpTool>> prepare(
     McpSettings settings, {
     String? nansenApiKey,
   }) async {
     await close();
     warnings.clear();
+    _settings = settings;
+    _nansenApiKey = nansenApiKey;
     if (settings.useNansen && (nansenApiKey == null || nansenApiKey.isEmpty)) {
       warnings.add('Nansen MCP: API Key 未配置。');
     }
+    return _bridgeTools;
+  }
+
+  Future<void> _ensureConnected() async {
+    if (_didConnect) return;
+    _didConnect = true;
+    final settings = _settings;
+    if (settings == null) return;
     final connections = <McpConnection>[
       if (settings.useBybit) BybitMcp(),
-      if (settings.useNansen && nansenApiKey != null && nansenApiKey.isNotEmpty)
-        NansenMcp(nansenApiKey),
+      if (settings.useNansen &&
+          _nansenApiKey != null &&
+          _nansenApiKey!.isNotEmpty)
+        NansenMcp(_nansenApiKey!),
       if (settings.useOpenWebSearch) OpenWebSearchMcp(),
     ];
     for (final connection in connections) {
@@ -43,7 +68,6 @@ class McpHub {
         await connection.close();
       }
     }
-    return _tools.isEmpty ? const [] : _bridgeTools;
   }
 
   // Expose only explicitly public read operations from Bybit's mixed tool server.
@@ -75,6 +99,7 @@ class McpHub {
     Map<String, dynamic> arguments,
   ) async {
     if (functionName == _discoverTools) {
+      await _ensureConnected();
       return jsonEncode({
         'tools': _search(arguments['query']?.toString() ?? ''),
       });
@@ -178,5 +203,8 @@ class McpHub {
     );
     _connections.clear();
     _tools.clear();
+    _settings = null;
+    _nansenApiKey = null;
+    _didConnect = false;
   }
 }
