@@ -45,8 +45,8 @@ class _DashboardPageState extends State<DashboardPage> {
   var _candles = <Candle>[];
   var _symbols = <String>[];
   TradePlan? _plan;
-  String? _result;
-  var _activities = <String>[];
+  // Keep the chat transcript only for the active app session.
+  final _conversation = <_ConversationMessage>[];
   String? _chartError;
   var _chartVersion = 0;
   bool _loadingChart = false;
@@ -286,13 +286,22 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _runAgent() async {
     if (_loadingAgent) return;
     if (!_llm.isComplete || !_apiKeyStatus.hasLlmKey) {
-      setState(() => _result = '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。');
+      setState(
+        () => _conversation.add(
+          const _ConversationMessage.agent(
+            '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
+          ),
+        ),
+      );
       return;
     }
     final prompt = _prompt.text.trim();
     setState(() {
       _loadingAgent = true;
-      _activities = ['• Thinking - 分析中…'];
+      _conversation.add(_ConversationMessage.user(prompt));
+      _conversation.add(
+        const _ConversationMessage.activity('• Thinking - 分析中…'),
+      );
       _prompt.clear();
     });
     try {
@@ -324,28 +333,34 @@ class _DashboardPageState extends State<DashboardPage> {
         if (!matchesChart) {
           notices.add('当前图表已切换为 $_activeSymbol，未添加 $analysisSymbol 的图表标记。');
         }
-        _result = notices.isEmpty
+        final displayText = notices.isEmpty
             ? answer.text
             : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
+        _conversation.add(_ConversationMessage.agent(displayText));
         _plan = matchesResponse && matchesChart ? plan : null;
       });
     } catch (error) {
-      if (mounted) setState(() => _result = '> Agent 请求失败：$error');
+      if (mounted) {
+        setState(
+          () => _conversation.add(
+            _ConversationMessage.agent('> Agent 请求失败：$error'),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loadingAgent = false);
     }
   }
 
   void _recordActivity(String activity) {
-    if (!mounted || _activities.contains(activity)) return;
-    setState(() => _activities.add(activity));
+    if (!mounted) return;
+    setState(() => _conversation.add(_ConversationMessage.activity(activity)));
   }
 
   void _clearAgentContext() {
     if (_loadingAgent) return;
     setState(() {
-      _result = null;
-      _activities = [];
+      _conversation.clear();
       _plan = null;
       _prompt.clear();
       // Rebuild the chart so its hover and floating plan widgets reset too.
@@ -608,37 +623,16 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_activities.isNotEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: resources.layerFillColorDefault,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        // Activity lines are intentionally summaries, not expandable logs.
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (final activity in _activities)
-                              Text(
-                                activity,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: resources.textFillColorSecondary,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
+                    for (final message in _conversation) ...[
+                      message.isActivity
+                          ? _buildActivityMessage(context, message)
+                          : _buildConversationMessage(
+                              context,
+                              message,
+                              resultStyle,
+                            ),
                       const SizedBox(height: 8),
                     ],
-                    MarkdownBody(
-                      data:
-                          _result ??
-                          (_activities.isEmpty ? 'Agent 分析结果将显示在这里。' : ''),
-                      selectable: true,
-                      styleSheet: resultStyle,
-                    ),
                   ],
                 ),
               ),
@@ -683,6 +677,74 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Widget _buildConversationMessage(
+    BuildContext context,
+    _ConversationMessage message,
+    MarkdownStyleSheet agentStyle,
+  ) {
+    final resources = FluentTheme.of(context).resources;
+    final isUser = message.isUser;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isUser
+            ? const Color(0x332B88D8)
+            : resources.layerFillColorDefault,
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            isUser ? 'User' : 'Agent',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isUser ? Colors.blue : resources.textFillColorSecondary,
+            ),
+          ),
+          const SizedBox(height: 5),
+          if (isUser)
+            SelectableText(
+              message.text,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: resources.textFillColorPrimary,
+              ),
+            )
+          else
+            MarkdownBody(
+              data: message.text,
+              selectable: true,
+              styleSheet: agentStyle,
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Keep tool status compact while placing it at its exact chat position.
+  Widget _buildActivityMessage(
+    BuildContext context,
+    _ConversationMessage message,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: FluentTheme.of(context).resources.layerFillColorDefault,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        message.text,
+        style: TextStyle(
+          fontSize: 12,
+          color: FluentTheme.of(context).resources.textFillColorSecondary,
+        ),
+      ),
+    );
+  }
+
   Widget _buildPlanCard() => Card(
     padding: const EdgeInsets.all(8),
     backgroundColor: FluentTheme.of(context).resources.subtleFillColorSecondary,
@@ -719,4 +781,20 @@ class _DashboardPageState extends State<DashboardPage> {
       : value >= 1
       ? value.toStringAsFixed(4)
       : value.toStringAsFixed(6);
+}
+
+class _ConversationMessage {
+  const _ConversationMessage.user(this.text)
+    : isUser = true,
+      isActivity = false;
+  const _ConversationMessage.agent(this.text)
+    : isUser = false,
+      isActivity = false;
+  const _ConversationMessage.activity(this.text)
+    : isUser = false,
+      isActivity = true;
+
+  final String text;
+  final bool isUser;
+  final bool isActivity;
 }
