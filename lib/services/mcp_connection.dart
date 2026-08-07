@@ -1,0 +1,235 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
+
+import 'mcp_types.dart';
+
+class HttpMcpConnection implements McpConnection {
+  HttpMcpConnection({
+    required this.name,
+    required this.endpoint,
+    required this.headers,
+  });
+
+  @override
+  final String name;
+  final String endpoint;
+  final Map<String, String> headers;
+  final http.Client _client = http.Client();
+  int _nextId = 1;
+  String? _sessionId;
+  bool _initialized = false;
+
+  @override
+  Future<List<McpTool>> listTools() async {
+    await _initialize();
+    return toolsFromMcpResult(name, await _request('tools/list', {}));
+  }
+
+  @override
+  Future<String> call(String toolName, Map<String, dynamic> arguments) async {
+    await _initialize();
+    final result = await _request('tools/call', {
+      'name': toolName,
+      'arguments': arguments,
+    });
+    return jsonEncode(result['content'] ?? result);
+  }
+
+  Future<void> _initialize() async {
+    if (_initialized) return;
+    await _request('initialize', {
+      'protocolVersion': '2024-11-05',
+      'capabilities': {},
+      'clientInfo': {'name': 'DecMa', 'version': '1.0.0'},
+    });
+    await _notification('notifications/initialized');
+    _initialized = true;
+  }
+
+  Future<Map<String, dynamic>> _request(
+    String method,
+    Map<String, dynamic> params,
+  ) => _send({
+    'jsonrpc': '2.0',
+    'id': _nextId++,
+    'method': method,
+    'params': params,
+  });
+
+  Future<void> _notification(String method) async {
+    await _send({'jsonrpc': '2.0', 'method': method, 'params': {}});
+  }
+
+  Future<Map<String, dynamic>> _send(Map<String, dynamic> request) async {
+    final response = await _client
+        .post(
+          Uri.parse(endpoint),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            ...headers,
+            ...switch (_sessionId) {
+              final sessionId? => {'Mcp-Session-Id': sessionId},
+              null => const <String, String>{},
+            },
+          },
+          body: jsonEncode(request),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode >= 400) {
+      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    }
+    _sessionId ??= response.headers['mcp-session-id'];
+    if (response.body.trim().isEmpty) return const {};
+    final decoded = _decodeJsonOrSse(response.body);
+    if (decoded['error'] != null) throw Exception(decoded['error']);
+    final result = decoded['result'];
+    return result is Map<String, dynamic>
+        ? result
+        : Map<String, dynamic>.from(result as Map? ?? const {});
+  }
+
+  Map<String, dynamic> _decodeJsonOrSse(String body) {
+    if (!body.trimLeft().startsWith('data:')) {
+      return Map<String, dynamic>.from(jsonDecode(body) as Map);
+    }
+    final events = body
+        .split('\n')
+        .where((line) => line.startsWith('data:'))
+        .map((line) => line.substring(5).trim())
+        .where((line) => line.isNotEmpty);
+    for (final event in events) {
+      final decoded = jsonDecode(event);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    }
+    throw const FormatException('MCP server returned an empty SSE response.');
+  }
+
+  @override
+  Future<void> close() async => _client.close();
+}
+
+class StdioMcpConnection implements McpConnection {
+  StdioMcpConnection({
+    required this.name,
+    required this.command,
+    required this.arguments,
+    this.environment,
+  });
+
+  @override
+  final String name;
+  final String command;
+  final List<String> arguments;
+  final Map<String, String>? environment;
+  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+  Process? _process;
+  int _nextId = 1;
+
+  @override
+  Future<List<McpTool>> listTools() async {
+    await _initialize();
+    return toolsFromMcpResult(name, await _request('tools/list', {}));
+  }
+
+  @override
+  Future<String> call(String toolName, Map<String, dynamic> arguments) async {
+    await _initialize();
+    final result = await _request('tools/call', {
+      'name': toolName,
+      'arguments': arguments,
+    });
+    return jsonEncode(result['content'] ?? result);
+  }
+
+  Future<void> _initialize() async {
+    if (_process != null) return;
+    final process = await Process.start(
+      command,
+      arguments,
+      environment: environment,
+    );
+    _process = process;
+    // MCP stdio responses are line-delimited JSON-RPC messages.
+    process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(_receiveLine);
+    process.stderr.drain();
+    await _request('initialize', {
+      'protocolVersion': '2024-11-05',
+      'capabilities': {},
+      'clientInfo': {'name': 'DecMa', 'version': '1.0.0'},
+    });
+    _notify('notifications/initialized');
+  }
+
+  void _receiveLine(String line) {
+    try {
+      final message = Map<String, dynamic>.from(jsonDecode(line) as Map);
+      final id = message['id'];
+      if (id is! int) return;
+      final completer = _pending.remove(id);
+      if (completer == null) return;
+      if (message['error'] != null) {
+        completer.completeError(Exception(message['error']));
+      } else {
+        final result = message['result'];
+        completer.complete(
+          result is Map<String, dynamic>
+              ? result
+              : Map<String, dynamic>.from(result as Map? ?? const {}),
+        );
+      }
+    } catch (_) {
+      // Non-JSON process output is ignored because it is not an MCP response.
+    }
+  }
+
+  Future<Map<String, dynamic>> _request(
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    final process = _process;
+    if (process == null) throw StateError('MCP process is not running.');
+    final id = _nextId++;
+    final completer = Completer<Map<String, dynamic>>();
+    _pending[id] = completer;
+    process.stdin.writeln(
+      jsonEncode({
+        'jsonrpc': '2.0',
+        'id': id,
+        'method': method,
+        'params': params,
+      }),
+    );
+    await process.stdin.flush();
+    return completer.future.timeout(const Duration(seconds: 30));
+  }
+
+  void _notify(String method) {
+    _process?.stdin.writeln(
+      jsonEncode({'jsonrpc': '2.0', 'method': method, 'params': {}}),
+    );
+  }
+
+  @override
+  Future<void> close() async {
+    final process = _process;
+    if (process == null) return;
+    _process = null;
+    await process.stdin.close();
+    process.kill();
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          const ProcessException('mcp', [], 'MCP stopped'),
+        );
+      }
+    }
+    _pending.clear();
+  }
+}
