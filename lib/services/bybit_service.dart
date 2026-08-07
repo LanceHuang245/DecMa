@@ -9,6 +9,38 @@ class BybitService {
 
   final http.Client _client;
 
+  // Fetch all active linear contracts once; the search box filters this list locally.
+  Future<List<String>> fetchLinearSymbols() async {
+    final symbols = <String>{};
+    String? cursor;
+    do {
+      final query = <String, String>{'category': 'linear', 'limit': '1000'};
+      if (cursor != null) query['cursor'] = cursor;
+      final response = await _client.get(
+        Uri.https('api.bybit.com', '/v5/market/instruments-info', query),
+      );
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Bybit symbol request failed (${response.statusCode}).',
+        );
+      }
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (body['retCode'] != 0) {
+        throw Exception(
+          body['retMsg']?.toString() ?? 'Bybit returned an error.',
+        );
+      }
+      final result = body['result'] as Map<String, dynamic>;
+      for (final item in (result['list'] as List).cast<Map>()) {
+        if (item['status'] == 'Trading') symbols.add(item['symbol'].toString());
+      }
+      cursor = result['nextPageCursor']?.toString();
+    } while (cursor != null && cursor.isNotEmpty);
+
+    final result = symbols.toList()..sort();
+    return result;
+  }
+
   // The public V5 endpoint supplies the free OHLCV data shown in the chart.
   Future<List<Candle>> fetchKlines({
     required String symbol,

@@ -8,14 +8,12 @@ class AgentSettingsDialog extends StatefulWidget {
     super.key,
     required this.llm,
     required this.mcp,
-    required this.keyStatus,
     required this.nodeAvailable,
     required this.onSave,
   });
 
   final LlmSettings llm;
   final McpSettings mcp;
-  final ApiKeyStatus keyStatus;
   final bool nodeAvailable;
   final Future<void> Function(
     LlmSettings llm,
@@ -107,7 +105,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               ),
               const SizedBox(height: 8),
               InfoLabel(
-                label: 'Endpoint（Anthropic 填完整 Messages URL；OpenAI 填 Base URL）',
+                label: 'Endpoint',
                 child: TextBox(controller: _endpoint),
               ),
               const SizedBox(height: 8),
@@ -117,7 +115,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               ),
               const SizedBox(height: 8),
               InfoLabel(
-                label: _keyLabel('LLM API Key', widget.keyStatus.hasLlmKey),
+                label: 'LLM API Key',
                 child: TextBox(
                   controller: _apiKey,
                   obscureText: true,
@@ -159,10 +157,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               if (_useCoinglass) ...[
                 const SizedBox(height: 6),
                 InfoLabel(
-                  label: _keyLabel(
-                    'CoinGlass API Key',
-                    widget.keyStatus.hasCoinGlassKey,
-                  ),
+                  label: 'CoinGlass API Key',
                   child: TextBox(
                     controller: _coinglassKey,
                     obscureText: true,
@@ -179,10 +174,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               if (_useNansen) ...[
                 const SizedBox(height: 6),
                 InfoLabel(
-                  label: _keyLabel(
-                    'Nansen API Key',
-                    widget.keyStatus.hasNansenKey,
-                  ),
+                  label: 'Nansen API Key',
                   child: TextBox(
                     controller: _nansenKey,
                     obscureText: true,
@@ -213,9 +205,6 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
       ],
     );
   }
-
-  String _keyLabel(String label, bool saved) =>
-      '$label（${saved ? '已加密保存，输入新值以替换' : '未配置'}）';
 
   String? _newKey(TextEditingController controller) {
     final value = controller.text.trim();

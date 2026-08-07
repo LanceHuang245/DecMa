@@ -20,13 +20,17 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  static const _historyLimit = 1000;
   final _bybit = BybitService();
   final _agent = AgentService();
   final _keyStore = SecureKeyStore();
-  final _symbol = TextEditingController(text: 'XRPUSDT');
-  final _prompt = TextEditingController(text: '给我一个 XRP 的开仓方向与位置以及止盈、止损位置。');
+  final _symbol = TextEditingController(text: 'BTCUSDT');
+  final _prompt = TextEditingController(text: '给我一个 BTC 的开仓方向与位置以及止盈、止损位置。');
+  Timer? _chartRefreshTimer;
+  var _activeSymbol = 'BTCUSDT';
   var _interval = '15';
   var _candles = <Candle>[];
+  var _symbols = <String>[];
   TradePlan? _plan;
   String? _result;
   String? _status;
@@ -58,10 +62,13 @@ class _DashboardPageState extends State<DashboardPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
     }
     unawaited(_loadApiKeyStatus());
+    unawaited(_loadSymbols());
+    _startChartRefresh();
   }
 
   @override
   void dispose() {
+    _chartRefreshTimer?.cancel();
     _bybit.dispose();
     _agent.dispose();
     _symbol.dispose();
@@ -69,33 +76,110 @@ class _DashboardPageState extends State<DashboardPage> {
     super.dispose();
   }
 
-  String get _normalizedSymbol {
-    final raw = _symbol.text.trim().toUpperCase().replaceAll(
-      RegExp(r'\s+'),
-      '',
+  // Poll public Kline data once per second without allowing overlapping requests.
+  void _startChartRefresh() {
+    unawaited(_loadChart());
+    _chartRefreshTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(_loadChart(reportError: false, latestOnly: true)),
     );
-    return raw.endsWith('USDT') ? raw : '${raw}USDT';
   }
 
-  Future<void> _loadChart() async {
+  Future<void> _loadSymbols() async {
+    try {
+      final symbols = await _bybit.fetchLinearSymbols();
+      if (mounted) setState(() => _symbols = symbols);
+    } catch (_) {
+      // Kline polling still works when the optional symbol list cannot load.
+    }
+  }
+
+  Future<void> _loadChart({
+    bool reportError = true,
+    bool latestOnly = false,
+  }) async {
     if (_loadingChart) return;
     setState(() {
       _loadingChart = true;
-      _status = null;
     });
     try {
       final candles = await _bybit.fetchKlines(
-        symbol: _normalizedSymbol,
+        symbol: _activeSymbol,
         interval: _interval,
+        limit: latestOnly && _candles.isNotEmpty ? 2 : _historyLimit,
       );
       if (!mounted) return;
-      setState(() => _candles = candles);
+      setState(() {
+        _candles = latestOnly
+            ? _mergeLatestCandles(_candles, candles)
+            : candles;
+        if (_status?.startsWith('K 线加载失败') ?? false) _status = null;
+      });
     } catch (error) {
-      if (mounted) setState(() => _status = 'K 线加载失败：$error');
+      if (mounted && reportError) {
+        setState(() => _status = 'K 线加载失败：$error');
+      }
     } finally {
       if (mounted) setState(() => _loadingChart = false);
     }
   }
+
+  // Preserve the 1000-candle viewport while replacing the still-forming candle.
+  List<Candle> _mergeLatestCandles(List<Candle> history, List<Candle> latest) {
+    final byTime = <int, Candle>{
+      for (final candle in history) candle.time.millisecondsSinceEpoch: candle,
+      for (final candle in latest) candle.time.millisecondsSinceEpoch: candle,
+    };
+    final merged = byTime.values.toList()
+      ..sort((left, right) => left.time.compareTo(right.time));
+    return merged.length > _historyLimit
+        ? merged.sublist(merged.length - _historyLimit)
+        : merged;
+  }
+
+  Future<void> _selectSymbol(String symbol) async {
+    setState(() {
+      _activeSymbol = symbol.toUpperCase();
+      _symbol.text = _activeSymbol;
+      _plan = null;
+    });
+    await _loadChart();
+  }
+
+  List<AutoSuggestBoxItem<String>> _sortSymbols(
+    String text,
+    List<AutoSuggestBoxItem<String>> items,
+  ) {
+    final query = text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (query.length < 2) return const [];
+    final matches = items.where((item) {
+      final symbol = item.value ?? '';
+      return symbol.contains(query) || _isSubsequence(query, symbol);
+    }).toList();
+    matches.sort((left, right) {
+      final leftSymbol = left.value ?? '';
+      final rightSymbol = right.value ?? '';
+      return _matchScore(
+        query,
+        leftSymbol,
+      ).compareTo(_matchScore(query, rightSymbol));
+    });
+    return matches;
+  }
+
+  bool _isSubsequence(String query, String symbol) {
+    var queryIndex = 0;
+    for (final char in symbol.split('')) {
+      if (queryIndex < query.length && char == query[queryIndex]) queryIndex++;
+    }
+    return queryIndex == query.length;
+  }
+
+  int _matchScore(String query, String symbol) => symbol.startsWith(query)
+      ? 0
+      : symbol.contains(query)
+      ? 1
+      : 2;
 
   Future<void> _runAgent() async {
     if (_loadingAgent) return;
@@ -112,7 +196,7 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final answer = await _agent.run(
         prompt: _prompt.text.trim(),
-        symbol: _normalizedSymbol,
+        symbol: _activeSymbol,
         candles: _candles,
         llm: _llm,
         mcp: _mcp,
@@ -168,7 +252,6 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (context) => AgentSettingsDialog(
         llm: _llm,
         mcp: _mcp,
-        keyStatus: _apiKeyStatus,
         nodeAvailable: widget.nodeAvailable,
         onSave: (llm, mcp, apiKeys) async {
           await _keyStore.update(apiKeys);
@@ -244,11 +327,23 @@ class _DashboardPageState extends State<DashboardPage> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               SizedBox(
-                width: 142,
-                child: TextBox(
+                width: 210,
+                child: AutoSuggestBox<String>(
                   controller: _symbol,
-                  placeholder: 'XRPUSDT',
-                  onSubmitted: (_) => _loadChart(),
+                  placeholder: '搜索代币，例如 BTC',
+                  items: _symbols
+                      .map(
+                        (symbol) => AutoSuggestBoxItem<String>(
+                          value: symbol,
+                          label: symbol,
+                        ),
+                      )
+                      .toList(),
+                  sorter: _sortSymbols,
+                  onSelected: (item) {
+                    final symbol = item.value;
+                    if (symbol != null) unawaited(_selectSymbol(symbol));
+                  },
                 ),
               ),
               SizedBox(
@@ -264,20 +359,23 @@ class _DashboardPageState extends State<DashboardPage> {
                     ComboBoxItem(value: '240', child: Text('4h')),
                     ComboBoxItem(value: 'D', child: Text('1D')),
                   ],
-                  onChanged: (value) =>
-                      setState(() => _interval = value ?? _interval),
+                  onChanged: (value) {
+                    if (value == null || value == _interval) return;
+                    setState(() => _interval = value);
+                    unawaited(_loadChart());
+                  },
                 ),
               ),
-              FilledButton(
-                onPressed: _loadingChart ? null : _loadChart,
-                child: Text(_loadingChart ? '加载中…' : '刷新 K 线'),
-              ),
-              Text('Bybit Linear · $_normalizedSymbol'),
+              Text('Bybit Linear · $_activeSymbol · 1 秒自动刷新'),
             ],
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: CandleChart(candles: _candles, plan: _plan),
+            child: CandleChart(
+              key: ValueKey('$_activeSymbol-$_interval'),
+              candles: _candles,
+              plan: _plan,
+            ),
           ),
           const SizedBox(height: 8),
           Row(
@@ -346,7 +444,7 @@ class _DashboardPageState extends State<DashboardPage> {
             controller: _prompt,
             minLines: 3,
             maxLines: 5,
-            placeholder: '例如：给我一个 XRP 的开仓方向与位置以及止盈、止损位置',
+            placeholder: '例如：给我一个 BTC 的开仓方向与位置以及止盈、止损位置',
           ),
           const SizedBox(height: 8),
           FilledButton(
