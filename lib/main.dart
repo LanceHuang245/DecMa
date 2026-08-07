@@ -11,6 +11,7 @@ Future<void> main() async {
   await windowManager.ensureInitialized();
   const windowOptions = WindowOptions(
     size: Size(1280, 800),
+    minimumSize: Size(1280, 800),
     center: true,
     titleBarStyle: TitleBarStyle.hidden,
   );
