@@ -81,6 +81,7 @@ class _CandleChartState extends State<CandleChart> {
       fit: StackFit.expand,
       children: [
         chart,
+        if (widget.plan case final plan?) _buildPlanOverlay(plan),
         if (widget.loading || (widget.candles.isEmpty && widget.error == null))
           const ColoredBox(
             color: Color(0xE6171A1F),
@@ -117,6 +118,119 @@ class _CandleChartState extends State<CandleChart> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildPlanOverlay(TradePlan plan) {
+    final color = plan.decision == 'LONG_SETUP'
+        ? Colors.green
+        : plan.decision == 'SHORT_SETUP'
+        ? Colors.red
+        : Colors.warningPrimaryColor;
+    return Positioned(
+      left: 18,
+      bottom: 44,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        // The overlay only consumes pointer events inside its own small card.
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showPlanDetails(plan),
+          child: Card(
+            padding: const EdgeInsets.all(8),
+            backgroundColor: FluentTheme.of(
+              context,
+            ).resources.layerFillColorDefault,
+            child: SizedBox(
+              width: 210,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _decisionLabel(plan.decision),
+                    style: TextStyle(color: color, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '开仓区：${_entryRange(plan)}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  Text(
+                    '止损：${_price(plan.stopLoss)}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  Text(
+                    '止盈：${plan.takeProfits.isEmpty ? '未提供' : plan.takeProfits.map(_price).join(' / ')}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '点击查看完整 JSON 解析',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: FluentTheme.of(
+                        context,
+                      ).resources.textFillColorSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPlanDetails(TradePlan plan) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => ContentDialog(
+        title: Text('${_decisionLabel(plan.decision)}：JSON 解析结果'),
+        content: SizedBox(
+          width: 680,
+          height: 520,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (plan.summary.isNotEmpty) ...[
+                Text(plan.summary),
+                const SizedBox(height: 12),
+              ],
+              const Text(
+                '完整 JSON',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Card(
+                  padding: const EdgeInsets.all(10),
+                  backgroundColor: FluentTheme.of(
+                    context,
+                  ).resources.layerFillColorDefault,
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      plan.parsedJson,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          Button(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -163,4 +277,28 @@ class _CandleChartState extends State<CandleChart> {
 
   CandleViewport _viewFor(Size size) =>
       CandleViewport.from(size, widget.candles.length, _zoom, _pan);
+
+  String _decisionLabel(String decision) => switch (decision) {
+    'LONG_SETUP' => '做多方案',
+    'SHORT_SETUP' => '做空方案',
+    'WAIT' => '等待',
+    'NO_TRADE' => '不交易',
+    'DATA_INSUFFICIENT' => '数据不足',
+    _ => decision,
+  };
+
+  String _entryRange(TradePlan plan) {
+    final low = plan.entryLow;
+    final high = plan.entryHigh;
+    if (low == null && high == null) return '未提供';
+    if (low == null || high == null || low == high) return _price(low ?? high);
+    return '${_price(low)} — ${_price(high)}';
+  }
+
+  String _price(double? value) {
+    if (value == null) return '未提供';
+    if (value >= 1000) return value.toStringAsFixed(1);
+    if (value >= 1) return value.toStringAsFixed(4);
+    return value.toStringAsFixed(6);
+  }
 }

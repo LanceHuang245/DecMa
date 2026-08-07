@@ -24,15 +24,29 @@ Future<void> main() async {
     await windowManager.focus();
   });
   final nodeAvailable = await NodeRuntimeService.isAvailable();
-  final initialLlm = await LlmSettingsStore().read();
-  runApp(DecmaApp(nodeAvailable: nodeAvailable, initialLlm: initialLlm));
+  final settingsStore = LlmSettingsStore();
+  final initialLlm = await settingsStore.read();
+  final initialMcp = await settingsStore.readMcp();
+  runApp(
+    DecmaApp(
+      nodeAvailable: nodeAvailable,
+      initialLlm: initialLlm,
+      initialMcp: initialMcp,
+    ),
+  );
 }
 
 class DecmaApp extends StatelessWidget {
-  const DecmaApp({super.key, this.nodeAvailable = true, this.initialLlm});
+  const DecmaApp({
+    super.key,
+    this.nodeAvailable = true,
+    this.initialLlm,
+    this.initialMcp,
+  });
 
   final bool nodeAvailable;
   final LlmSettings? initialLlm;
+  final McpSettings? initialMcp;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +57,11 @@ class DecmaApp extends StatelessWidget {
         brightness: Brightness.dark,
         accentColor: Colors.blue,
       ),
-      home: DashboardPage(nodeAvailable: nodeAvailable, initialLlm: initialLlm),
+      home: DashboardPage(
+        nodeAvailable: nodeAvailable,
+        initialLlm: initialLlm,
+        initialMcp: initialMcp,
+      ),
     );
   }
 }

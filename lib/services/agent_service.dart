@@ -17,6 +17,9 @@ class AgentResult {
 }
 
 class AgentService {
+  // Allow a full market-analysis workflow to complete across all MCP sources.
+  static const _maxMcpToolRounds = 20;
+
   AgentService({McpHub? mcpHub, SecureKeyStore? keyStore, http.Client? client})
     : _mcpHub = mcpHub ?? McpHub(),
       _keyStore = keyStore ?? SecureKeyStore(),
@@ -32,6 +35,7 @@ class AgentService {
     required List<Candle> candles,
     required LlmSettings llm,
     required McpSettings mcp,
+    void Function(String activity)? onActivity,
   }) async {
     if (!llm.isComplete) {
       throw Exception('Please configure endpoint and model first.');
@@ -52,6 +56,8 @@ class AgentService {
     );
     final context = _marketContext(prompt, symbol, candles, _mcpHub.warnings);
     try {
+      // Surface a compact progress line without exposing model reasoning.
+      onActivity?.call('• Thinking - 分析中…');
       final text = switch (llm.provider) {
         LlmProvider.anthropic => _runAnthropic(
           llm,
@@ -59,6 +65,7 @@ class AgentService {
           systemPrompt,
           context,
           tools,
+          onActivity,
         ),
         LlmProvider.openAiResponses => _runOpenAiResponses(
           llm,
@@ -66,6 +73,7 @@ class AgentService {
           systemPrompt,
           context,
           tools,
+          onActivity,
         ),
         LlmProvider.openAiCompletions => _runOpenAiCompletions(
           llm,
@@ -73,11 +81,15 @@ class AgentService {
           systemPrompt,
           context,
           tools,
+          onActivity,
         ),
       };
       // Emit the final response without exposing request headers or API keys.
       final reply = await text;
-      debugPrint('LLM reply:\n$reply');
+      debugPrint('LLM reply (${reply.length} characters):\n$reply');
+      if (reply.trim().isEmpty) {
+        debugPrint('LLM reply is empty; inspect the preceding raw response.');
+      }
       return AgentResult(text: reply, warnings: List.of(_mcpHub.warnings));
     } catch (error, stackTrace) {
       debugPrint('LLM request failed: $error');
@@ -124,17 +136,18 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     String system,
     String input,
     List<McpTool> tools,
+    void Function(String activity)? onActivity,
   ) async {
     final messages = <Map<String, dynamic>>[
       {'role': 'user', 'content': input},
     ];
-    for (var turn = 0; turn < 8; turn++) {
+    for (var turn = 0; turn < _maxMcpToolRounds; turn++) {
       final response = await _post(
         _anthropicUri(settings.endpoint),
         {'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
         {
           'model': settings.model.trim(),
-          'max_tokens': 2400,
+          'max_tokens': 16384,
           'system': system,
           'messages': messages,
           if (tools.isNotEmpty)
@@ -169,7 +182,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       messages.add({
         'role': 'user',
         'content': [
-          for (final result in await _callTools(calls))
+          for (final result in await _callTools(calls, onActivity))
             {
               'type': 'tool_result',
               'tool_use_id': result.id,
@@ -178,7 +191,9 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
         ],
       });
     }
-    throw Exception('Agent reached the maximum of 8 MCP tool rounds.');
+    throw Exception(
+      'Agent reached the maximum of $_maxMcpToolRounds MCP tool rounds.',
+    );
   }
 
   Future<String> _runOpenAiCompletions(
@@ -187,12 +202,13 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     String system,
     String input,
     List<McpTool> tools,
+    void Function(String activity)? onActivity,
   ) async {
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': system},
       {'role': 'user', 'content': input},
     ];
-    for (var turn = 0; turn < 8; turn++) {
+    for (var turn = 0; turn < _maxMcpToolRounds; turn++) {
       final response = await _post(
         _openAiUri(settings.endpoint, 'chat/completions'),
         {'Authorization': 'Bearer $apiKey'},
@@ -223,7 +239,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       }).toList();
       if (calls.isEmpty) return message['content']?.toString() ?? '';
       messages.add(message);
-      for (final result in await _callTools(calls)) {
+      for (final result in await _callTools(calls, onActivity)) {
         messages.add({
           'role': 'tool',
           'tool_call_id': result.id,
@@ -231,7 +247,9 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
         });
       }
     }
-    throw Exception('Agent reached the maximum of 8 MCP tool rounds.');
+    throw Exception(
+      'Agent reached the maximum of $_maxMcpToolRounds MCP tool rounds.',
+    );
   }
 
   Future<String> _runOpenAiResponses(
@@ -240,6 +258,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     String system,
     String input,
     List<McpTool> tools,
+    void Function(String activity)? onActivity,
   ) async {
     var response = await _post(
       _openAiUri(settings.endpoint, 'responses'),
@@ -256,7 +275,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
               .toList(),
       },
     );
-    for (var turn = 0; turn < 8; turn++) {
+    for (var turn = 0; turn < _maxMcpToolRounds; turn++) {
       final calls = _list(response['output'])
           .map(_map)
           .where((item) => item['type'] == 'function_call')
@@ -269,7 +288,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
           )
           .toList();
       if (calls.isEmpty) return _responsesText(response);
-      final results = await _callTools(calls);
+      final results = await _callTools(calls, onActivity);
       response = await _post(
         _openAiUri(settings.endpoint, 'responses'),
         {'Authorization': 'Bearer $apiKey'},
@@ -287,20 +306,44 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
         },
       );
     }
-    throw Exception('Agent reached the maximum of 8 MCP tool rounds.');
+    throw Exception(
+      'Agent reached the maximum of $_maxMcpToolRounds MCP tool rounds.',
+    );
   }
 
-  Future<List<_ToolResult>> _callTools(List<_ToolCall> calls) async {
+  Future<List<_ToolResult>> _callTools(
+    List<_ToolCall> calls,
+    void Function(String activity)? onActivity,
+  ) async {
     final results = <_ToolResult>[];
     for (final call in calls) {
+      onActivity?.call(_toolActivity(call));
       try {
         final output = await _mcpHub.call(call.name, call.arguments);
         results.add(_ToolResult(call.id, _trimToolOutput(output)));
       } catch (error) {
+        onActivity?.call('${_toolActivity(call)}（失败）');
         results.add(_ToolResult(call.id, 'Tool failed: $error'));
       }
     }
     return results;
+  }
+
+  // Convert bridge calls into short, non-expandable UI status lines.
+  String _toolActivity(_ToolCall call) {
+    final toolName = call.name == 'decma_call_mcp_tool'
+        ? call.arguments['tool_name']?.toString() ?? call.name
+        : call.name;
+    if (toolName == 'decma_discover_mcp_tools') {
+      return '• MCP - 发现可用工具';
+    }
+    final marker = toolName.indexOf('_MCP_');
+    if (marker > 0) {
+      final server = toolName.substring(0, marker);
+      final action = toolName.substring(marker + 5);
+      return '• $server MCP - $action';
+    }
+    return '• MCP - $toolName';
   }
 
   Future<Map<String, dynamic>> _post(
@@ -308,13 +351,19 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     Map<String, String> headers,
     Map<String, dynamic> body,
   ) async {
+    // Log only the JSON body because API credentials are sent through headers.
+    final requestBody = jsonEncode(body);
+    debugPrint('LLM request [POST $uri]:\n$requestBody');
     final response = await _client
         .post(
           uri,
           headers: {'Content-Type': 'application/json', ...headers},
-          body: jsonEncode(body),
+          body: requestBody,
         )
-        .timeout(const Duration(seconds: 90));
+        .timeout(const Duration(minutes: 5));
+    debugPrint(
+      'LLM response [${response.statusCode} ${response.reasonPhrase ?? ''}]:\n${response.body}',
+    );
     final decoded = _map(jsonDecode(response.body));
     if (response.statusCode >= 400) {
       throw Exception(

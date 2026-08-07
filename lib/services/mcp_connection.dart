@@ -93,14 +93,17 @@ class HttpMcpConnection implements McpConnection {
   }
 
   Map<String, dynamic> _decodeJsonOrSse(String body) {
-    if (!body.trimLeft().startsWith('data:')) {
-      return Map<String, dynamic>.from(jsonDecode(body) as Map);
-    }
+    // SSE events may start with an `event:` field before their JSON `data:`.
     final events = body
-        .split('\n')
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trimLeft())
         .where((line) => line.startsWith('data:'))
         .map((line) => line.substring(5).trim())
-        .where((line) => line.isNotEmpty);
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (events.isEmpty) {
+      return Map<String, dynamic>.from(jsonDecode(body) as Map);
+    }
     for (final event in events) {
       final decoded = jsonDecode(event);
       if (decoded is Map) return Map<String, dynamic>.from(decoded);

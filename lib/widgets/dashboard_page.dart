@@ -18,10 +18,12 @@ class DashboardPage extends StatefulWidget {
     super.key,
     required this.nodeAvailable,
     this.initialLlm,
+    this.initialMcp,
   });
 
   final bool nodeAvailable;
   final LlmSettings? initialLlm;
+  final McpSettings? initialMcp;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -42,6 +44,7 @@ class _DashboardPageState extends State<DashboardPage> {
   var _symbols = <String>[];
   TradePlan? _plan;
   String? _result;
+  var _activities = <String>[];
   String? _chartError;
   var _chartVersion = 0;
   bool _loadingChart = false;
@@ -66,6 +69,7 @@ class _DashboardPageState extends State<DashboardPage> {
           endpoint: LlmProvider.openAiResponses.defaultEndpoint,
           model: 'gpt-4.1',
         );
+    if (widget.initialMcp != null) _mcp = widget.initialMcp!;
     if (!widget.nodeAvailable) {
       _mcp = const McpSettings(
         useBybit: false,
@@ -215,16 +219,22 @@ class _DashboardPageState extends State<DashboardPage> {
       setState(() => _result = '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。');
       return;
     }
+    final prompt = _prompt.text.trim();
     if (_candles.isEmpty) await _loadChart();
     if (!mounted) return;
-    setState(() => _loadingAgent = true);
+    setState(() {
+      _loadingAgent = true;
+      _activities = ['• Thinking - 分析中…'];
+      _prompt.clear();
+    });
     try {
       final answer = await _agent.run(
-        prompt: _prompt.text.trim(),
+        prompt: prompt,
         symbol: _activeSymbol,
         candles: _candles,
         llm: _llm,
         mcp: _mcp,
+        onActivity: _recordActivity,
       );
       if (!mounted) return;
       setState(() {
@@ -238,6 +248,23 @@ class _DashboardPageState extends State<DashboardPage> {
     } finally {
       if (mounted) setState(() => _loadingAgent = false);
     }
+  }
+
+  void _recordActivity(String activity) {
+    if (!mounted || _activities.contains(activity)) return;
+    setState(() => _activities.add(activity));
+  }
+
+  void _clearAgentContext() {
+    if (_loadingAgent) return;
+    setState(() {
+      _result = null;
+      _activities = [];
+      _plan = null;
+      _prompt.clear();
+      // Rebuild the chart so its hover and floating plan widgets reset too.
+      _chartVersion++;
+    });
   }
 
   void _showNodeMissing() {
@@ -279,7 +306,10 @@ class _DashboardPageState extends State<DashboardPage> {
         keyStatus: _apiKeyStatus,
         nodeAvailable: widget.nodeAvailable,
         onSave: (llm, mcp, apiKeys) async {
-          await _llmSettingsStore.save(llm);
+          await Future.wait([
+            _llmSettingsStore.save(llm),
+            _llmSettingsStore.saveMcp(mcp),
+          ]);
           await _keyStore.update(apiKeys);
           final status = await _keyStore.status();
           if (!mounted) return;
@@ -495,10 +525,41 @@ class _DashboardPageState extends State<DashboardPage> {
               ).resources.subtleFillColorSecondary,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(8),
-                child: MarkdownBody(
-                  data: _result ?? 'Agent 分析结果将显示在这里。',
-                  selectable: true,
-                  styleSheet: resultStyle,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_activities.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: resources.layerFillColorDefault,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        // Activity lines are intentionally summaries, not expandable logs.
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final activity in _activities)
+                              Text(
+                                activity,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: resources.textFillColorSecondary,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    MarkdownBody(
+                      data:
+                          _result ??
+                          (_activities.isEmpty ? 'Agent 分析结果将显示在这里。' : ''),
+                      selectable: true,
+                      styleSheet: resultStyle,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -511,16 +572,31 @@ class _DashboardPageState extends State<DashboardPage> {
             placeholder: '例如：给我一个 BTC 的开仓方向与位置以及止盈、止损位置',
           ),
           const SizedBox(height: 8),
-          FilledButton(
-            onPressed: _loadingAgent ? null : _runAgent,
-            child: _loadingAgent
-                ? const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(width: 16, height: 16, child: ProgressRing()),
-                    ],
-                  )
-                : const Text('发送'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: _loadingAgent ? null : _runAgent,
+                  child: _loadingAgent
+                      ? const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: ProgressRing(),
+                            ),
+                          ],
+                        )
+                      : const Text('发送'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Button(
+                onPressed: _loadingAgent ? null : _clearAgentContext,
+                child: const Text('清空'),
+              ),
+            ],
           ),
         ],
       ),

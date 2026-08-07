@@ -229,28 +229,42 @@ class CandlePainter extends CustomPainter {
     if (plan == null) return;
     final entryLow = plan!.entryLow;
     final entryHigh = plan!.entryHigh;
-    if (entryLow != null && entryHigh != null) {
+    final entryColor = plan!.decision == 'LONG_SETUP'
+        ? _up
+        : plan!.decision == 'SHORT_SETUP'
+        ? _down
+        : Colors.blue;
+    final direction = plan!.decision == 'LONG_SETUP'
+        ? '做多'
+        : plan!.decision == 'SHORT_SETUP'
+        ? '做空'
+        : '观察';
+    if (entryLow != null || entryHigh != null) {
+      final lower = math.min(entryLow ?? entryHigh!, entryHigh ?? entryLow!);
+      final upper = math.max(entryLow ?? entryHigh!, entryHigh ?? entryLow!);
       final zone = Rect.fromLTRB(
         chart.left,
-        yOf(entryHigh),
+        yOf(upper),
         chart.right,
-        yOf(entryLow),
+        yOf(lower),
       );
-      canvas.drawRect(zone, Paint()..color = Colors.blue.withAlpha(35));
+      canvas.drawRect(zone, Paint()..color = entryColor.withAlpha(35));
       _level(
         canvas,
         chart,
-        yOf(entryLow),
-        Colors.blue,
-        'Entry ${_price(entryLow)}',
+        yOf(lower),
+        entryColor,
+        '$direction 开仓 ${_price(lower)}',
       );
-      _level(
-        canvas,
-        chart,
-        yOf(entryHigh),
-        Colors.blue,
-        'Entry ${_price(entryHigh)}',
-      );
+      if (upper != lower) {
+        _level(
+          canvas,
+          chart,
+          yOf(upper),
+          entryColor,
+          '$direction 开仓 ${_price(upper)}',
+        );
+      }
     }
     if (plan!.stopLoss case final stop?) {
       _level(canvas, chart, yOf(stop), _down, 'SL ${_price(stop)}');
