@@ -1,17 +1,17 @@
 import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
-import '../models/trading_models.dart';
-import '../services/agent_service.dart';
-import '../services/bybit_service.dart';
-import '../services/llm_settings_store.dart';
-import '../services/node_runtime_service.dart';
-import '../services/secure_key_store.dart';
-import 'candle_chart.dart';
-import 'settings_dialog.dart';
-import 'window_title_bar.dart';
+import '../../models/trading_models.dart';
+import '../../services/agent_service.dart';
+import '../../services/bybit_service.dart';
+import '../../services/llm_settings_store.dart';
+import '../../services/node_runtime_service.dart';
+import '../../services/secure_key_store.dart';
+import '../core/window_title_bar.dart';
+import '../settings/agent_settings_dialog.dart';
+import 'dashboard_agent_panel.dart';
+import 'dashboard_chart_panel.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
@@ -49,7 +49,7 @@ class _DashboardPageState extends State<DashboardPage> {
   var _symbols = <String>[];
   TradePlan? _plan;
   // Keep the chat transcript only for the active app session.
-  final _conversation = <_ConversationMessage>[];
+  final _conversation = <DashboardMessage>[];
   // Retain the last complete analysis for tool-free conversational follow-ups.
   String? _lastAnalysisContext;
   DateTime? _lastAnalysisAt;
@@ -170,12 +170,6 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  void _retryChart() {
-    if (_loadingChart) return;
-    setState(() => _chartError = null);
-    _startChartRefresh();
-  }
-
   // Preserve the 1000-candle viewport while replacing the still-forming candle.
   List<Candle> _mergeLatestCandles(List<Candle> history, List<Candle> latest) {
     final byTime = <int, Candle>{
@@ -189,6 +183,12 @@ class _DashboardPageState extends State<DashboardPage> {
         : merged;
   }
 
+  void _retryChart() {
+    if (_loadingChart) return;
+    setState(() => _chartError = null);
+    _startChartRefresh();
+  }
+
   void _selectSymbol(String symbol) {
     setState(() {
       _activeSymbol = symbol.toUpperCase();
@@ -199,47 +199,16 @@ class _DashboardPageState extends State<DashboardPage> {
     _startChartRefresh();
   }
 
-  List<AutoSuggestBoxItem<String>> _sortSymbols(
-    String text,
-    List<AutoSuggestBoxItem<String>> items,
-  ) {
-    final query = text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    if (query.length < 2) return const [];
-    final matches = items.where((item) {
-      final symbol = item.value ?? '';
-      return symbol.contains(query) || _isSubsequence(query, symbol);
-    }).toList();
-    matches.sort((left, right) {
-      final leftSymbol = left.value ?? '';
-      final rightSymbol = right.value ?? '';
-      return _matchScore(
-        query,
-        leftSymbol,
-      ).compareTo(_matchScore(query, rightSymbol));
-    });
-    return matches;
+  void _selectInterval(String interval) {
+    setState(() => _interval = interval);
+    _startChartRefresh();
   }
-
-  bool _isSubsequence(String query, String symbol) {
-    var queryIndex = 0;
-    for (final char in symbol.split('')) {
-      if (queryIndex < query.length && char == query[queryIndex]) queryIndex++;
-    }
-    return queryIndex == query.length;
-  }
-
-  int _matchScore(String query, String symbol) => symbol.startsWith(query)
-      ? 0
-      : symbol.contains(query)
-      ? 1
-      : 2;
 
   Future<String> _resolveAnalysisSymbol(String prompt) async {
     if (_symbols.isEmpty) await _loadSymbols();
     return _requestedSymbol(prompt) ?? _activeSymbol;
   }
 
-  // Switch and fetch before analysis so the chart snapshot matches the request.
   Future<List<Candle>> _prepareAnalysisChart(String symbol) async {
     if (symbol == _activeSymbol && _candles.isNotEmpty) return _candles;
     _chartRefreshTimer?.cancel();
@@ -303,7 +272,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!_llm.isComplete || !_apiKeyStatus.hasLlmKey) {
       setState(
         () => _conversation.add(
-          const _ConversationMessage.agent(
+          const DashboardMessage.agent(
             '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
           ),
         ),
@@ -316,9 +285,9 @@ class _DashboardPageState extends State<DashboardPage> {
     final previousConversationContext = _conversationContext;
     setState(() {
       _loadingAgent = true;
-      _conversation.add(_ConversationMessage.user(prompt));
+      _conversation.add(DashboardMessage.user(prompt));
       _conversation.add(
-        _ConversationMessage.activity(
+        DashboardMessage.activity(
           mode == AgentMode.analysis
               ? '• Thinking - 分析中…'
               : '• Thinking - 回答中…',
@@ -368,13 +337,13 @@ class _DashboardPageState extends State<DashboardPage> {
           final displayText = notices.isEmpty
               ? answer.text
               : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
-          _conversation.add(_ConversationMessage.agent(displayText));
+          _conversation.add(DashboardMessage.agent(displayText));
           _plan = matchesResponse && matchesChart ? plan : null;
           _lastAnalysisContext =
               'User analysis request: $prompt\n\nAnalysis response:\n$displayText';
           _lastAnalysisAt = DateTime.now();
         } else {
-          _conversation.add(_ConversationMessage.agent(answer.text));
+          _conversation.add(DashboardMessage.agent(answer.text));
           final turn = 'User: $prompt\nAgent: ${answer.text}';
           _conversationContext = _conversationContext == null
               ? turn
@@ -385,9 +354,8 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (error) {
       if (mounted) {
         setState(
-          () => _conversation.add(
-            _ConversationMessage.agent('> Agent 请求失败：$error'),
-          ),
+          () =>
+              _conversation.add(DashboardMessage.agent('> Agent 请求失败：$error')),
         );
         _scheduleConversationScroll();
       }
@@ -396,9 +364,17 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  void _quickAnalyze() {
+    setState(() {
+      _agentMode = AgentMode.analysis;
+      _prompt.text = '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
+    });
+    unawaited(_runAgent());
+  }
+
   void _recordActivity(String activity) {
     if (!mounted) return;
-    setState(() => _conversation.add(_ConversationMessage.activity(activity)));
+    setState(() => _conversation.add(DashboardMessage.activity(activity)));
     _scheduleConversationScroll();
   }
 
@@ -539,7 +515,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     children: [
                       Text(
                         _activeSymbol,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
                         ),
@@ -564,9 +540,43 @@ class _DashboardPageState extends State<DashboardPage> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(flex: 3, child: _buildChartPanel(context)),
+                        Expanded(
+                          flex: 3,
+                          child: DashboardChartPanel(
+                            symbolController: _symbol,
+                            symbols: _symbols,
+                            interval: _interval,
+                            activeSymbol: _activeSymbol,
+                            candles: _candles,
+                            plan: _plan,
+                            chartVersion: _chartVersion,
+                            error: _chartError,
+                            loading: _showChartLoading,
+                            loadingChart: _loadingChart,
+                            onSymbolSelected: _selectSymbol,
+                            onIntervalChanged: _selectInterval,
+                            onRetry: _retryChart,
+                          ),
+                        ),
                         const SizedBox(width: 12),
-                        Expanded(flex: 2, child: _buildAgentPanel(context)),
+                        Expanded(
+                          flex: 2,
+                          child: DashboardAgentPanel(
+                            plan: _plan,
+                            messages: _conversation,
+                            scrollController: _conversationScrollController,
+                            showScrollToBottom: _showScrollToBottom,
+                            mode: _agentMode,
+                            loading: _loadingAgent,
+                            promptController: _prompt,
+                            onModeChanged: (mode) =>
+                                setState(() => _agentMode = mode),
+                            onQuickAnalysis: _quickAnalyze,
+                            onSend: _runAgent,
+                            onClear: _clearAgentContext,
+                            onScrollToBottom: _scrollConversationToBottom,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -579,397 +589,9 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildChartPanel(BuildContext context) {
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 210,
-                child: AutoSuggestBox<String>(
-                  controller: _symbol,
-                  placeholder: '搜索代币，例如 BTC',
-                  items: _symbols
-                      .map(
-                        (symbol) => AutoSuggestBoxItem<String>(
-                          value: symbol,
-                          label: symbol,
-                        ),
-                      )
-                      .toList(),
-                  sorter: _sortSymbols,
-                  onSelected: (item) {
-                    final symbol = item.value;
-                    if (symbol != null) _selectSymbol(symbol);
-                  },
-                ),
-              ),
-              SizedBox(
-                width: 92,
-                child: ComboBox<String>(
-                  value: _interval,
-                  isExpanded: true,
-                  items: const [
-                    ComboBoxItem(value: '1', child: Text('1m')),
-                    ComboBoxItem(value: '5', child: Text('5m')),
-                    ComboBoxItem(value: '15', child: Text('15m')),
-                    ComboBoxItem(value: '60', child: Text('1h')),
-                    ComboBoxItem(value: '240', child: Text('4h')),
-                    ComboBoxItem(value: 'D', child: Text('1D')),
-                  ],
-                  onChanged: (value) {
-                    if (value == null || value == _interval) return;
-                    setState(() => _interval = value);
-                    _startChartRefresh();
-                  },
-                ),
-              ),
-              Text('Bybit Linear · $_activeSymbol · 1 秒自动刷新'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: CandleChart(
-              // Reset zoom only after a complete history load succeeds.
-              key: ValueKey(_chartVersion),
-              candles: _candles,
-              plan: _plan,
-              error: _chartError,
-              loading: _showChartLoading,
-              onRetry: _loadingChart ? null : _retryChart,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _legend(Colors.blue, '开仓区'),
-              const SizedBox(width: 14),
-              _legend(Colors.red, '止损'),
-              const SizedBox(width: 14),
-              _legend(Colors.green, '止盈'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAgentPanel(BuildContext context) {
-    final resources = FluentTheme.of(context).resources;
-    // Keep generated Markdown readable in Fluent light and dark themes.
-    final resultStyle = MarkdownStyleSheet(
-      p: TextStyle(
-        fontSize: 13,
-        height: 1.4,
-        color: resources.textFillColorPrimary,
-      ),
-      h1: TextStyle(
-        fontSize: 22,
-        fontWeight: FontWeight.w700,
-        color: resources.textFillColorPrimary,
-      ),
-      h2: TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: resources.textFillColorPrimary,
-      ),
-      h3: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: resources.textFillColorPrimary,
-      ),
-      code: TextStyle(
-        fontFamily: 'monospace',
-        color: resources.textFillColorPrimary,
-      ),
-      codeblockDecoration: BoxDecoration(
-        color: resources.layerFillColorDefault,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      blockquote: TextStyle(color: resources.textFillColorSecondary),
-    );
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Trading Agent',
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          if (_plan != null) ...[const SizedBox(height: 8), _buildPlanCard()],
-          const SizedBox(height: 8),
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Card(
-                  backgroundColor: FluentTheme.of(
-                    context,
-                  ).resources.subtleFillColorSecondary,
-                  child: SingleChildScrollView(
-                    controller: _conversationScrollController,
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final message in _conversation) ...[
-                          message.isActivity
-                              ? _buildActivityMessage(context, message)
-                              : _buildConversationMessage(
-                                  context,
-                                  message,
-                                  resultStyle,
-                                ),
-                          const SizedBox(height: 8),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                if (_showScrollToBottom)
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: Tooltip(
-                      message: '滚动到底部',
-                      child: SizedBox(
-                        width: 36,
-                        height: 36,
-                        child: IconButton(
-                          icon: const Icon(FluentIcons.chevron_down),
-                          onPressed: _scrollConversationToBottom,
-                          style: ButtonStyle(
-                            backgroundColor: WidgetStatePropertyAll(
-                              FluentTheme.of(context).accentColor,
-                            ),
-                            foregroundColor: const WidgetStatePropertyAll(
-                              Colors.white,
-                            ),
-                            shape: const WidgetStatePropertyAll(CircleBorder()),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ToggleButton(
-                checked: _agentMode == AgentMode.analysis,
-                onChanged: _loadingAgent
-                    ? null
-                    : (checked) {
-                        if (checked) {
-                          setState(() => _agentMode = AgentMode.analysis);
-                        }
-                      },
-                child: const Text('分析'),
-              ),
-              const SizedBox(width: 4),
-              ToggleButton(
-                checked: _agentMode == AgentMode.conversation,
-                onChanged: _loadingAgent
-                    ? null
-                    : (checked) {
-                        if (checked) {
-                          setState(() => _agentMode = AgentMode.conversation);
-                        }
-                      },
-                child: const Text('对话'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Stack(
-            children: [
-              TextBox(
-                controller: _prompt,
-                minLines: 3,
-                maxLines: 5,
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 46),
-                placeholder: '请输入对话或分析请求',
-              ),
-              Positioned(
-                right: 8,
-                bottom: 8,
-                child: Button(
-                  onPressed: _loadingAgent
-                      ? null
-                      : () {
-                          // Reuse the normal send path for identical validation.
-                          setState(() {
-                            _agentMode = AgentMode.analysis;
-                            _prompt.text =
-                                '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
-                          });
-                          unawaited(_runAgent());
-                        },
-                  child: const Text('分析当前合约'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: _loadingAgent ? null : _runAgent,
-                  child: _loadingAgent
-                      ? const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: ProgressRing(),
-                            ),
-                          ],
-                        )
-                      : const Text('发送'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Button(
-                onPressed: _loadingAgent ? null : _clearAgentContext,
-                child: const Text('清空'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConversationMessage(
-    BuildContext context,
-    _ConversationMessage message,
-    MarkdownStyleSheet agentStyle,
-  ) {
-    final resources = FluentTheme.of(context).resources;
-    final isUser = message.isUser;
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: isUser
-            ? const Color(0x332B88D8)
-            : resources.layerFillColorDefault,
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            isUser ? 'User' : 'Agent',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isUser ? Colors.blue : resources.textFillColorSecondary,
-            ),
-          ),
-          const SizedBox(height: 5),
-          if (isUser)
-            SelectableText(
-              message.text,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: resources.textFillColorPrimary,
-              ),
-            )
-          else
-            MarkdownBody(
-              data: message.text,
-              selectable: true,
-              styleSheet: agentStyle,
-            ),
-        ],
-      ),
-    );
-  }
-
-  // Keep tool status compact while placing it at its exact chat position.
-  Widget _buildActivityMessage(
-    BuildContext context,
-    _ConversationMessage message,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: FluentTheme.of(context).resources.layerFillColorDefault,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        message.text,
-        style: TextStyle(
-          fontSize: 12,
-          color: FluentTheme.of(context).resources.textFillColorSecondary,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlanCard() => Card(
-    padding: const EdgeInsets.all(8),
-    backgroundColor: FluentTheme.of(context).resources.subtleFillColorSecondary,
-    child: Wrap(
-      spacing: 12,
-      runSpacing: 4,
-      children: [
-        Text(
-          '决策：${_plan!.decision}',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        if (_plan!.entryLow != null || _plan!.entryHigh != null)
-          Text('开仓 ${_price(_plan!.entryLow)} – ${_price(_plan!.entryHigh)}'),
-        if (_plan!.stopLoss != null) Text('SL ${_price(_plan!.stopLoss)}'),
-        if (_plan!.takeProfits.isNotEmpty)
-          Text('TP ${_plan!.takeProfits.map(_price).join(' / ')}'),
-      ],
-    ),
-  );
-
-  Widget _legend(Color color, String text) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(width: 10, height: 10, color: color),
-      const SizedBox(width: 4),
-      Text(text, style: const TextStyle(fontSize: 12)),
-    ],
-  );
-
-  String _price(double? value) => value == null
-      ? '—'
-      : value >= 1000
+  String _price(double value) => value >= 1000
       ? value.toStringAsFixed(1)
       : value >= 1
       ? value.toStringAsFixed(4)
       : value.toStringAsFixed(6);
-}
-
-class _ConversationMessage {
-  const _ConversationMessage.user(this.text)
-    : isUser = true,
-      isActivity = false;
-  const _ConversationMessage.agent(this.text)
-    : isUser = false,
-      isActivity = false;
-  const _ConversationMessage.activity(this.text)
-    : isUser = false,
-      isActivity = true;
-
-  final String text;
-  final bool isUser;
-  final bool isActivity;
 }

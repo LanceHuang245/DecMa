@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../models/trading_models.dart';
+import '../../models/trading_models.dart';
 import 'candle_chart_viewport.dart';
 
 class CandlePainter extends CustomPainter {

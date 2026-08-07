@@ -4,7 +4,7 @@ import 'package:window_manager/window_manager.dart';
 import 'models/trading_models.dart';
 import 'services/node_runtime_service.dart';
 import 'services/llm_settings_store.dart';
-import 'widgets/dashboard_page.dart';
+import 'ui/dashboard/dashboard_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

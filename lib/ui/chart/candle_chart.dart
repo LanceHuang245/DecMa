@@ -1,7 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
 
-import '../models/trading_models.dart';
+import '../../models/trading_models.dart';
 import 'candle_chart_painter.dart';
 import 'candle_chart_viewport.dart';
 

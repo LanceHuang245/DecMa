@@ -2,8 +2,8 @@ import 'dart:math';
 
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../models/trading_models.dart';
-import '../services/secure_key_store.dart';
+import '../../models/trading_models.dart';
+import '../../services/secure_key_store.dart';
 
 class AgentSettingsDialog extends StatefulWidget {
   const AgentSettingsDialog({
