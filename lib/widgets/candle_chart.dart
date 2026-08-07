@@ -11,12 +11,14 @@ class CandleChart extends StatefulWidget {
     required this.candles,
     this.plan,
     this.error,
+    this.loading = false,
     this.onRetry,
   });
 
   final List<Candle> candles;
   final TradePlan? plan;
   final String? error;
+  final bool loading;
   final VoidCallback? onRetry;
 
   @override
@@ -33,9 +35,7 @@ class _CandleChartState extends State<CandleChart> {
   @override
   Widget build(BuildContext context) {
     final chart = widget.candles.isEmpty
-        ? widget.error == null
-              ? const Center(child: Text('正在加载 Bybit 永续合约 K 线…'))
-              : const SizedBox.expand()
+        ? const SizedBox.expand()
         : LayoutBuilder(
             builder: (context, constraints) {
               final size = constraints.biggest;
@@ -81,6 +81,20 @@ class _CandleChartState extends State<CandleChart> {
       fit: StackFit.expand,
       children: [
         chart,
+        if (widget.loading || (widget.candles.isEmpty && widget.error == null))
+          const ColoredBox(
+            color: Color(0xE6171A1F),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ProgressRing(),
+                  SizedBox(height: 10),
+                  Text('正在加载 Bybit 永续合约 K 线…'),
+                ],
+              ),
+            ),
+          ),
         if (widget.error case final error?)
           Center(
             child: Column(

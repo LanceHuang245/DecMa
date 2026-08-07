@@ -36,7 +36,9 @@ class _DashboardPageState extends State<DashboardPage> {
   String? _result;
   String? _status;
   String? _chartError;
+  var _chartVersion = 0;
   bool _loadingChart = false;
+  bool _showChartLoading = false;
   bool _loadingAgent = false;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
   LlmSettings _llm = LlmSettings(
@@ -101,6 +103,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_loadingChart) return;
     setState(() {
       _loadingChart = true;
+      if (!latestOnly) _showChartLoading = true;
     });
     try {
       final candles = await _bybit.fetchKlines(
@@ -114,10 +117,19 @@ class _DashboardPageState extends State<DashboardPage> {
             ? _mergeLatestCandles(_candles, candles)
             : candles;
         _chartError = null;
+        if (!latestOnly) {
+          _showChartLoading = false;
+          _chartVersion++;
+        }
       });
     } catch (error) {
       _chartRefreshTimer?.cancel();
-      if (mounted) setState(() => _chartError = 'K 线加载失败：$error');
+      if (mounted) {
+        setState(() {
+          _chartError = 'K 线加载失败：$error';
+          _showChartLoading = false;
+        });
+      }
     } finally {
       if (mounted) setState(() => _loadingChart = false);
     }
@@ -388,10 +400,12 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 12),
           Expanded(
             child: CandleChart(
-              key: ValueKey('$_activeSymbol-$_interval'),
+              // Reset zoom only after a complete history load succeeds.
+              key: ValueKey(_chartVersion),
               candles: _candles,
               plan: _plan,
               error: _chartError,
+              loading: _showChartLoading,
               onRetry: _loadingChart ? null : _retryChart,
             ),
           ),
