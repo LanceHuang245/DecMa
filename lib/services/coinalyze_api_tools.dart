@@ -173,6 +173,7 @@ class CoinalyzeApiTools {
 
   final http.Client _client;
   final List<String> warnings = [];
+  final List<DateTime> _quotaUnits = [];
   String? _apiKey;
 
   List<McpTool> configure({required bool enabled, String? apiKey}) {
@@ -206,6 +207,7 @@ class CoinalyzeApiTools {
         throw ArgumentError('Coinalyze API requires "$field".');
       }
     }
+    _reserveQuota(arguments);
     final query = <String, String>{
       for (final entry in arguments.entries)
         if (entry.value != null) entry.key: entry.value.toString(),
@@ -227,6 +229,26 @@ class CoinalyzeApiTools {
       'endpoint': endpoint,
       'data': jsonDecode(response.body),
     });
+  }
+
+  // Enforce Coinalyze's rolling quota, where every requested symbol is one unit.
+  void _reserveQuota(Map<String, dynamic> arguments) {
+    final now = DateTime.now().toUtc();
+    _quotaUnits.removeWhere(
+      (timestamp) => now.difference(timestamp) >= const Duration(minutes: 1),
+    );
+    final symbols = arguments['symbols']
+        ?.toString()
+        .split(',')
+        .where((symbol) => symbol.trim().isNotEmpty)
+        .length;
+    final units = symbols == null || symbols == 0 ? 1 : symbols;
+    if (_quotaUnits.length + units > 40) {
+      throw StateError(
+        'Coinalyze API local quota guard: 40 calls/minute would be exceeded.',
+      );
+    }
+    _quotaUnits.addAll(List.filled(units, now));
   }
 
   void clear() => _apiKey = null;

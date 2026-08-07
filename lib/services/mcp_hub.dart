@@ -31,7 +31,9 @@ class McpHub {
     ];
     for (final connection in connections) {
       try {
-        final tools = await connection.listTools();
+        final tools = (await connection.listTools()).where(
+          (tool) => _isAllowedTool(connection, tool),
+        );
         _connections[connection.name] = connection;
         for (final tool in tools) {
           _tools[tool.functionName] = tool;
@@ -42,6 +44,30 @@ class McpHub {
       }
     }
     return _tools.isEmpty ? const [] : _bridgeTools;
+  }
+
+  // Expose only explicitly public read operations from Bybit's mixed tool server.
+  bool _isAllowedTool(McpConnection connection, McpTool tool) {
+    if (connection.name != 'Bybit MCP') return true;
+    final name = tool.name.toLowerCase();
+    final description = tool.description.toLowerCase();
+    final isReadOperation = const [
+      'get',
+      'query',
+      'search',
+      'list',
+    ].any(name.startsWith);
+    final isExplicitlyPublic =
+        description.contains('no authentication required') ||
+        description.contains('no authentication needed') ||
+        description.contains('public endpoint');
+    final requiresAuthentication =
+        description.contains('authentication is required') ||
+        description.contains('authentication via') ||
+        description.contains('requires api key') ||
+        description.contains('requires an api key') ||
+        description.contains('private endpoint');
+    return isReadOperation && isExplicitlyPublic && !requiresAuthentication;
   }
 
   Future<String> call(
