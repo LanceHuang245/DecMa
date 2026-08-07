@@ -6,10 +6,18 @@ import 'candle_chart_painter.dart';
 import 'candle_chart_viewport.dart';
 
 class CandleChart extends StatefulWidget {
-  const CandleChart({super.key, required this.candles, this.plan});
+  const CandleChart({
+    super.key,
+    required this.candles,
+    this.plan,
+    this.error,
+    this.onRetry,
+  });
 
   final List<Candle> candles;
   final TradePlan? plan;
+  final String? error;
+  final VoidCallback? onRetry;
 
   @override
   State<CandleChart> createState() => _CandleChartState();
@@ -24,49 +32,77 @@ class _CandleChartState extends State<CandleChart> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.candles.isEmpty) {
-      return const Center(child: Text('正在加载 Bybit 永续合约 K 线…'));
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = constraints.biggest;
-        return MouseRegion(
-          cursor: _isDragging
-              ? SystemMouseCursors.grabbing
-              : SystemMouseCursors.grab,
-          onExit: (_) => setState(() => _hoverPosition = null),
-          onHover: (event) =>
-              setState(() => _hoverPosition = event.localPosition),
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerSignal: (event) {
-              if (event is PointerScrollEvent) _zoomAt(event, size);
-            },
-            onPointerDown: (event) {
-              if ((event.buttons & kPrimaryMouseButton) == 0) return;
-              setState(() {
-                _isDragging = true;
-                _dragPosition = event.localPosition;
-              });
-            },
-            onPointerMove: (event) => _drag(event, size),
-            onPointerUp: (_) => _stopDragging(),
-            onPointerCancel: (_) => _stopDragging(),
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: CandlePainter(
-                  candles: widget.candles,
-                  plan: widget.plan,
-                  zoom: _zoom,
-                  pan: _pan,
-                  hoverPosition: _hoverPosition,
+    final chart = widget.candles.isEmpty
+        ? widget.error == null
+              ? const Center(child: Text('正在加载 Bybit 永续合约 K 线…'))
+              : const SizedBox.expand()
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              final size = constraints.biggest;
+              return MouseRegion(
+                cursor: _isDragging
+                    ? SystemMouseCursors.grabbing
+                    : SystemMouseCursors.grab,
+                onExit: (_) => setState(() => _hoverPosition = null),
+                onHover: (event) =>
+                    setState(() => _hoverPosition = event.localPosition),
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerSignal: (event) {
+                    if (event is PointerScrollEvent) _zoomAt(event, size);
+                  },
+                  onPointerDown: (event) {
+                    if ((event.buttons & kPrimaryMouseButton) == 0) return;
+                    setState(() {
+                      _isDragging = true;
+                      _dragPosition = event.localPosition;
+                    });
+                  },
+                  onPointerMove: (event) => _drag(event, size),
+                  onPointerUp: (_) => _stopDragging(),
+                  onPointerCancel: (_) => _stopDragging(),
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: CandlePainter(
+                        candles: widget.candles,
+                        plan: widget.plan,
+                        zoom: _zoom,
+                        pan: _pan,
+                        hoverPosition: _hoverPosition,
+                      ),
+                      size: Size.infinite,
+                    ),
+                  ),
                 ),
-                size: Size.infinite,
-              ),
+              );
+            },
+          );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        chart,
+        if (widget.error case final error?)
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton(
+                  onPressed: widget.onRetry,
+                  child: const Text('重试'),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: 320,
+                  child: Text(
+                    error,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.errorPrimaryColor),
+                  ),
+                ),
+              ],
             ),
           ),
-        );
-      },
+      ],
     );
   }
 

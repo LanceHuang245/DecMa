@@ -1,10 +1,26 @@
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'services/node_runtime_service.dart';
 import 'widgets/dashboard_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+  const windowOptions = WindowOptions(
+    size: Size(1280, 800),
+    center: true,
+    titleBarStyle: TitleBarStyle.hidden,
+  );
+  // Hide the native title bar before Flutter paints the Fluent replacement.
+  windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.setTitleBarStyle(
+      TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+    );
+    await windowManager.show();
+    await windowManager.focus();
+  });
   final nodeAvailable = await NodeRuntimeService.isAvailable();
   runApp(DecmaApp(nodeAvailable: nodeAvailable));
 }

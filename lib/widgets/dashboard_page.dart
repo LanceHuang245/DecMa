@@ -9,6 +9,7 @@ import '../services/node_runtime_service.dart';
 import '../services/secure_key_store.dart';
 import 'candle_chart.dart';
 import 'settings_dialog.dart';
+import 'window_title_bar.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, required this.nodeAvailable});
@@ -34,6 +35,7 @@ class _DashboardPageState extends State<DashboardPage> {
   TradePlan? _plan;
   String? _result;
   String? _status;
+  String? _chartError;
   bool _loadingChart = false;
   bool _loadingAgent = false;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
@@ -78,10 +80,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // Poll public Kline data once per second without allowing overlapping requests.
   void _startChartRefresh() {
+    _chartRefreshTimer?.cancel();
     unawaited(_loadChart());
     _chartRefreshTimer = Timer.periodic(
       const Duration(seconds: 1),
-      (_) => unawaited(_loadChart(reportError: false, latestOnly: true)),
+      (_) => unawaited(_loadChart(latestOnly: true)),
     );
   }
 
@@ -94,10 +97,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Future<void> _loadChart({
-    bool reportError = true,
-    bool latestOnly = false,
-  }) async {
+  Future<void> _loadChart({bool latestOnly = false}) async {
     if (_loadingChart) return;
     setState(() {
       _loadingChart = true;
@@ -113,15 +113,20 @@ class _DashboardPageState extends State<DashboardPage> {
         _candles = latestOnly
             ? _mergeLatestCandles(_candles, candles)
             : candles;
-        if (_status?.startsWith('K 线加载失败') ?? false) _status = null;
+        _chartError = null;
       });
     } catch (error) {
-      if (mounted && reportError) {
-        setState(() => _status = 'K 线加载失败：$error');
-      }
+      _chartRefreshTimer?.cancel();
+      if (mounted) setState(() => _chartError = 'K 线加载失败：$error');
     } finally {
       if (mounted) setState(() => _loadingChart = false);
     }
+  }
+
+  void _retryChart() {
+    if (_loadingChart) return;
+    setState(() => _chartError = null);
+    _startChartRefresh();
   }
 
   // Preserve the 1000-candle viewport while replacing the still-forming candle.
@@ -137,13 +142,14 @@ class _DashboardPageState extends State<DashboardPage> {
         : merged;
   }
 
-  Future<void> _selectSymbol(String symbol) async {
+  void _selectSymbol(String symbol) {
     setState(() {
       _activeSymbol = symbol.toUpperCase();
       _symbol.text = _activeSymbol;
       _plan = null;
+      _chartError = null;
     });
-    await _loadChart();
+    _startChartRefresh();
   }
 
   List<AutoSuggestBoxItem<String>> _sortSymbols(
@@ -276,42 +282,52 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Text(
-                  'DecMa',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(width: 10),
-                const Text('Crypto Perpetual Decision Agent'),
-                const Spacer(),
-                Flexible(
-                  child: Text(
-                    '${_llm.provider.label} · ${_llm.model}',
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.end,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              // The 3:2 flex ratio implements the requested 60% / 40% desktop split.
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Column(
+        children: [
+          const WindowTitleBar(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 children: [
-                  Expanded(flex: 3, child: _buildChartPanel(context)),
-                  const SizedBox(width: 12),
-                  Expanded(flex: 2, child: _buildAgentPanel(context)),
+                  Row(
+                    children: [
+                      const Text(
+                        'DecMa',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text('Crypto Perpetual Decision Agent'),
+                      const Spacer(),
+                      Flexible(
+                        child: Text(
+                          '${_llm.provider.label} · ${_llm.model}',
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    // The 3:2 flex ratio implements the requested 60% / 40% desktop split.
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(flex: 3, child: _buildChartPanel(context)),
+                        const SizedBox(width: 12),
+                        Expanded(flex: 2, child: _buildAgentPanel(context)),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -342,7 +358,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   sorter: _sortSymbols,
                   onSelected: (item) {
                     final symbol = item.value;
-                    if (symbol != null) unawaited(_selectSymbol(symbol));
+                    if (symbol != null) _selectSymbol(symbol);
                   },
                 ),
               ),
@@ -362,7 +378,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   onChanged: (value) {
                     if (value == null || value == _interval) return;
                     setState(() => _interval = value);
-                    unawaited(_loadChart());
+                    _startChartRefresh();
                   },
                 ),
               ),
@@ -375,6 +391,8 @@ class _DashboardPageState extends State<DashboardPage> {
               key: ValueKey('$_activeSymbol-$_interval'),
               candles: _candles,
               plan: _plan,
+              error: _chartError,
+              onRetry: _loadingChart ? null : _retryChart,
             ),
           ),
           const SizedBox(height: 8),
