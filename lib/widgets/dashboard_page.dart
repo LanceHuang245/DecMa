@@ -33,12 +33,15 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   static const _historyLimit = 1000;
+  static const _conversationBottomThreshold = 24.0;
   final _bybit = BybitService();
   final _agent = AgentService();
   final _keyStore = SecureKeyStore();
   final _llmSettingsStore = LlmSettingsStore();
   final _symbol = TextEditingController(text: 'BTCUSDT');
-  final _prompt = TextEditingController(text: '给我一个 BTC 的开仓方向与位置以及止盈、止损位置。');
+  final _prompt = TextEditingController(text: '');
+  // Track the visible chat viewport without interrupting a user reading history.
+  final _conversationScrollController = ScrollController();
   Timer? _chartRefreshTimer;
   var _activeSymbol = 'BTCUSDT';
   var _interval = '15';
@@ -52,6 +55,8 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _loadingChart = false;
   bool _showChartLoading = false;
   bool _loadingAgent = false;
+  bool _conversationWasAtBottom = true;
+  bool _showScrollToBottom = false;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
   late LlmSettings _llm;
   McpSettings _mcp = const McpSettings(
@@ -83,6 +88,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     unawaited(_loadApiKeyStatus());
     unawaited(_loadSymbols());
+    _conversationScrollController.addListener(_handleConversationScroll);
     _startChartRefresh();
   }
 
@@ -93,6 +99,9 @@ class _DashboardPageState extends State<DashboardPage> {
     _agent.dispose();
     _symbol.dispose();
     _prompt.dispose();
+    _conversationScrollController
+      ..removeListener(_handleConversationScroll)
+      ..dispose();
     super.dispose();
   }
 
@@ -293,6 +302,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
       );
+      _scheduleConversationScroll();
       return;
     }
     final prompt = _prompt.text.trim();
@@ -304,6 +314,7 @@ class _DashboardPageState extends State<DashboardPage> {
       );
       _prompt.clear();
     });
+    _scheduleConversationScroll();
     try {
       final analysisSymbol = await _resolveAnalysisSymbol(prompt);
       final analysisCandles = await _prepareAnalysisChart(analysisSymbol);
@@ -339,6 +350,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _conversation.add(_ConversationMessage.agent(displayText));
         _plan = matchesResponse && matchesChart ? plan : null;
       });
+      _scheduleConversationScroll();
     } catch (error) {
       if (mounted) {
         setState(
@@ -346,6 +358,7 @@ class _DashboardPageState extends State<DashboardPage> {
             _ConversationMessage.agent('> Agent 请求失败：$error'),
           ),
         );
+        _scheduleConversationScroll();
       }
     } finally {
       if (mounted) setState(() => _loadingAgent = false);
@@ -355,6 +368,49 @@ class _DashboardPageState extends State<DashboardPage> {
   void _recordActivity(String activity) {
     if (!mounted) return;
     setState(() => _conversation.add(_ConversationMessage.activity(activity)));
+    _scheduleConversationScroll();
+  }
+
+  // Show a quick return control whenever the reader leaves the conversation end.
+  void _handleConversationScroll() {
+    if (!_conversationScrollController.hasClients) return;
+    final position = _conversationScrollController.position;
+    final isAtBottom =
+        position.maxScrollExtent - position.pixels <=
+        _conversationBottomThreshold;
+    _conversationWasAtBottom = isAtBottom;
+    final shouldShowButton = !isAtBottom && _conversation.isNotEmpty;
+    if (!mounted || shouldShowButton == _showScrollToBottom) return;
+    setState(() => _showScrollToBottom = shouldShowButton);
+  }
+
+  void _scheduleConversationScroll() {
+    final shouldFollow = _conversationWasAtBottom;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_conversationScrollController.hasClients) return;
+      if (shouldFollow) {
+        unawaited(
+          _conversationScrollController.animateTo(
+            _conversationScrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+          ),
+        );
+      } else if (!_showScrollToBottom && _conversation.isNotEmpty) {
+        setState(() => _showScrollToBottom = true);
+      }
+    });
+  }
+
+  void _scrollConversationToBottom() {
+    if (!_conversationScrollController.hasClients) return;
+    unawaited(
+      _conversationScrollController.animateTo(
+        _conversationScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      ),
+    );
   }
 
   void _clearAgentContext() {
@@ -363,6 +419,8 @@ class _DashboardPageState extends State<DashboardPage> {
       _conversation.clear();
       _plan = null;
       _prompt.clear();
+      _conversationWasAtBottom = true;
+      _showScrollToBottom = false;
       // Rebuild the chart so its hover and floating plan widgets reset too.
       _chartVersion++;
     });
@@ -614,36 +672,88 @@ class _DashboardPageState extends State<DashboardPage> {
           if (_plan != null) ...[const SizedBox(height: 8), _buildPlanCard()],
           const SizedBox(height: 8),
           Expanded(
-            child: Card(
-              backgroundColor: FluentTheme.of(
-                context,
-              ).resources.subtleFillColorSecondary,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final message in _conversation) ...[
-                      message.isActivity
-                          ? _buildActivityMessage(context, message)
-                          : _buildConversationMessage(
-                              context,
-                              message,
-                              resultStyle,
-                            ),
-                      const SizedBox(height: 8),
-                    ],
-                  ],
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Card(
+                  backgroundColor: FluentTheme.of(
+                    context,
+                  ).resources.subtleFillColorSecondary,
+                  child: SingleChildScrollView(
+                    controller: _conversationScrollController,
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final message in _conversation) ...[
+                          message.isActivity
+                              ? _buildActivityMessage(context, message)
+                              : _buildConversationMessage(
+                                  context,
+                                  message,
+                                  resultStyle,
+                                ),
+                          const SizedBox(height: 8),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+                if (_showScrollToBottom)
+                  Positioned(
+                    right: 16,
+                    bottom: 16,
+                    child: Tooltip(
+                      message: '滚动到底部',
+                      child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: IconButton(
+                          icon: const Icon(FluentIcons.chevron_down),
+                          onPressed: _scrollConversationToBottom,
+                          style: ButtonStyle(
+                            backgroundColor: WidgetStatePropertyAll(
+                              FluentTheme.of(context).accentColor,
+                            ),
+                            foregroundColor: const WidgetStatePropertyAll(
+                              Colors.white,
+                            ),
+                            shape: const WidgetStatePropertyAll(CircleBorder()),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 10),
-          TextBox(
-            controller: _prompt,
-            minLines: 3,
-            maxLines: 5,
-            placeholder: '例如：给我一个 BTC 的开仓方向与位置以及止盈、止损位置',
+          Stack(
+            children: [
+              TextBox(
+                controller: _prompt,
+                minLines: 3,
+                maxLines: 5,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 46),
+                placeholder:
+                    '请输入分析请求，例如：\n“请分析 BTCUSDT 的 15 分钟 K 线，并给出开仓、止损和止盈建议。”',
+              ),
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: Button(
+                  onPressed: _loadingAgent
+                      ? null
+                      : () {
+                          // Reuse the normal send path for identical validation.
+                          _prompt.text =
+                              '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
+                          unawaited(_runAgent());
+                        },
+                  child: const Text('分析当前合约'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Row(
