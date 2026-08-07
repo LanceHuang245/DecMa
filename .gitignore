@@ -46,3 +46,7 @@ app.*.map.json
 
 # System Prompt
 sys_prompt.md
+
+# Agent
+AGENTS.md
+CLAUDE.md
