@@ -1,7 +1,9 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'models/trading_models.dart';
 import 'services/node_runtime_service.dart';
+import 'services/llm_settings_store.dart';
 import 'widgets/dashboard_page.dart';
 
 Future<void> main() async {
@@ -22,13 +24,15 @@ Future<void> main() async {
     await windowManager.focus();
   });
   final nodeAvailable = await NodeRuntimeService.isAvailable();
-  runApp(DecmaApp(nodeAvailable: nodeAvailable));
+  final initialLlm = await LlmSettingsStore().read();
+  runApp(DecmaApp(nodeAvailable: nodeAvailable, initialLlm: initialLlm));
 }
 
 class DecmaApp extends StatelessWidget {
-  const DecmaApp({super.key, this.nodeAvailable = true});
+  const DecmaApp({super.key, this.nodeAvailable = true, this.initialLlm});
 
   final bool nodeAvailable;
+  final LlmSettings? initialLlm;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +43,7 @@ class DecmaApp extends StatelessWidget {
         brightness: Brightness.dark,
         accentColor: Colors.blue,
       ),
-      home: DashboardPage(nodeAvailable: nodeAvailable),
+      home: DashboardPage(nodeAvailable: nodeAvailable, initialLlm: initialLlm),
     );
   }
 }

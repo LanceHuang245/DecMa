@@ -10,7 +10,7 @@ extension LlmProviderLabel on LlmProvider {
   };
 
   String get defaultEndpoint => switch (this) {
-    LlmProvider.anthropic => 'https://api.anthropic.com/v1/messages',
+    LlmProvider.anthropic => 'https://api.anthropic.com',
     LlmProvider.openAiResponses => 'https://api.openai.com/v1',
     LlmProvider.openAiCompletions => 'https://api.openai.com/v1',
   };

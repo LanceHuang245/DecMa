@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../models/trading_models.dart';
@@ -8,12 +10,14 @@ class AgentSettingsDialog extends StatefulWidget {
     super.key,
     required this.llm,
     required this.mcp,
+    required this.keyStatus,
     required this.nodeAvailable,
     required this.onSave,
   });
 
   final LlmSettings llm;
   final McpSettings mcp;
+  final ApiKeyStatus keyStatus;
   final bool nodeAvailable;
   final Future<void> Function(
     LlmSettings llm,
@@ -37,6 +41,9 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   late final TextEditingController _model;
   late final TextEditingController _coinglassKey;
   late final TextEditingController _nansenKey;
+  late final String? _llmMask;
+  late final String? _coinglassMask;
+  late final String? _nansenMask;
   bool _saving = false;
   String? _saveError;
 
@@ -49,10 +56,13 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _useNansen = widget.mcp.useNansen;
     _useOpenWebSearch = widget.nodeAvailable && widget.mcp.useOpenWebSearch;
     _endpoint = TextEditingController(text: widget.llm.endpoint);
-    _apiKey = TextEditingController();
+    _llmMask = _newMask(widget.keyStatus.hasLlmKey);
+    _apiKey = TextEditingController(text: _llmMask);
     _model = TextEditingController(text: widget.llm.model);
-    _coinglassKey = TextEditingController();
-    _nansenKey = TextEditingController();
+    _coinglassMask = _newMask(widget.keyStatus.hasCoinGlassKey);
+    _coinglassKey = TextEditingController(text: _coinglassMask);
+    _nansenMask = _newMask(widget.keyStatus.hasNansenKey);
+    _nansenKey = TextEditingController(text: _nansenMask);
   }
 
   @override
@@ -120,6 +130,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                   controller: _apiKey,
                   obscureText: true,
                   placeholder: '输入新密钥以加密保存',
+                  onTap: () => _selectMask(_apiKey, _llmMask),
                 ),
               ),
               const SizedBox(height: 20),
@@ -162,6 +173,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                     controller: _coinglassKey,
                     obscureText: true,
                     placeholder: '输入新密钥以加密保存',
+                    onTap: () => _selectMask(_coinglassKey, _coinglassMask),
                   ),
                 ),
               ],
@@ -179,6 +191,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                     controller: _nansenKey,
                     obscureText: true,
                     placeholder: '输入新密钥以加密保存',
+                    onTap: () => _selectMask(_nansenKey, _nansenMask),
                   ),
                 ),
               ],
@@ -206,9 +219,28 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     );
   }
 
-  String? _newKey(TextEditingController controller) {
+  String? _newKey(TextEditingController controller, String? mask) {
     final value = controller.text.trim();
-    return value.isEmpty ? null : value;
+    return value.isEmpty || value == mask ? null : value;
+  }
+
+  void _selectMask(TextEditingController controller, String? mask) {
+    if (mask == null || controller.text != mask) return;
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+  }
+
+  // The random text is only a visual mask and is never persisted as a key.
+  String? _newMask(bool hasSavedKey) {
+    if (!hasSavedKey) return null;
+    const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    return List.generate(
+      24,
+      (_) => characters[random.nextInt(characters.length)],
+    ).join();
   }
 
   Future<void> _save() async {
@@ -230,9 +262,9 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
           useOpenWebSearch: _useOpenWebSearch,
         ),
         ApiKeyUpdates(
-          llmKey: _newKey(_apiKey),
-          coinGlassKey: _newKey(_coinglassKey),
-          nansenKey: _newKey(_nansenKey),
+          llmKey: _newKey(_apiKey, _llmMask),
+          coinGlassKey: _newKey(_coinglassKey, _coinglassMask),
+          nansenKey: _newKey(_nansenKey, _nansenMask),
         ),
       );
       _apiKey.clear();

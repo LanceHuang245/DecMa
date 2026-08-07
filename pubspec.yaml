@@ -33,6 +33,7 @@ dependencies:
   fluent_ui: ^4.16.0
   flutter_secure_storage: ^11.0.0
   http: ^1.6.0
+  shared_preferences: ^2.5.5
   window_manager: ^0.5.2
 
 dev_dependencies:

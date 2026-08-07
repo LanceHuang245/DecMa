@@ -5,6 +5,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import '../models/trading_models.dart';
 import '../services/agent_service.dart';
 import '../services/bybit_service.dart';
+import '../services/llm_settings_store.dart';
 import '../services/node_runtime_service.dart';
 import '../services/secure_key_store.dart';
 import 'candle_chart.dart';
@@ -12,9 +13,14 @@ import 'settings_dialog.dart';
 import 'window_title_bar.dart';
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key, required this.nodeAvailable});
+  const DashboardPage({
+    super.key,
+    required this.nodeAvailable,
+    this.initialLlm,
+  });
 
   final bool nodeAvailable;
+  final LlmSettings? initialLlm;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -25,6 +31,7 @@ class _DashboardPageState extends State<DashboardPage> {
   final _bybit = BybitService();
   final _agent = AgentService();
   final _keyStore = SecureKeyStore();
+  final _llmSettingsStore = LlmSettingsStore();
   final _symbol = TextEditingController(text: 'BTCUSDT');
   final _prompt = TextEditingController(text: '给我一个 BTC 的开仓方向与位置以及止盈、止损位置。');
   Timer? _chartRefreshTimer;
@@ -41,11 +48,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _showChartLoading = false;
   bool _loadingAgent = false;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
-  LlmSettings _llm = LlmSettings(
-    provider: LlmProvider.openAiResponses,
-    endpoint: LlmProvider.openAiResponses.defaultEndpoint,
-    model: 'gpt-4.1',
-  );
+  late LlmSettings _llm;
   McpSettings _mcp = const McpSettings(
     useBybit: true,
     useCoinglass: false,
@@ -56,6 +59,13 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    _llm =
+        widget.initialLlm ??
+        LlmSettings(
+          provider: LlmProvider.openAiResponses,
+          endpoint: LlmProvider.openAiResponses.defaultEndpoint,
+          model: 'gpt-4.1',
+        );
     if (!widget.nodeAvailable) {
       _mcp = const McpSettings(
         useBybit: false,
@@ -270,8 +280,10 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (context) => AgentSettingsDialog(
         llm: _llm,
         mcp: _mcp,
+        keyStatus: _apiKeyStatus,
         nodeAvailable: widget.nodeAvailable,
         onSave: (llm, mcp, apiKeys) async {
+          await _llmSettingsStore.save(llm);
           await _keyStore.update(apiKeys);
           final status = await _keyStore.status();
           if (!mounted) return;
@@ -465,7 +477,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ).resources.subtleFillColorSecondary,
               child: SingleChildScrollView(
                 child: SelectableText(
-                  _result ?? '配置模型后，输入问题并运行 Agent。结果中的 JSON 会自动标出开仓区、止损与止盈。',
+                  _result!,
                   style: const TextStyle(fontSize: 13, height: 1.4),
                 ),
               ),
@@ -481,7 +493,16 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 8),
           FilledButton(
             onPressed: _loadingAgent ? null : _runAgent,
-            child: Text(_loadingAgent ? 'Agent 分析中…' : '运行 Agent'),
+            child: _loadingAgent
+                ? const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(width: 16, height: 16, child: ProgressRing()),
+                      SizedBox(width: 8),
+                      Text('发送中…'),
+                    ],
+                  )
+                : const Text('发送'),
           ),
         ],
       ),

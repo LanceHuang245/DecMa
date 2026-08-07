@@ -122,7 +122,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     ];
     for (var turn = 0; turn < 8; turn++) {
       final response = await _post(
-        Uri.parse(settings.endpoint),
+        _anthropicUri(settings.endpoint),
         {'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
         {
           'model': settings.model.trim(),
@@ -322,6 +322,14 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
   Uri _openAiUri(String endpoint, String path) {
     final base = endpoint.replaceFirst(RegExp(r'/+$'), '');
     return Uri.parse(base.endsWith('/$path') ? base : '$base/$path');
+  }
+
+  // Anthropic-compatible providers document a base URL, not the Messages path.
+  Uri _anthropicUri(String endpoint) {
+    final base = endpoint.replaceFirst(RegExp(r'/+$'), '');
+    return Uri.parse(
+      base.endsWith('/v1/messages') ? base : '$base/v1/messages',
+    );
   }
 
   String _anthropicText(List<Map<String, dynamic>> content) => content
