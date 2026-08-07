@@ -1,18 +1,28 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../models/trading_models.dart';
+import '../services/secure_key_store.dart';
 
 class AgentSettingsDialog extends StatefulWidget {
   const AgentSettingsDialog({
     super.key,
     required this.llm,
     required this.mcp,
+    required this.keyStatus,
+    required this.nodeAvailable,
     required this.onSave,
   });
 
   final LlmSettings llm;
   final McpSettings mcp;
-  final void Function(LlmSettings llm, McpSettings mcp) onSave;
+  final ApiKeyStatus keyStatus;
+  final bool nodeAvailable;
+  final Future<void> Function(
+    LlmSettings llm,
+    McpSettings mcp,
+    ApiKeyUpdates apiKeys,
+  )
+  onSave;
 
   @override
   State<AgentSettingsDialog> createState() => _AgentSettingsDialogState();
@@ -29,20 +39,22 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   late final TextEditingController _model;
   late final TextEditingController _coinglassKey;
   late final TextEditingController _nansenKey;
+  bool _saving = false;
+  String? _saveError;
 
   @override
   void initState() {
     super.initState();
     _provider = widget.llm.provider;
-    _useBybit = widget.mcp.useBybit;
+    _useBybit = widget.nodeAvailable && widget.mcp.useBybit;
     _useCoinglass = widget.mcp.useCoinglass;
     _useNansen = widget.mcp.useNansen;
-    _useOpenWebSearch = widget.mcp.useOpenWebSearch;
+    _useOpenWebSearch = widget.nodeAvailable && widget.mcp.useOpenWebSearch;
     _endpoint = TextEditingController(text: widget.llm.endpoint);
-    _apiKey = TextEditingController(text: widget.llm.apiKey);
+    _apiKey = TextEditingController();
     _model = TextEditingController(text: widget.llm.model);
-    _coinglassKey = TextEditingController(text: widget.mcp.coinglassKey);
-    _nansenKey = TextEditingController(text: widget.mcp.nansenKey);
+    _coinglassKey = TextEditingController();
+    _nansenKey = TextEditingController();
   }
 
   @override
@@ -105,8 +117,12 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               ),
               const SizedBox(height: 8),
               InfoLabel(
-                label: 'LLM API Key',
-                child: TextBox(controller: _apiKey, obscureText: true),
+                label: _keyLabel('LLM API Key', widget.keyStatus.hasLlmKey),
+                child: TextBox(
+                  controller: _apiKey,
+                  obscureText: true,
+                  placeholder: '输入新密钥以加密保存',
+                ),
               ),
               const SizedBox(height: 20),
               const Text(
@@ -115,20 +131,24 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               ),
               const SizedBox(height: 6),
               const Text(
-                '密钥仅保留在当前应用内存中，关闭应用即清除。Bybit 仅以无凭据模式启动。',
+                'API Key 使用系统加密凭据存储。Bybit 仅以无凭据模式启动。',
                 style: TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 10),
               ToggleSwitch(
                 checked: _useBybit,
-                content: const Text('Bybit MCP（需要本机 Node.js / npx）'),
-                onChanged: (value) => setState(() => _useBybit = value),
+                content: const Text('Bybit MCP'),
+                onChanged: widget.nodeAvailable
+                    ? (value) => setState(() => _useBybit = value)
+                    : null,
               ),
               const SizedBox(height: 8),
               ToggleSwitch(
                 checked: _useOpenWebSearch,
-                content: const Text('OpenWebSearch MCP（需要本机 Node.js / npx）'),
-                onChanged: (value) => setState(() => _useOpenWebSearch = value),
+                content: const Text('OpenWebSearch MCP'),
+                onChanged: widget.nodeAvailable
+                    ? (value) => setState(() => _useOpenWebSearch = value)
+                    : null,
               ),
               const SizedBox(height: 8),
               ToggleSwitch(
@@ -139,8 +159,15 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               if (_useCoinglass) ...[
                 const SizedBox(height: 6),
                 InfoLabel(
-                  label: 'CoinGlass API Key',
-                  child: TextBox(controller: _coinglassKey, obscureText: true),
+                  label: _keyLabel(
+                    'CoinGlass API Key',
+                    widget.keyStatus.hasCoinGlassKey,
+                  ),
+                  child: TextBox(
+                    controller: _coinglassKey,
+                    obscureText: true,
+                    placeholder: '输入新密钥以加密保存',
+                  ),
                 ),
               ],
               const SizedBox(height: 8),
@@ -152,8 +179,22 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               if (_useNansen) ...[
                 const SizedBox(height: 6),
                 InfoLabel(
-                  label: 'Nansen API Key',
-                  child: TextBox(controller: _nansenKey, obscureText: true),
+                  label: _keyLabel(
+                    'Nansen API Key',
+                    widget.keyStatus.hasNansenKey,
+                  ),
+                  child: TextBox(
+                    controller: _nansenKey,
+                    obscureText: true,
+                    placeholder: '输入新密钥以加密保存',
+                  ),
+                ),
+              ],
+              if (_saveError != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _saveError!,
+                  style: const TextStyle(color: Colors.errorPrimaryColor),
                 ),
               ],
             ],
@@ -166,29 +207,53 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
           onPressed: () => Navigator.pop(context),
         ),
         FilledButton(
-          child: const Text('保存'),
-          onPressed: () {
-            // Keep user secrets in memory only; no project file is written.
-            widget.onSave(
-              LlmSettings(
-                provider: _provider,
-                endpoint: _endpoint.text.trim(),
-                apiKey: _apiKey.text.trim(),
-                model: _model.text.trim(),
-              ),
-              McpSettings(
-                useBybit: _useBybit,
-                useCoinglass: _useCoinglass,
-                coinglassKey: _coinglassKey.text.trim(),
-                useNansen: _useNansen,
-                nansenKey: _nansenKey.text.trim(),
-                useOpenWebSearch: _useOpenWebSearch,
-              ),
-            );
-            Navigator.pop(context);
-          },
+          onPressed: _saving ? null : _save,
+          child: Text(_saving ? '保存中…' : '保存'),
         ),
       ],
     );
+  }
+
+  String _keyLabel(String label, bool saved) =>
+      '$label（${saved ? '已加密保存，输入新值以替换' : '未配置'}）';
+
+  String? _newKey(TextEditingController controller) {
+    final value = controller.text.trim();
+    return value.isEmpty ? null : value;
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      await widget.onSave(
+        LlmSettings(
+          provider: _provider,
+          endpoint: _endpoint.text.trim(),
+          model: _model.text.trim(),
+        ),
+        McpSettings(
+          useBybit: _useBybit,
+          useCoinglass: _useCoinglass,
+          useNansen: _useNansen,
+          useOpenWebSearch: _useOpenWebSearch,
+        ),
+        ApiKeyUpdates(
+          llmKey: _newKey(_apiKey),
+          coinGlassKey: _newKey(_coinglassKey),
+          nansenKey: _newKey(_nansenKey),
+        ),
+      );
+      _apiKey.clear();
+      _coinglassKey.clear();
+      _nansenKey.clear();
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) setState(() => _saveError = '安全存储失败：$error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 }

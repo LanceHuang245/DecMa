@@ -1,13 +1,19 @@
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../models/trading_models.dart';
 import '../services/agent_service.dart';
 import '../services/bybit_service.dart';
+import '../services/node_runtime_service.dart';
+import '../services/secure_key_store.dart';
 import 'candle_chart.dart';
 import 'settings_dialog.dart';
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  const DashboardPage({super.key, required this.nodeAvailable});
+
+  final bool nodeAvailable;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -16,6 +22,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   final _bybit = BybitService();
   final _agent = AgentService();
+  final _keyStore = SecureKeyStore();
   final _symbol = TextEditingController(text: 'XRPUSDT');
   final _prompt = TextEditingController(text: '给我一个 XRP 的开仓方向与位置以及止盈、止损位置。');
   var _interval = '15';
@@ -25,20 +32,33 @@ class _DashboardPageState extends State<DashboardPage> {
   String? _status;
   bool _loadingChart = false;
   bool _loadingAgent = false;
+  ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
   LlmSettings _llm = LlmSettings(
     provider: LlmProvider.openAiResponses,
     endpoint: LlmProvider.openAiResponses.defaultEndpoint,
-    apiKey: '',
     model: 'gpt-4.1',
   );
   McpSettings _mcp = const McpSettings(
     useBybit: true,
     useCoinglass: false,
-    coinglassKey: '',
     useNansen: false,
-    nansenKey: '',
     useOpenWebSearch: true,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.nodeAvailable) {
+      _mcp = const McpSettings(
+        useBybit: false,
+        useCoinglass: false,
+        useNansen: false,
+        useOpenWebSearch: false,
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
+    }
+    unawaited(_loadApiKeyStatus());
+  }
 
   @override
   void dispose() {
@@ -79,8 +99,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _runAgent() async {
     if (_loadingAgent) return;
-    if (!_llm.isComplete) {
-      setState(() => _status = '请先在设置中填写 LLM Endpoint、API Key 和 Model。');
+    if (!_llm.isComplete || !_apiKeyStatus.hasLlmKey) {
+      setState(() => _status = '请先在设置中填写 LLM Endpoint、Model 并保存 API Key。');
       return;
     }
     if (_candles.isEmpty) await _loadChart();
@@ -112,19 +132,62 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  void _showNodeMissing() {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (context) => ContentDialog(
+        title: const Text('Nodejs 未检测到'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('未检测到Nodejs，部分功能有缺失。'),
+            const SizedBox(height: 10),
+            HyperlinkButton(
+              onPressed: () async {
+                await NodeRuntimeService.openDownloadPage();
+              },
+              child: const Text('前往 Nodejs 官网'),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            child: const Text('知道了'),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openSettings() {
     showDialog<void>(
       context: context,
       builder: (context) => AgentSettingsDialog(
         llm: _llm,
         mcp: _mcp,
-        onSave: (llm, mcp) => setState(() {
-          _llm = llm;
-          _mcp = mcp;
-          _status = '设置已保存到当前会话。';
-        }),
+        keyStatus: _apiKeyStatus,
+        nodeAvailable: widget.nodeAvailable,
+        onSave: (llm, mcp, apiKeys) async {
+          await _keyStore.update(apiKeys);
+          final status = await _keyStore.status();
+          if (!mounted) return;
+          setState(() {
+            _llm = llm;
+            _mcp = mcp;
+            _apiKeyStatus = status;
+            _status = '设置已保存，API Key 已加密存储。';
+          });
+        },
       ),
     );
+  }
+
+  Future<void> _loadApiKeyStatus() async {
+    final status = await _keyStore.status();
+    if (mounted) setState(() => _apiKeyStatus = status);
   }
 
   @override

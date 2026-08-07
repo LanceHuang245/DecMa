@@ -20,36 +20,27 @@ class LlmSettings {
   const LlmSettings({
     required this.provider,
     required this.endpoint,
-    required this.apiKey,
     required this.model,
   });
 
   final LlmProvider provider;
   final String endpoint;
-  final String apiKey;
   final String model;
 
-  bool get isComplete =>
-      endpoint.trim().isNotEmpty &&
-      apiKey.trim().isNotEmpty &&
-      model.trim().isNotEmpty;
+  bool get isComplete => endpoint.trim().isNotEmpty && model.trim().isNotEmpty;
 }
 
 class McpSettings {
   const McpSettings({
     required this.useBybit,
     required this.useCoinglass,
-    required this.coinglassKey,
     required this.useNansen,
-    required this.nansenKey,
     required this.useOpenWebSearch,
   });
 
   final bool useBybit;
   final bool useCoinglass;
-  final String coinglassKey;
   final bool useNansen;
-  final String nansenKey;
   final bool useOpenWebSearch;
 }
 

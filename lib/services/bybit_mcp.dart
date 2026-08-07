@@ -6,8 +6,10 @@ class BybitMcp extends StdioMcpConnection {
   BybitMcp()
     : super(
         name: 'Bybit MCP',
-        command: 'npx',
-        arguments: const ['-y', 'bybit-official-trading-server@latest'],
+        command: Platform.isWindows ? 'cmd' : 'npx',
+        arguments: Platform.isWindows
+            ? const ['/c', 'npx', '-y', 'bybit-official-trading-server@latest']
+            : const ['-y', 'bybit-official-trading-server@latest'],
         environment: _publicMarketEnvironment(),
       );
 

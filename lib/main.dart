@@ -1,13 +1,18 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
+import 'services/node_runtime_service.dart';
 import 'widgets/dashboard_page.dart';
 
-void main() {
-  runApp(const DecmaApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final nodeAvailable = await NodeRuntimeService.isAvailable();
+  runApp(DecmaApp(nodeAvailable: nodeAvailable));
 }
 
 class DecmaApp extends StatelessWidget {
-  const DecmaApp({super.key});
+  const DecmaApp({super.key, this.nodeAvailable = true});
+
+  final bool nodeAvailable;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +23,7 @@ class DecmaApp extends StatelessWidget {
         brightness: Brightness.dark,
         accentColor: Colors.blue,
       ),
-      home: const DashboardPage(),
+      home: DashboardPage(nodeAvailable: nodeAvailable),
     );
   }
 }

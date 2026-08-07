@@ -6,8 +6,10 @@ class OpenWebSearchMcp extends StdioMcpConnection {
   OpenWebSearchMcp()
     : super(
         name: 'OpenWebSearch MCP',
-        command: 'npx',
-        arguments: const ['-y', 'open-websearch@latest'],
+        command: Platform.isWindows ? 'cmd' : 'npx',
+        arguments: Platform.isWindows
+            ? const ['/c', 'npx', '-y', 'open-websearch@latest']
+            : const ['-y', 'open-websearch@latest'],
         environment: _environment(),
       );
 

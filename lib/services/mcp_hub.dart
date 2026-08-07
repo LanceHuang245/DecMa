@@ -15,15 +15,28 @@ class McpHub {
   final List<String> warnings = [];
 
   // Discover every configured server at runtime instead of maintaining tool lists in the app.
-  Future<List<McpTool>> connect(McpSettings settings) async {
+  Future<List<McpTool>> connect(
+    McpSettings settings, {
+    String? coinGlassApiKey,
+    String? nansenApiKey,
+  }) async {
     await close();
     warnings.clear();
+    if (settings.useCoinglass &&
+        (coinGlassApiKey == null || coinGlassApiKey.isEmpty)) {
+      warnings.add('CoinGlass MCP: API Key 未配置。');
+    }
+    if (settings.useNansen && (nansenApiKey == null || nansenApiKey.isEmpty)) {
+      warnings.add('Nansen MCP: API Key 未配置。');
+    }
     final connections = <McpConnection>[
       if (settings.useBybit) BybitMcp(),
-      if (settings.useCoinglass && settings.coinglassKey.trim().isNotEmpty)
-        CoinGlassMcp(settings.coinglassKey.trim()),
-      if (settings.useNansen && settings.nansenKey.trim().isNotEmpty)
-        NansenMcp(settings.nansenKey.trim()),
+      if (settings.useCoinglass &&
+          coinGlassApiKey != null &&
+          coinGlassApiKey.isNotEmpty)
+        CoinGlassMcp(coinGlassApiKey),
+      if (settings.useNansen && nansenApiKey != null && nansenApiKey.isNotEmpty)
+        NansenMcp(nansenApiKey),
       if (settings.useOpenWebSearch) OpenWebSearchMcp(),
     ];
     for (final connection in connections) {

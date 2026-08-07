@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../models/trading_models.dart';
 import 'mcp_hub.dart';
 import 'mcp_types.dart';
+import 'secure_key_store.dart';
 
 class AgentResult {
   const AgentResult({required this.text, required this.warnings});
@@ -15,11 +16,13 @@ class AgentResult {
 }
 
 class AgentService {
-  AgentService({McpHub? mcpHub, http.Client? client})
+  AgentService({McpHub? mcpHub, SecureKeyStore? keyStore, http.Client? client})
     : _mcpHub = mcpHub ?? McpHub(),
+      _keyStore = keyStore ?? SecureKeyStore(),
       _client = client ?? http.Client();
 
   final McpHub _mcpHub;
+  final SecureKeyStore _keyStore;
   final http.Client _client;
 
   Future<AgentResult> run({
@@ -30,27 +33,42 @@ class AgentService {
     required McpSettings mcp,
   }) async {
     if (!llm.isComplete) {
-      throw Exception('Please configure endpoint, API key and model first.');
+      throw Exception('Please configure endpoint and model first.');
     }
+    final llmApiKey = await _keyStore.readLlmKey();
+    if (llmApiKey == null || llmApiKey.isEmpty) {
+      throw Exception('Please save an LLM API key in secure storage first.');
+    }
+    final coinGlassApiKey = mcp.useCoinglass
+        ? await _keyStore.readCoinGlassKey()
+        : null;
+    final nansenApiKey = mcp.useNansen ? await _keyStore.readNansenKey() : null;
     final systemPrompt = await rootBundle.loadString('sys_prompt.md');
-    final tools = await _mcpHub.connect(mcp);
+    final tools = await _mcpHub.connect(
+      mcp,
+      coinGlassApiKey: coinGlassApiKey,
+      nansenApiKey: nansenApiKey,
+    );
     final context = _marketContext(prompt, symbol, candles, _mcpHub.warnings);
     try {
       final text = switch (llm.provider) {
         LlmProvider.anthropic => _runAnthropic(
           llm,
+          llmApiKey,
           systemPrompt,
           context,
           tools,
         ),
         LlmProvider.openAiResponses => _runOpenAiResponses(
           llm,
+          llmApiKey,
           systemPrompt,
           context,
           tools,
         ),
         LlmProvider.openAiCompletions => _runOpenAiCompletions(
           llm,
+          llmApiKey,
           systemPrompt,
           context,
           tools,
@@ -94,6 +112,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
 
   Future<String> _runAnthropic(
     LlmSettings settings,
+    String apiKey,
     String system,
     String input,
     List<McpTool> tools,
@@ -104,10 +123,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     for (var turn = 0; turn < 8; turn++) {
       final response = await _post(
         Uri.parse(settings.endpoint),
-        {
-          'x-api-key': settings.apiKey.trim(),
-          'anthropic-version': '2023-06-01',
-        },
+        {'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
         {
           'model': settings.model.trim(),
           'max_tokens': 2400,
@@ -159,6 +175,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
 
   Future<String> _runOpenAiCompletions(
     LlmSettings settings,
+    String apiKey,
     String system,
     String input,
     List<McpTool> tools,
@@ -170,7 +187,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     for (var turn = 0; turn < 8; turn++) {
       final response = await _post(
         _openAiUri(settings.endpoint, 'chat/completions'),
-        {'Authorization': 'Bearer ${settings.apiKey.trim()}'},
+        {'Authorization': 'Bearer $apiKey'},
         {
           'model': settings.model.trim(),
           'messages': messages,
@@ -211,13 +228,14 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
 
   Future<String> _runOpenAiResponses(
     LlmSettings settings,
+    String apiKey,
     String system,
     String input,
     List<McpTool> tools,
   ) async {
     var response = await _post(
       _openAiUri(settings.endpoint, 'responses'),
-      {'Authorization': 'Bearer ${settings.apiKey.trim()}'},
+      {'Authorization': 'Bearer $apiKey'},
       {
         'model': settings.model.trim(),
         'instructions': system,
@@ -246,7 +264,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       final results = await _callTools(calls);
       response = await _post(
         _openAiUri(settings.endpoint, 'responses'),
-        {'Authorization': 'Bearer ${settings.apiKey.trim()}'},
+        {'Authorization': 'Bearer $apiKey'},
         {
           'model': settings.model.trim(),
           'previous_response_id': response['id'],

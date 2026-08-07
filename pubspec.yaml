@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   fluent_ui: ^4.16.0
+  flutter_secure_storage: ^11.0.0
   http: ^1.6.0
 
 dev_dependencies:
