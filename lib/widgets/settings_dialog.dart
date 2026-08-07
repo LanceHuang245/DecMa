@@ -10,6 +10,7 @@ class AgentSettingsDialog extends StatefulWidget {
     super.key,
     required this.llm,
     required this.mcp,
+    required this.api,
     required this.keyStatus,
     required this.nodeAvailable,
     required this.onSave,
@@ -17,11 +18,13 @@ class AgentSettingsDialog extends StatefulWidget {
 
   final LlmSettings llm;
   final McpSettings mcp;
+  final ApiSettings api;
   final ApiKeyStatus keyStatus;
   final bool nodeAvailable;
   final Future<void> Function(
     LlmSettings llm,
     McpSettings mcp,
+    ApiSettings api,
     ApiKeyUpdates apiKeys,
   )
   onSave;
@@ -35,12 +38,15 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   late bool _useBybit;
   late bool _useNansen;
   late bool _useOpenWebSearch;
+  late bool _useCoinalyze;
   late final TextEditingController _endpoint;
   late final TextEditingController _apiKey;
   late final TextEditingController _model;
   late final TextEditingController _nansenKey;
+  late final TextEditingController _coinalyzeKey;
   late final String? _llmMask;
   late final String? _nansenMask;
+  late final String? _coinalyzeMask;
   bool _saving = false;
   String? _saveError;
 
@@ -51,12 +57,15 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _useBybit = widget.nodeAvailable && widget.mcp.useBybit;
     _useNansen = widget.mcp.useNansen;
     _useOpenWebSearch = widget.nodeAvailable && widget.mcp.useOpenWebSearch;
+    _useCoinalyze = widget.api.useCoinalyze;
     _endpoint = TextEditingController(text: widget.llm.endpoint);
     _llmMask = _newMask(widget.keyStatus.hasLlmKey);
     _apiKey = TextEditingController(text: _llmMask);
     _model = TextEditingController(text: widget.llm.model);
     _nansenMask = _newMask(widget.keyStatus.hasNansenKey);
     _nansenKey = TextEditingController(text: _nansenMask);
+    _coinalyzeMask = _newMask(widget.keyStatus.hasCoinalyzeKey);
+    _coinalyzeKey = TextEditingController(text: _coinalyzeMask);
   }
 
   @override
@@ -65,6 +74,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _apiKey.dispose();
     _model.dispose();
     _nansenKey.dispose();
+    _coinalyzeKey.dispose();
     super.dispose();
   }
 
@@ -72,8 +82,10 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   Widget build(BuildContext context) {
     return ContentDialog(
       title: const Text('Agent 设置'),
+      // Override Fluent's 368 px dialog default so the two settings columns fit.
+      constraints: const BoxConstraints(maxWidth: 1040),
       content: SizedBox(
-        width: 520,
+        width: 960,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -127,46 +139,95 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text('MCP', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              const Text(
-                'API Key 使用系统加密凭据存储。Bybit 仅以无凭据模式启动。',
-                style: TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 10),
-              ToggleSwitch(
-                checked: _useBybit,
-                content: const Text('Bybit MCP'),
-                onChanged: widget.nodeAvailable
-                    ? (value) => setState(() => _useBybit = value)
-                    : null,
-              ),
-              const SizedBox(height: 8),
-              ToggleSwitch(
-                checked: _useOpenWebSearch,
-                content: const Text('OpenWebSearch MCP'),
-                onChanged: widget.nodeAvailable
-                    ? (value) => setState(() => _useOpenWebSearch = value)
-                    : null,
-              ),
-              const SizedBox(height: 8),
-              ToggleSwitch(
-                checked: _useNansen,
-                content: const Text('Nansen MCP'),
-                onChanged: (value) => setState(() => _useNansen = value),
-              ),
-              if (_useNansen) ...[
-                const SizedBox(height: 6),
-                InfoLabel(
-                  label: 'Nansen API Key',
-                  child: TextBox(
-                    controller: _nansenKey,
-                    obscureText: true,
-                    placeholder: '输入新密钥以加密保存',
-                    onTap: () => _selectMask(_nansenKey, _nansenMask),
-                  ),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'MCP',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 6),
+                          ToggleSwitch(
+                            checked: _useBybit,
+                            content: const Text('Bybit MCP'),
+                            onChanged: widget.nodeAvailable
+                                ? (value) => setState(() => _useBybit = value)
+                                : null,
+                          ),
+                          const SizedBox(height: 8),
+                          ToggleSwitch(
+                            checked: _useOpenWebSearch,
+                            content: const Text('OpenWebSearch MCP'),
+                            onChanged: widget.nodeAvailable
+                                ? (value) =>
+                                      setState(() => _useOpenWebSearch = value)
+                                : null,
+                          ),
+                          const SizedBox(height: 8),
+                          ToggleSwitch(
+                            checked: _useNansen,
+                            content: const Text('Nansen MCP'),
+                            onChanged: (value) =>
+                                setState(() => _useNansen = value),
+                          ),
+                          if (_useNansen) ...[
+                            const SizedBox(height: 6),
+                            InfoLabel(
+                              label: 'Nansen API Key',
+                              child: TextBox(
+                                controller: _nansenKey,
+                                obscureText: true,
+                                placeholder: '输入新密钥以加密保存',
+                                onTap: () =>
+                                    _selectMask(_nansenKey, _nansenMask),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Container(width: 1, color: Colors.grey),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'API',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 6),
+                          ToggleSwitch(
+                            checked: _useCoinalyze,
+                            content: const Text('Coinalyze'),
+                            onChanged: (value) =>
+                                setState(() => _useCoinalyze = value),
+                          ),
+                          if (_useCoinalyze) ...[
+                            const SizedBox(height: 6),
+                            InfoLabel(
+                              label: 'Coinalyze API Key',
+                              child: TextBox(
+                                controller: _coinalyzeKey,
+                                obscureText: true,
+                                placeholder: '输入新密钥以加密保存',
+                                onTap: () =>
+                                    _selectMask(_coinalyzeKey, _coinalyzeMask),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
               if (_saveError != null) ...[
                 const SizedBox(height: 10),
                 Text(
@@ -232,13 +293,16 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
           useNansen: _useNansen,
           useOpenWebSearch: _useOpenWebSearch,
         ),
+        ApiSettings(useCoinalyze: _useCoinalyze),
         ApiKeyUpdates(
           llmKey: _newKey(_apiKey, _llmMask),
           nansenKey: _newKey(_nansenKey, _nansenMask),
+          coinalyzeKey: _newKey(_coinalyzeKey, _coinalyzeMask),
         ),
       );
       _apiKey.clear();
       _nansenKey.clear();
+      _coinalyzeKey.clear();
       if (mounted) Navigator.pop(context);
     } catch (error) {
       if (mounted) setState(() => _saveError = '安全存储失败：$error');

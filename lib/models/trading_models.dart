@@ -42,6 +42,12 @@ class McpSettings {
   final bool useOpenWebSearch;
 }
 
+class ApiSettings {
+  const ApiSettings({required this.useCoinalyze});
+
+  final bool useCoinalyze;
+}
+
 class Candle {
   const Candle({
     required this.time,
@@ -65,6 +71,7 @@ class TradePlan {
     required this.decision,
     required this.summary,
     required this.parsedJson,
+    this.symbol,
     this.entryLow,
     this.entryHigh,
     this.stopLoss,
@@ -74,6 +81,7 @@ class TradePlan {
   final String decision;
   final String summary;
   final String parsedJson;
+  final String? symbol;
   final double? entryLow;
   final double? entryHigh;
   final double? stopLoss;
@@ -94,6 +102,7 @@ class TradePlan {
         final data = _map(decoded);
         final decision = _map(data['decision']);
         if (decision.isEmpty) continue;
+        final request = _map(data['request']);
         final entry = _map(data['entry_plan']);
         final risk = _map(data['risk_plan']);
         final takeProfits = (_list(data['take_profit_plan']))
@@ -105,6 +114,7 @@ class TradePlan {
           decision: decision['type']?.toString() ?? 'UNKNOWN',
           summary: decision['summary']?.toString() ?? '',
           parsedJson: const JsonEncoder.withIndent('  ').convert(data),
+          symbol: request['symbol']?.toString().toUpperCase(),
           entryLow: _number(entry['entry_zone_low']),
           entryHigh: _number(entry['entry_zone_high']),
           stopLoss: _number(risk['stop_loss']),

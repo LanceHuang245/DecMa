@@ -27,11 +27,13 @@ Future<void> main() async {
   final settingsStore = LlmSettingsStore();
   final initialLlm = await settingsStore.read();
   final initialMcp = await settingsStore.readMcp();
+  final initialApi = await settingsStore.readApi();
   runApp(
     DecmaApp(
       nodeAvailable: nodeAvailable,
       initialLlm: initialLlm,
       initialMcp: initialMcp,
+      initialApi: initialApi,
     ),
   );
 }
@@ -42,11 +44,13 @@ class DecmaApp extends StatelessWidget {
     this.nodeAvailable = true,
     this.initialLlm,
     this.initialMcp,
+    this.initialApi,
   });
 
   final bool nodeAvailable;
   final LlmSettings? initialLlm;
   final McpSettings? initialMcp;
+  final ApiSettings? initialApi;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +65,7 @@ class DecmaApp extends StatelessWidget {
         nodeAvailable: nodeAvailable,
         initialLlm: initialLlm,
         initialMcp: initialMcp,
+        initialApi: initialApi,
       ),
     );
   }

@@ -19,11 +19,13 @@ class DashboardPage extends StatefulWidget {
     required this.nodeAvailable,
     this.initialLlm,
     this.initialMcp,
+    this.initialApi,
   });
 
   final bool nodeAvailable;
   final LlmSettings? initialLlm;
   final McpSettings? initialMcp;
+  final ApiSettings? initialApi;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -57,6 +59,7 @@ class _DashboardPageState extends State<DashboardPage> {
     useNansen: false,
     useOpenWebSearch: true,
   );
+  ApiSettings _api = const ApiSettings(useCoinalyze: false);
 
   @override
   void initState() {
@@ -69,6 +72,7 @@ class _DashboardPageState extends State<DashboardPage> {
           model: 'gpt-4.1',
         );
     if (widget.initialMcp != null) _mcp = widget.initialMcp!;
+    if (widget.initialApi != null) _api = widget.initialApi!;
     if (!widget.nodeAvailable) {
       _mcp = const McpSettings(
         useBybit: false,
@@ -113,20 +117,24 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadChart({bool latestOnly = false}) async {
     if (_loadingChart) return;
+    final symbol = _activeSymbol;
+    final interval = _interval;
+    final hasCandles = _candles.isNotEmpty;
     setState(() {
       _loadingChart = true;
       if (!latestOnly) _showChartLoading = true;
     });
     try {
       final candles = await _bybit.fetchKlines(
-        symbol: _activeSymbol,
-        interval: _interval,
-        limit: latestOnly && _candles.isNotEmpty ? 2 : _historyLimit,
+        symbol: symbol,
+        interval: interval,
+        limit: latestOnly && hasCandles ? 2 : _historyLimit,
       );
-      if (!mounted) return;
+      // Ignore a response for a symbol or timeframe the user has left behind.
+      if (!mounted || symbol != _activeSymbol || interval != _interval) return;
       setState(() {
         _candles = latestOnly
-            ? _mergeLatestCandles(_candles, candles)
+            ? _mergeLatestCandles(hasCandles ? _candles : const [], candles)
             : candles;
         _chartError = null;
         if (!latestOnly) {
@@ -211,6 +219,70 @@ class _DashboardPageState extends State<DashboardPage> {
       ? 1
       : 2;
 
+  Future<String> _resolveAnalysisSymbol(String prompt) async {
+    if (_symbols.isEmpty) await _loadSymbols();
+    return _requestedSymbol(prompt) ?? _activeSymbol;
+  }
+
+  // Switch and fetch before analysis so the chart snapshot matches the request.
+  Future<List<Candle>> _prepareAnalysisChart(String symbol) async {
+    if (symbol == _activeSymbol && _candles.isNotEmpty) return _candles;
+    _chartRefreshTimer?.cancel();
+    _recordActivity('• Chart - 加载 $symbol');
+    setState(() {
+      _activeSymbol = symbol;
+      _symbol.text = symbol;
+      _plan = null;
+      _chartError = null;
+      _showChartLoading = true;
+    });
+    try {
+      final candles = await _bybit.fetchKlines(
+        symbol: symbol,
+        interval: _interval,
+        limit: _historyLimit,
+      );
+      if (!mounted || _activeSymbol != symbol) return candles;
+      setState(() {
+        _candles = candles;
+        _showChartLoading = false;
+        _chartVersion++;
+      });
+      _startChartRefresh();
+      return candles;
+    } catch (error) {
+      if (mounted && _activeSymbol == symbol) {
+        setState(() {
+          _chartError = 'K 线加载失败：$error';
+          _showChartLoading = false;
+        });
+      }
+      throw Exception('无法加载 $symbol 的 K 线：$error');
+    }
+  }
+
+  String? _requestedSymbol(String prompt) {
+    if (_symbols.isEmpty) return null;
+    final candidates = <String>{};
+    final normalized = prompt.toUpperCase();
+    void addCandidate(String value) {
+      final symbol = value.endsWith('USDT') ? value : '${value}USDT';
+      if (_symbols.contains(symbol)) candidates.add(symbol);
+    }
+
+    for (final match in RegExp(
+      r'\b([A-Z0-9]{2,20})\s*(?:[/_-]\s*)?USDT\b',
+    ).allMatches(normalized)) {
+      addCandidate(match.group(1)!);
+    }
+    for (final match in RegExp(
+      r'\b([A-Z0-9]{2,20})\b',
+    ).allMatches(normalized)) {
+      addCandidate(match.group(1)!);
+    }
+    return candidates.length == 1 ? candidates.single : null;
+  }
+
   Future<void> _runAgent() async {
     if (_loadingAgent) return;
     if (!_llm.isComplete || !_apiKeyStatus.hasLlmKey) {
@@ -218,28 +290,44 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
     final prompt = _prompt.text.trim();
-    if (_candles.isEmpty) await _loadChart();
-    if (!mounted) return;
     setState(() {
       _loadingAgent = true;
       _activities = ['• Thinking - 分析中…'];
       _prompt.clear();
     });
     try {
+      final analysisSymbol = await _resolveAnalysisSymbol(prompt);
+      final analysisCandles = await _prepareAnalysisChart(analysisSymbol);
+      if (!mounted) return;
+      if (analysisCandles.isEmpty) {
+        throw Exception('$analysisSymbol 没有可分析的 K 线。');
+      }
       final answer = await _agent.run(
         prompt: prompt,
-        symbol: _activeSymbol,
-        candles: _candles,
+        symbol: analysisSymbol,
+        candles: analysisCandles,
         llm: _llm,
         mcp: _mcp,
+        api: _api,
         onActivity: _recordActivity,
       );
       if (!mounted) return;
       setState(() {
-        _result = answer.warnings.isEmpty
+        final plan = TradePlan.fromResponse(answer.text);
+        final notices = [...answer.warnings];
+        final matchesResponse =
+            plan?.symbol == null || plan!.symbol == analysisSymbol;
+        final matchesChart = _activeSymbol == analysisSymbol;
+        if (!matchesResponse) {
+          notices.add('结果 JSON 的币种与分析币种 $analysisSymbol 不一致，未添加图表标记。');
+        }
+        if (!matchesChart) {
+          notices.add('当前图表已切换为 $_activeSymbol，未添加 $analysisSymbol 的图表标记。');
+        }
+        _result = notices.isEmpty
             ? answer.text
-            : '${answer.text}\n\n> MCP 提示：${answer.warnings.join(' | ')}';
-        _plan = TradePlan.fromResponse(answer.text);
+            : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
+        _plan = matchesResponse && matchesChart ? plan : null;
       });
     } catch (error) {
       if (mounted) setState(() => _result = '> Agent 请求失败：$error');
@@ -301,12 +389,14 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (context) => AgentSettingsDialog(
         llm: _llm,
         mcp: _mcp,
+        api: _api,
         keyStatus: _apiKeyStatus,
         nodeAvailable: widget.nodeAvailable,
-        onSave: (llm, mcp, apiKeys) async {
+        onSave: (llm, mcp, api, apiKeys) async {
           await Future.wait([
             _llmSettingsStore.save(llm),
             _llmSettingsStore.saveMcp(mcp),
+            _llmSettingsStore.saveApi(api),
           ]);
           await _keyStore.update(apiKeys);
           final status = await _keyStore.status();
@@ -314,6 +404,7 @@ class _DashboardPageState extends State<DashboardPage> {
           setState(() {
             _llm = llm;
             _mcp = mcp;
+            _api = api;
             _apiKeyStatus = status;
           });
         },
@@ -339,23 +430,25 @@ class _DashboardPageState extends State<DashboardPage> {
                 children: [
                   Row(
                     children: [
-                      const Text(
-                        'DecMa',
+                      Text(
+                        _activeSymbol,
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      const Text('Crypto Perpetual Decision Agent'),
-                      const Spacer(),
-                      Flexible(
-                        child: Text(
-                          '${_llm.provider.label} · ${_llm.model}',
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.end,
+                      if (_candles.isNotEmpty) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          _price(_candles.last.close),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
+                      ],
+                      const Spacer(),
+                      Button(onPressed: _openSettings, child: const Text('设置')),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -452,9 +545,6 @@ class _DashboardPageState extends State<DashboardPage> {
               _legend(Colors.red, '止损'),
               const SizedBox(width: 14),
               _legend(Colors.green, '止盈'),
-              const Spacer(),
-              if (_candles.isNotEmpty)
-                Text('Last ${_price(_candles.last.close)}'),
             ],
           ),
         ],
@@ -500,18 +590,10 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Trading Agent',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Button(onPressed: _openSettings, child: const Text('设置')),
-            ],
+          const Text(
+            'Trading Agent',
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           if (_plan != null) ...[const SizedBox(height: 8), _buildPlanCard()],

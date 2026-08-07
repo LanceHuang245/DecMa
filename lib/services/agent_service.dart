@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/trading_models.dart';
+import 'coinalyze_api_tools.dart';
 import 'mcp_hub.dart';
 import 'mcp_types.dart';
 import 'secure_key_store.dart';
@@ -17,15 +18,21 @@ class AgentResult {
 }
 
 class AgentService {
-  // Allow a full market-analysis workflow to complete across all MCP sources.
-  static const _maxMcpToolRounds = 20;
+  // Allow a full market-analysis workflow to complete across available sources.
+  static const _maxToolRounds = 20;
 
-  AgentService({McpHub? mcpHub, SecureKeyStore? keyStore, http.Client? client})
-    : _mcpHub = mcpHub ?? McpHub(),
-      _keyStore = keyStore ?? SecureKeyStore(),
-      _client = client ?? http.Client();
+  AgentService({
+    McpHub? mcpHub,
+    CoinalyzeApiTools? coinalyze,
+    SecureKeyStore? keyStore,
+    http.Client? client,
+  }) : _mcpHub = mcpHub ?? McpHub(),
+       _coinalyze = coinalyze ?? CoinalyzeApiTools(),
+       _keyStore = keyStore ?? SecureKeyStore(),
+       _client = client ?? http.Client();
 
   final McpHub _mcpHub;
+  final CoinalyzeApiTools _coinalyze;
   final SecureKeyStore _keyStore;
   final http.Client _client;
 
@@ -35,6 +42,7 @@ class AgentService {
     required List<Candle> candles,
     required LlmSettings llm,
     required McpSettings mcp,
+    required ApiSettings api,
     void Function(String activity)? onActivity,
   }) async {
     if (!llm.isComplete) {
@@ -45,9 +53,19 @@ class AgentService {
       throw Exception('Please save an LLM API key in secure storage first.');
     }
     final nansenApiKey = mcp.useNansen ? await _keyStore.readNansenKey() : null;
+    final coinalyzeApiKey = api.useCoinalyze
+        ? await _keyStore.readCoinalyzeKey()
+        : null;
     final systemPrompt = await rootBundle.loadString('sys_prompt.md');
-    final tools = await _mcpHub.connect(mcp, nansenApiKey: nansenApiKey);
-    final context = _marketContext(prompt, symbol, candles, _mcpHub.warnings);
+    final mcpTools = await _mcpHub.connect(mcp, nansenApiKey: nansenApiKey);
+    // Coinalyze is an in-process Agent tool and is never registered with MCP.
+    final coinalyzeTools = _coinalyze.configure(
+      enabled: api.useCoinalyze,
+      apiKey: coinalyzeApiKey,
+    );
+    final warnings = [..._mcpHub.warnings, ..._coinalyze.warnings];
+    final tools = [...mcpTools, ...coinalyzeTools];
+    final context = _marketContext(prompt, symbol, candles, warnings);
     try {
       // Surface a compact progress line without exposing model reasoning.
       onActivity?.call('• Thinking - 分析中…');
@@ -83,13 +101,14 @@ class AgentService {
       if (reply.trim().isEmpty) {
         debugPrint('LLM reply is empty; inspect the preceding raw response.');
       }
-      return AgentResult(text: reply, warnings: List.of(_mcpHub.warnings));
+      return AgentResult(text: reply, warnings: warnings);
     } catch (error, stackTrace) {
       debugPrint('LLM request failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
     } finally {
       await _mcpHub.close();
+      _coinalyze.clear();
     }
   }
 
@@ -117,10 +136,10 @@ class AgentService {
     return '''User request: $prompt
 
 The application chart is Bybit linear perpetual $symbol. Latest displayed close: ${latest?.close ?? 'unavailable'}.
-The following untrusted data is a chart snapshot. Verify or supplement it through the available MCP tools when needed:
+The following untrusted data is a chart snapshot. Verify or supplement it through the available tools when needed:
 ${jsonEncode(chartData)}
-Use decma_discover_mcp_tools first to retrieve live MCP tool schemas, then decma_call_mcp_tool to execute a selected data query. Bybit runs without credentials, so authenticated operations cannot succeed. Use OpenWebSearch for current news and official announcements, then verify any material event from the primary source.
-${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}''';
+Use decma_discover_mcp_tools first to retrieve live MCP tool schemas, then decma_call_mcp_tool to execute a selected MCP data query. Use Coinalyze API tools directly when they are available; do not discover or call them through MCP. Bybit runs without credentials, so authenticated operations cannot succeed. Use OpenWebSearch for current news and official announcements, then verify any material event from the primary source.
+${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}''';
   }
 
   Future<String> _runAnthropic(
@@ -134,7 +153,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     final messages = <Map<String, dynamic>>[
       {'role': 'user', 'content': input},
     ];
-    for (var turn = 0; turn < _maxMcpToolRounds; turn++) {
+    for (var turn = 0; turn < _maxToolRounds; turn++) {
       final response = await _post(
         _anthropicUri(settings.endpoint),
         {'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
@@ -185,7 +204,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       });
     }
     throw Exception(
-      'Agent reached the maximum of $_maxMcpToolRounds MCP tool rounds.',
+      'Agent reached the maximum of $_maxToolRounds tool rounds.',
     );
   }
 
@@ -201,7 +220,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       {'role': 'system', 'content': system},
       {'role': 'user', 'content': input},
     ];
-    for (var turn = 0; turn < _maxMcpToolRounds; turn++) {
+    for (var turn = 0; turn < _maxToolRounds; turn++) {
       final response = await _post(
         _openAiUri(settings.endpoint, 'chat/completions'),
         {'Authorization': 'Bearer $apiKey'},
@@ -241,7 +260,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       }
     }
     throw Exception(
-      'Agent reached the maximum of $_maxMcpToolRounds MCP tool rounds.',
+      'Agent reached the maximum of $_maxToolRounds tool rounds.',
     );
   }
 
@@ -268,7 +287,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
               .toList(),
       },
     );
-    for (var turn = 0; turn < _maxMcpToolRounds; turn++) {
+    for (var turn = 0; turn < _maxToolRounds; turn++) {
       final calls = _list(response['output'])
           .map(_map)
           .where((item) => item['type'] == 'function_call')
@@ -300,7 +319,7 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       );
     }
     throw Exception(
-      'Agent reached the maximum of $_maxMcpToolRounds MCP tool rounds.',
+      'Agent reached the maximum of $_maxToolRounds tool rounds.',
     );
   }
 
@@ -312,7 +331,9 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
     for (final call in calls) {
       onActivity?.call(_toolActivity(call));
       try {
-        final output = await _mcpHub.call(call.name, call.arguments);
+        final output = _coinalyze.supports(call.name)
+            ? await _coinalyze.call(call.name, call.arguments)
+            : await _mcpHub.call(call.name, call.arguments);
         results.add(_ToolResult(call.id, _trimToolOutput(output)));
       } catch (error) {
         onActivity?.call('${_toolActivity(call)}（失败）');
@@ -335,6 +356,12 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       final server = toolName.substring(0, marker);
       final action = toolName.substring(marker + 5);
       return '• $server MCP - $action';
+    }
+    final apiMarker = toolName.indexOf('_API_');
+    if (apiMarker > 0) {
+      final server = toolName.substring(0, apiMarker);
+      final action = toolName.substring(apiMarker + 5);
+      return '• $server API - $action';
     }
     return '• MCP - $toolName';
   }
@@ -405,7 +432,10 @@ ${warnings.isEmpty ? '' : 'Unavailable MCP servers: ${warnings.join(' | ')}'}'''
       ? '${value.substring(0, 24000)}\n[truncated]'
       : value;
 
-  void dispose() => _client.close();
+  void dispose() {
+    _client.close();
+    _coinalyze.dispose();
+  }
 }
 
 class _ToolCall {

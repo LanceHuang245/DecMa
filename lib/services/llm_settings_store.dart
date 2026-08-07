@@ -12,6 +12,7 @@ class LlmSettingsStore {
   static const _bybitMcpKey = 'decma.mcp.bybit';
   static const _nansenMcpKey = 'decma.mcp.nansen';
   static const _openWebSearchMcpKey = 'decma.mcp.open_web_search';
+  static const _coinalyzeApiKey = 'decma.api.coinalyze';
   final SharedPreferencesAsync _preferences;
 
   Future<LlmSettings?> read() async {
@@ -64,4 +65,11 @@ class LlmSettingsStore {
       _preferences.setBool(_openWebSearchMcpKey, settings.useOpenWebSearch),
     ]);
   }
+
+  Future<ApiSettings> readApi() async => ApiSettings(
+    useCoinalyze: await _preferences.getBool(_coinalyzeApiKey) ?? false,
+  );
+
+  Future<void> saveApi(ApiSettings settings) =>
+      _preferences.setBool(_coinalyzeApiKey, settings.useCoinalyze);
 }
