@@ -50,6 +50,11 @@ class _DashboardPageState extends State<DashboardPage> {
   TradePlan? _plan;
   // Keep the chat transcript only for the active app session.
   final _conversation = <_ConversationMessage>[];
+  // Retain the last complete analysis for tool-free conversational follow-ups.
+  String? _lastAnalysisContext;
+  DateTime? _lastAnalysisAt;
+  // Keep successful conversation turns for later analysis requests in this session.
+  String? _conversationContext;
   String? _chartError;
   var _chartVersion = 0;
   bool _loadingChart = false;
@@ -308,6 +313,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     final prompt = _prompt.text.trim();
     final mode = _agentMode;
+    final previousConversationContext = _conversationContext;
     setState(() {
       _loadingAgent = true;
       _conversation.add(_ConversationMessage.user(prompt));
@@ -340,6 +346,9 @@ class _DashboardPageState extends State<DashboardPage> {
         mcp: _mcp,
         api: _api,
         mode: mode,
+        previousAnalysisContext: _lastAnalysisContext,
+        previousAnalysisAt: _lastAnalysisAt,
+        previousConversationContext: previousConversationContext,
         onActivity: _recordActivity,
       );
       if (!mounted) return;
@@ -361,8 +370,15 @@ class _DashboardPageState extends State<DashboardPage> {
               : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
           _conversation.add(_ConversationMessage.agent(displayText));
           _plan = matchesResponse && matchesChart ? plan : null;
+          _lastAnalysisContext =
+              'User analysis request: $prompt\n\nAnalysis response:\n$displayText';
+          _lastAnalysisAt = DateTime.now();
         } else {
           _conversation.add(_ConversationMessage.agent(answer.text));
+          final turn = 'User: $prompt\nAgent: ${answer.text}';
+          _conversationContext = _conversationContext == null
+              ? turn
+              : '$_conversationContext\n\n$turn';
         }
       });
       _scheduleConversationScroll();
@@ -433,6 +449,9 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {
       _conversation.clear();
       _plan = null;
+      _lastAnalysisContext = null;
+      _lastAnalysisAt = null;
+      _conversationContext = null;
       _prompt.clear();
       _conversationWasAtBottom = true;
       _showScrollToBottom = false;
