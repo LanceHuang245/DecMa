@@ -235,6 +235,8 @@ class LlmTransport {
         {'Authorization': 'Bearer $apiKey'},
         {
           'model': settings.model.trim(),
+          // Responses does not inherit instructions from previous_response_id.
+          'instructions': system,
           'previous_response_id': response['id'],
           'input': [
             for (final result in results)
@@ -244,6 +246,16 @@ class LlmTransport {
                 'output': result.output,
               },
           ],
+          // Keep function definitions available for any follow-up tool round.
+          if (tools.isNotEmpty)
+            'tools': tools
+                .map(
+                  (tool) => {
+                    'type': 'function',
+                    ...tool.toFunctionDefinition(),
+                  },
+                )
+                .toList(),
         },
       );
     }

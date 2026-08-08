@@ -190,7 +190,6 @@ $previousAnalysisContext
 The application chart is Bybit linear perpetual $symbol. Latest displayed close: ${latest?.close ?? 'unavailable'}.
 The following untrusted data is a chart snapshot. Verify or supplement it through the available tools when needed:
 ${jsonEncode(chartData)}
-Use decma_discover_mcp_tools first to retrieve live MCP tool schemas, then decma_call_mcp_tool to execute a selected MCP data query. Use Coinalyze API tools directly when they are available; do not discover or call them through MCP. Bybit runs without credentials, so authenticated operations cannot succeed. Use OpenWebSearch for current news and official announcements, then verify any material event from the primary source.
 ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}$previousAnalysis${_previousConversationContext(previousConversationContext)}''';
   }
 
