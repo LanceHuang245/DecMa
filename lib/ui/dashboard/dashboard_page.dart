@@ -1,17 +1,12 @@
-import 'dart:async';
-
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
-import '../../services/agent_service.dart';
-import '../../services/bybit_service.dart';
-import '../../services/llm_settings_store.dart';
 import '../../services/node_runtime_service.dart';
-import '../../services/secure_key_store.dart';
 import '../core/window_title_bar.dart';
 import '../settings/agent_settings_dialog.dart';
 import 'dashboard_agent_panel.dart';
 import 'dashboard_chart_panel.dart';
+import 'dashboard_controller.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
@@ -32,413 +27,26 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  static const _historyLimit = 1000;
-  static const _conversationBottomThreshold = 24.0;
-  final _bybit = BybitService();
-  final _agent = AgentService();
-  final _keyStore = SecureKeyStore();
-  final _llmSettingsStore = LlmSettingsStore();
-  final _symbol = TextEditingController(text: 'BTCUSDT');
-  final _prompt = TextEditingController(text: '');
-  // Track the visible chat viewport without interrupting a user reading history.
-  final _conversationScrollController = ScrollController();
-  Timer? _chartRefreshTimer;
-  var _activeSymbol = 'BTCUSDT';
-  var _interval = '15';
-  var _candles = <Candle>[];
-  var _symbols = <String>[];
-  TradePlan? _plan;
-  // Keep the chat transcript only for the active app session.
-  final _conversation = <DashboardMessage>[];
-  // Retain the last complete analysis for tool-free conversational follow-ups.
-  String? _lastAnalysisContext;
-  DateTime? _lastAnalysisAt;
-  // Keep successful conversation turns for later analysis requests in this session.
-  String? _conversationContext;
-  String? _chartError;
-  var _chartVersion = 0;
-  bool _loadingChart = false;
-  bool _showChartLoading = false;
-  bool _loadingAgent = false;
-  AgentMode _agentMode = AgentMode.analysis;
-  bool _conversationWasAtBottom = true;
-  bool _showScrollToBottom = false;
-  ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
-  late LlmSettings _llm;
-  McpSettings _mcp = const McpSettings(
-    useBybit: true,
-    useNansen: false,
-    useOpenWebSearch: true,
-  );
-  ApiSettings _api = const ApiSettings(useCoinalyze: false);
+  late final DashboardController _controller;
 
   @override
   void initState() {
     super.initState();
-    _llm =
-        widget.initialLlm ??
-        LlmSettings(
-          provider: LlmProvider.openAiResponses,
-          endpoint: LlmProvider.openAiResponses.defaultEndpoint,
-          model: 'gpt-4.1',
-        );
-    if (widget.initialMcp != null) _mcp = widget.initialMcp!;
-    if (widget.initialApi != null) _api = widget.initialApi!;
+    _controller = DashboardController(
+      nodeAvailable: widget.nodeAvailable,
+      initialLlm: widget.initialLlm,
+      initialMcp: widget.initialMcp,
+      initialApi: widget.initialApi,
+    )..initialize();
     if (!widget.nodeAvailable) {
-      _mcp = const McpSettings(
-        useBybit: false,
-        useNansen: false,
-        useOpenWebSearch: false,
-      );
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
     }
-    unawaited(_loadApiKeyStatus());
-    unawaited(_loadSymbols());
-    _conversationScrollController.addListener(_handleConversationScroll);
-    _startChartRefresh();
   }
 
   @override
   void dispose() {
-    _chartRefreshTimer?.cancel();
-    _bybit.dispose();
-    _agent.dispose();
-    _symbol.dispose();
-    _prompt.dispose();
-    _conversationScrollController
-      ..removeListener(_handleConversationScroll)
-      ..dispose();
+    _controller.dispose();
     super.dispose();
-  }
-
-  // Poll public Kline data once per second without allowing overlapping requests.
-  void _startChartRefresh() {
-    _chartRefreshTimer?.cancel();
-    unawaited(_loadChart());
-    _chartRefreshTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => unawaited(_loadChart(latestOnly: true)),
-    );
-  }
-
-  Future<void> _loadSymbols() async {
-    try {
-      final symbols = await _bybit.fetchLinearSymbols();
-      if (mounted) setState(() => _symbols = symbols);
-    } catch (_) {
-      // Kline polling still works when the optional symbol list cannot load.
-    }
-  }
-
-  Future<void> _loadChart({bool latestOnly = false}) async {
-    if (_loadingChart) return;
-    final symbol = _activeSymbol;
-    final interval = _interval;
-    final hasCandles = _candles.isNotEmpty;
-    setState(() {
-      _loadingChart = true;
-      if (!latestOnly) _showChartLoading = true;
-    });
-    try {
-      final candles = await _bybit.fetchKlines(
-        symbol: symbol,
-        interval: interval,
-        limit: latestOnly && hasCandles ? 2 : _historyLimit,
-      );
-      // Ignore a response for a symbol or timeframe the user has left behind.
-      if (!mounted || symbol != _activeSymbol || interval != _interval) return;
-      setState(() {
-        _candles = latestOnly
-            ? _mergeLatestCandles(hasCandles ? _candles : const [], candles)
-            : candles;
-        _chartError = null;
-        if (!latestOnly) {
-          _showChartLoading = false;
-          _chartVersion++;
-        }
-      });
-    } catch (error) {
-      _chartRefreshTimer?.cancel();
-      if (mounted) {
-        setState(() {
-          _chartError = 'K 线加载失败：$error';
-          _showChartLoading = false;
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _loadingChart = false);
-    }
-  }
-
-  // Preserve the 1000-candle viewport while replacing the still-forming candle.
-  List<Candle> _mergeLatestCandles(List<Candle> history, List<Candle> latest) {
-    final byTime = <int, Candle>{
-      for (final candle in history) candle.time.millisecondsSinceEpoch: candle,
-      for (final candle in latest) candle.time.millisecondsSinceEpoch: candle,
-    };
-    final merged = byTime.values.toList()
-      ..sort((left, right) => left.time.compareTo(right.time));
-    return merged.length > _historyLimit
-        ? merged.sublist(merged.length - _historyLimit)
-        : merged;
-  }
-
-  void _retryChart() {
-    if (_loadingChart) return;
-    setState(() => _chartError = null);
-    _startChartRefresh();
-  }
-
-  void _selectSymbol(String symbol) {
-    setState(() {
-      _activeSymbol = symbol.toUpperCase();
-      _symbol.text = _activeSymbol;
-      _plan = null;
-      _chartError = null;
-    });
-    _startChartRefresh();
-  }
-
-  void _selectInterval(String interval) {
-    setState(() => _interval = interval);
-    _startChartRefresh();
-  }
-
-  Future<String> _resolveAnalysisSymbol(String prompt) async {
-    if (_symbols.isEmpty) await _loadSymbols();
-    return _requestedSymbol(prompt) ?? _activeSymbol;
-  }
-
-  Future<List<Candle>> _prepareAnalysisChart(String symbol) async {
-    if (symbol == _activeSymbol && _candles.isNotEmpty) return _candles;
-    _chartRefreshTimer?.cancel();
-    _recordActivity('• Chart - 加载 $symbol');
-    setState(() {
-      _activeSymbol = symbol;
-      _symbol.text = symbol;
-      _plan = null;
-      _chartError = null;
-      _showChartLoading = true;
-    });
-    try {
-      final candles = await _bybit.fetchKlines(
-        symbol: symbol,
-        interval: _interval,
-        limit: _historyLimit,
-      );
-      if (!mounted || _activeSymbol != symbol) return candles;
-      setState(() {
-        _candles = candles;
-        _showChartLoading = false;
-        _chartVersion++;
-      });
-      _startChartRefresh();
-      return candles;
-    } catch (error) {
-      if (mounted && _activeSymbol == symbol) {
-        setState(() {
-          _chartError = 'K 线加载失败：$error';
-          _showChartLoading = false;
-        });
-      }
-      throw Exception('无法加载 $symbol 的 K 线：$error');
-    }
-  }
-
-  String? _requestedSymbol(String prompt) {
-    if (_symbols.isEmpty) return null;
-    final candidates = <String>{};
-    final normalized = prompt.toUpperCase();
-    void addCandidate(String value) {
-      final symbol = value.endsWith('USDT') ? value : '${value}USDT';
-      if (_symbols.contains(symbol)) candidates.add(symbol);
-    }
-
-    for (final match in RegExp(
-      r'\b([A-Z0-9]{2,20})\s*(?:[/_-]\s*)?USDT\b',
-    ).allMatches(normalized)) {
-      addCandidate(match.group(1)!);
-    }
-    for (final match in RegExp(
-      r'\b([A-Z0-9]{2,20})\b',
-    ).allMatches(normalized)) {
-      addCandidate(match.group(1)!);
-    }
-    return candidates.length == 1 ? candidates.single : null;
-  }
-
-  Future<void> _runAgent() async {
-    if (_loadingAgent) return;
-    final hasLlmCredentials = _llm.provider == LlmProvider.openAiCodex
-        ? _apiKeyStatus.hasCodexOAuth
-        : _apiKeyStatus.hasLlmKey;
-    if (!_llm.isComplete || !hasLlmCredentials) {
-      setState(
-        () => _conversation.add(
-          DashboardMessage.agent(
-            _llm.provider == LlmProvider.openAiCodex
-                ? '> 请先在设置中登录 OpenAI Codex 并选择模型。'
-                : '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
-          ),
-        ),
-      );
-      _scheduleConversationScroll();
-      return;
-    }
-    final prompt = _prompt.text.trim();
-    final mode = _agentMode;
-    final previousConversationContext = _conversationContext;
-    setState(() {
-      _loadingAgent = true;
-      _conversation.add(DashboardMessage.user(prompt));
-      _conversation.add(
-        DashboardMessage.activity(
-          mode == AgentMode.analysis
-              ? '• Thinking - 分析中…'
-              : '• Thinking - 回答中…',
-        ),
-      );
-      _prompt.clear();
-    });
-    _scheduleConversationScroll();
-    try {
-      final analysisSymbol = mode == AgentMode.analysis
-          ? await _resolveAnalysisSymbol(prompt)
-          : _activeSymbol;
-      final analysisCandles = mode == AgentMode.analysis
-          ? await _prepareAnalysisChart(analysisSymbol)
-          : const <Candle>[];
-      if (!mounted) return;
-      if (mode == AgentMode.analysis && analysisCandles.isEmpty) {
-        throw Exception('$analysisSymbol 没有可分析的 K 线。');
-      }
-      final answer = await _agent.run(
-        prompt: prompt,
-        symbol: analysisSymbol,
-        candles: analysisCandles,
-        llm: _llm,
-        mcp: _mcp,
-        api: _api,
-        mode: mode,
-        previousAnalysisContext: _lastAnalysisContext,
-        previousAnalysisAt: _lastAnalysisAt,
-        previousConversationContext: previousConversationContext,
-        onActivity: _recordActivity,
-      );
-      if (!mounted) return;
-      setState(() {
-        if (mode == AgentMode.analysis) {
-          final plan = TradePlan.fromResponse(answer.text);
-          final notices = [...answer.warnings];
-          final matchesResponse =
-              plan?.symbol == null || plan!.symbol == analysisSymbol;
-          final matchesChart = _activeSymbol == analysisSymbol;
-          if (!matchesResponse) {
-            notices.add('结果 JSON 的币种与分析币种 $analysisSymbol 不一致，未添加图表标记。');
-          }
-          if (!matchesChart) {
-            notices.add('当前图表已切换为 $_activeSymbol，未添加 $analysisSymbol 的图表标记。');
-          }
-          final displayText = notices.isEmpty
-              ? answer.text
-              : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
-          _conversation.add(DashboardMessage.agent(displayText));
-          _plan = matchesResponse && matchesChart ? plan : null;
-          _lastAnalysisContext =
-              'User analysis request: $prompt\n\nAnalysis response:\n$displayText';
-          _lastAnalysisAt = DateTime.now();
-        } else {
-          _conversation.add(DashboardMessage.agent(answer.text));
-          final turn = 'User: $prompt\nAgent: ${answer.text}';
-          _conversationContext = _conversationContext == null
-              ? turn
-              : '$_conversationContext\n\n$turn';
-        }
-      });
-      _scheduleConversationScroll();
-    } catch (error) {
-      if (mounted) {
-        setState(
-          () =>
-              _conversation.add(DashboardMessage.agent('> Agent 请求失败：$error')),
-        );
-        _scheduleConversationScroll();
-      }
-    } finally {
-      if (mounted) setState(() => _loadingAgent = false);
-    }
-  }
-
-  void _quickAnalyze() {
-    setState(() {
-      _agentMode = AgentMode.analysis;
-      _prompt.text = '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
-    });
-    unawaited(_runAgent());
-  }
-
-  void _recordActivity(String activity) {
-    if (!mounted) return;
-    setState(() => _conversation.add(DashboardMessage.activity(activity)));
-    _scheduleConversationScroll();
-  }
-
-  // Show a quick return control whenever the reader leaves the conversation end.
-  void _handleConversationScroll() {
-    if (!_conversationScrollController.hasClients) return;
-    final position = _conversationScrollController.position;
-    final isAtBottom =
-        position.maxScrollExtent - position.pixels <=
-        _conversationBottomThreshold;
-    _conversationWasAtBottom = isAtBottom;
-    final shouldShowButton = !isAtBottom && _conversation.isNotEmpty;
-    if (!mounted || shouldShowButton == _showScrollToBottom) return;
-    setState(() => _showScrollToBottom = shouldShowButton);
-  }
-
-  void _scheduleConversationScroll() {
-    final shouldFollow = _conversationWasAtBottom;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_conversationScrollController.hasClients) return;
-      if (shouldFollow) {
-        unawaited(
-          _conversationScrollController.animateTo(
-            _conversationScrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-          ),
-        );
-      } else if (!_showScrollToBottom && _conversation.isNotEmpty) {
-        setState(() => _showScrollToBottom = true);
-      }
-    });
-  }
-
-  void _scrollConversationToBottom() {
-    if (!_conversationScrollController.hasClients) return;
-    unawaited(
-      _conversationScrollController.animateTo(
-        _conversationScrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      ),
-    );
-  }
-
-  void _clearAgentContext() {
-    if (_loadingAgent) return;
-    setState(() {
-      _conversation.clear();
-      _plan = null;
-      _lastAnalysisContext = null;
-      _lastAnalysisAt = null;
-      _conversationContext = null;
-      _prompt.clear();
-      _conversationWasAtBottom = true;
-      _showScrollToBottom = false;
-      // Rebuild the chart so its hover and floating plan widgets reset too.
-      _chartVersion++;
-    });
   }
 
   void _showNodeMissing() {
@@ -454,9 +62,7 @@ class _DashboardPageState extends State<DashboardPage> {
             const Text('未检测到Nodejs，部分功能有缺失。'),
             const SizedBox(height: 10),
             HyperlinkButton(
-              onPressed: () async {
-                await NodeRuntimeService.openDownloadPage();
-              },
+              onPressed: NodeRuntimeService.openDownloadPage,
               child: const Text('前往 Nodejs 官网'),
             ),
           ],
@@ -475,129 +81,118 @@ class _DashboardPageState extends State<DashboardPage> {
     showDialog<void>(
       context: context,
       builder: (context) => AgentSettingsDialog(
-        llm: _llm,
-        mcp: _mcp,
-        api: _api,
-        keyStatus: _apiKeyStatus,
+        llm: _controller.llm,
+        mcp: _controller.mcp,
+        api: _controller.api,
+        keyStatus: _controller.apiKeyStatus,
         nodeAvailable: widget.nodeAvailable,
-        onSave: (llm, mcp, api, apiKeys) async {
-          await Future.wait([
-            _llmSettingsStore.save(llm),
-            _llmSettingsStore.saveMcp(mcp),
-            _llmSettingsStore.saveApi(api),
-          ]);
-          await _keyStore.update(apiKeys);
-          final status = await _keyStore.status();
-          if (!mounted) return;
-          setState(() {
-            _llm = llm;
-            _mcp = mcp;
-            _api = api;
-            _apiKeyStatus = status;
-          });
-        },
+        onSave: _controller.saveSettings,
       ),
     );
-  }
-
-  Future<void> _loadApiKeyStatus() async {
-    final status = await _keyStore.status();
-    if (mounted) setState(() => _apiKeyStatus = status);
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          const WindowTitleBar(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _activeSymbol,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (_candles.isNotEmpty) ...[
-                        const SizedBox(width: 12),
-                        Text(
-                          _price(_candles.last.close),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                      const Spacer(),
-                      Button(onPressed: _openSettings, child: const Text('设置')),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    // The 3:2 flex ratio implements the requested 60% / 40% desktop split.
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) => SafeArea(
+        child: Column(
+          children: [
+            const WindowTitleBar(),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        Expanded(
-                          flex: 3,
-                          child: DashboardChartPanel(
-                            symbolController: _symbol,
-                            symbols: _symbols,
-                            interval: _interval,
-                            activeSymbol: _activeSymbol,
-                            candles: _candles,
-                            plan: _plan,
-                            chartVersion: _chartVersion,
-                            error: _chartError,
-                            loading: _showChartLoading,
-                            loadingChart: _loadingChart,
-                            onSymbolSelected: _selectSymbol,
-                            onIntervalChanged: _selectInterval,
-                            onRetry: _retryChart,
+                        Text(
+                          _controller.activeSymbol,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: DashboardAgentPanel(
-                            plan: _plan,
-                            messages: _conversation,
-                            scrollController: _conversationScrollController,
-                            showScrollToBottom: _showScrollToBottom,
-                            mode: _agentMode,
-                            llm: _llm,
-                            loading: _loadingAgent,
-                            promptController: _prompt,
-                            onModeChanged: (mode) =>
-                                setState(() => _agentMode = mode),
-                            onQuickAnalysis: _quickAnalyze,
-                            onSend: _runAgent,
-                            onClear: _clearAgentContext,
-                            onScrollToBottom: _scrollConversationToBottom,
+                        if (_controller.candles.isNotEmpty) ...[
+                          const SizedBox(width: 12),
+                          Text(
+                            _price(_controller.candles.last.close),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                        ],
+                        const Spacer(),
+                        Button(
+                          onPressed: _openSettings,
+                          child: const Text('设置'),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Expanded(
+                      // The 3:2 flex ratio implements the requested 60% / 40% desktop split.
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: DashboardChartPanel(
+                              symbolController: _controller.symbolController,
+                              symbols: _controller.symbols,
+                              interval: _controller.interval,
+                              activeSymbol: _controller.activeSymbol,
+                              candles: _controller.candles,
+                              plan: _controller.plan,
+                              chartVersion: _controller.chartVersion,
+                              error: _controller.chartError,
+                              loading: _controller.showChartLoading,
+                              loadingChart: _controller.loadingChart,
+                              onSymbolSelected: _controller.selectSymbol,
+                              onIntervalChanged: _controller.selectInterval,
+                              onRetry: _controller.retryChart,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: DashboardAgentPanel(
+                              plan: _controller.plan,
+                              messages: _controller.conversation,
+                              scrollController:
+                                  _controller.conversationScrollController,
+                              showScrollToBottom:
+                                  _controller.showScrollToBottom,
+                              mode: _controller.agentMode,
+                              llm: _controller.llm,
+                              loading: _controller.loadingAgent,
+                              promptController: _controller.promptController,
+                              onModeChanged: _controller.selectAgentMode,
+                              onQuickAnalysis: _controller.quickAnalyze,
+                              onSend: _controller.runAgent,
+                              onClear: _controller.clearAgentContext,
+                              onScrollToBottom:
+                                  _controller.scrollConversationToBottom,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  String _price(double value) => value >= 1000
-      ? value.toStringAsFixed(1)
-      : value >= 1
-      ? value.toStringAsFixed(4)
-      : value.toStringAsFixed(6);
+  // Use precision suitable for the displayed price range.
+  String _price(double value) {
+    if (value >= 1000) return value.toStringAsFixed(1);
+    if (value >= 1) return value.toStringAsFixed(4);
+    return value.toStringAsFixed(6);
+  }
 }

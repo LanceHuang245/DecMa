@@ -1,9 +1,10 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'app_constants.dart';
 import 'models/trading_models.dart';
-import 'services/node_runtime_service.dart';
 import 'services/llm_settings_store.dart';
+import 'services/node_runtime_service.dart';
 import 'ui/dashboard/dashboard_page.dart';
 
 Future<void> main() async {
@@ -56,7 +57,7 @@ class DecmaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FluentApp(
-      title: 'DecMa',
+      title: AppConstants.appName,
       themeMode: ThemeMode.dark,
       darkTheme: FluentThemeData(
         brightness: Brightness.dark,

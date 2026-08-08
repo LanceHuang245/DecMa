@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../app_constants.dart';
 import 'mcp_types.dart';
 
 class HttpMcpConnection implements McpConnection {
@@ -41,9 +42,12 @@ class HttpMcpConnection implements McpConnection {
   Future<void> _initialize() async {
     if (_initialized) return;
     await _request('initialize', {
-      'protocolVersion': '2024-11-05',
+      'protocolVersion': AppConstants.mcpProtocolVersion,
       'capabilities': {},
-      'clientInfo': {'name': 'DecMa', 'version': '1.0.0'},
+      'clientInfo': {
+        'name': AppConstants.appName,
+        'version': AppConstants.appVersion,
+      },
     });
     await _notification('notifications/initialized');
     _initialized = true;
@@ -163,9 +167,12 @@ class StdioMcpConnection implements McpConnection {
         .listen(_receiveLine);
     process.stderr.drain();
     await _request('initialize', {
-      'protocolVersion': '2024-11-05',
+      'protocolVersion': AppConstants.mcpProtocolVersion,
       'capabilities': {},
-      'clientInfo': {'name': 'DecMa', 'version': '1.0.0'},
+      'clientInfo': {
+        'name': AppConstants.appName,
+        'version': AppConstants.appVersion,
+      },
     });
     _notify('notifications/initialized');
   }

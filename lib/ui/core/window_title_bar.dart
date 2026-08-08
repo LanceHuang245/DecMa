@@ -1,6 +1,8 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../app_constants.dart';
+
 class WindowTitleBar extends StatelessWidget {
   const WindowTitleBar({super.key});
 
@@ -28,7 +30,7 @@ class WindowTitleBar extends StatelessWidget {
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: Text(
-                    'DecMa',
+                    AppConstants.appName,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: theme.resources.textFillColorPrimary,

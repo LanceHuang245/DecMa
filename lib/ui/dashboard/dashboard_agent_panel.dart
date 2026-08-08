@@ -3,21 +3,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../models/trading_models.dart';
 import '../../services/agent_service.dart';
-
-enum DashboardMessageKind { user, agent, activity }
-
-class DashboardMessage {
-  const DashboardMessage.user(this.text) : kind = DashboardMessageKind.user;
-  const DashboardMessage.agent(this.text) : kind = DashboardMessageKind.agent;
-  const DashboardMessage.activity(this.text)
-    : kind = DashboardMessageKind.activity;
-
-  final String text;
-  final DashboardMessageKind kind;
-
-  bool get isUser => kind == DashboardMessageKind.user;
-  bool get isActivity => kind == DashboardMessageKind.activity;
-}
+import 'dashboard_controller.dart';
 
 class DashboardAgentPanel extends StatelessWidget {
   const DashboardAgentPanel({

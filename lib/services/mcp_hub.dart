@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../app_constants.dart';
 import '../models/trading_models.dart';
 import 'bybit_mcp.dart';
 import 'mcp_types.dart';
@@ -154,7 +155,7 @@ class McpHub {
   static const _bridgeTools = [
     McpTool(
       functionName: _discoverTools,
-      serverName: 'DecMa MCP bridge',
+      serverName: '${AppConstants.appName} MCP bridge',
       name: _discoverTools,
       description:
           'Search the live tools exposed by the configured Bybit, Nansen, and OpenWebSearch MCP servers. Call this before calling an MCP tool.',
@@ -173,7 +174,7 @@ class McpHub {
     ),
     McpTool(
       functionName: _callTool,
-      serverName: 'DecMa MCP bridge',
+      serverName: '${AppConstants.appName} MCP bridge',
       name: _callTool,
       description:
           'Call one MCP tool returned by decma_discover_mcp_tools with its exact schema-compliant arguments.',

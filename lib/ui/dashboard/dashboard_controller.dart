@@ -1,0 +1,497 @@
+import 'dart:async';
+
+import 'package:fluent_ui/fluent_ui.dart';
+
+import '../../models/trading_models.dart';
+import '../../services/agent_service.dart';
+import '../../services/bybit_service.dart';
+import '../../services/llm_settings_store.dart';
+import '../../services/secure_key_store.dart';
+
+enum DashboardMessageKind { user, agent, activity }
+
+class DashboardMessage {
+  const DashboardMessage.user(this.text) : kind = DashboardMessageKind.user;
+  const DashboardMessage.agent(this.text) : kind = DashboardMessageKind.agent;
+  const DashboardMessage.activity(this.text)
+    : kind = DashboardMessageKind.activity;
+
+  final String text;
+  final DashboardMessageKind kind;
+
+  bool get isUser => kind == DashboardMessageKind.user;
+  bool get isActivity => kind == DashboardMessageKind.activity;
+}
+
+/// Owns Dashboard data, asynchronous work, and resources independently of layout.
+class DashboardController extends ChangeNotifier {
+  DashboardController({
+    required bool nodeAvailable,
+    LlmSettings? initialLlm,
+    McpSettings? initialMcp,
+    ApiSettings? initialApi,
+  }) {
+    _llm =
+        initialLlm ??
+        LlmSettings(
+          provider: LlmProvider.openAiResponses,
+          endpoint: LlmProvider.openAiResponses.defaultEndpoint,
+          model: 'gpt-4.1',
+        );
+    if (initialMcp != null) _mcp = initialMcp;
+    if (initialApi != null) _api = initialApi;
+    if (!nodeAvailable) {
+      _mcp = const McpSettings(
+        useBybit: false,
+        useNansen: false,
+        useOpenWebSearch: false,
+      );
+    }
+    _conversationScrollController.addListener(_handleConversationScroll);
+  }
+
+  static const _historyLimit = 1000;
+  static const _conversationBottomThreshold = 24.0;
+
+  final _bybit = BybitService();
+  final _agent = AgentService();
+  final _keyStore = SecureKeyStore();
+  final _llmSettingsStore = LlmSettingsStore();
+  final _symbol = TextEditingController(text: 'BTCUSDT');
+  final _prompt = TextEditingController();
+  final _conversationScrollController = ScrollController();
+  final _conversation = <DashboardMessage>[];
+  Timer? _chartRefreshTimer;
+  var _activeSymbol = 'BTCUSDT';
+  var _interval = '15';
+  var _candles = <Candle>[];
+  var _symbols = <String>[];
+  TradePlan? _plan;
+  String? _lastAnalysisContext;
+  DateTime? _lastAnalysisAt;
+  String? _conversationContext;
+  String? _chartError;
+  var _chartVersion = 0;
+  bool _loadingChart = false;
+  bool _showChartLoading = false;
+  bool _loadingAgent = false;
+  AgentMode _agentMode = AgentMode.analysis;
+  bool _conversationWasAtBottom = true;
+  bool _showScrollToBottom = false;
+  bool _isDisposed = false;
+  ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
+  late LlmSettings _llm;
+  McpSettings _mcp = const McpSettings(
+    useBybit: true,
+    useNansen: false,
+    useOpenWebSearch: true,
+  );
+  ApiSettings _api = const ApiSettings(useCoinalyze: false);
+
+  TextEditingController get symbolController => _symbol;
+  TextEditingController get promptController => _prompt;
+  ScrollController get conversationScrollController =>
+      _conversationScrollController;
+  String get activeSymbol => _activeSymbol;
+  String get interval => _interval;
+  List<Candle> get candles => _candles;
+  List<String> get symbols => _symbols;
+  TradePlan? get plan => _plan;
+  List<DashboardMessage> get conversation => _conversation;
+  String? get chartError => _chartError;
+  int get chartVersion => _chartVersion;
+  bool get loadingChart => _loadingChart;
+  bool get showChartLoading => _showChartLoading;
+  bool get loadingAgent => _loadingAgent;
+  AgentMode get agentMode => _agentMode;
+  bool get showScrollToBottom => _showScrollToBottom;
+  ApiKeyStatus get apiKeyStatus => _apiKeyStatus;
+  LlmSettings get llm => _llm;
+  McpSettings get mcp => _mcp;
+  ApiSettings get api => _api;
+
+  void initialize() {
+    unawaited(_loadApiKeyStatus());
+    unawaited(_loadSymbols());
+    _startChartRefresh();
+  }
+
+  // Poll public Kline data once per second without allowing overlapping requests.
+  void _startChartRefresh() {
+    _chartRefreshTimer?.cancel();
+    unawaited(_loadChart());
+    _chartRefreshTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(_loadChart(latestOnly: true)),
+    );
+  }
+
+  Future<void> _loadSymbols() async {
+    try {
+      final symbols = await _bybit.fetchLinearSymbols();
+      if (_isDisposed) return;
+      _symbols = symbols;
+      _notify();
+    } catch (_) {
+      // Kline polling still works when the optional symbol list cannot load.
+    }
+  }
+
+  Future<void> _loadChart({bool latestOnly = false}) async {
+    if (_loadingChart || _isDisposed) return;
+    final symbol = _activeSymbol;
+    final interval = _interval;
+    final hasCandles = _candles.isNotEmpty;
+    _loadingChart = true;
+    if (!latestOnly) _showChartLoading = true;
+    _notify();
+    try {
+      final candles = await _bybit.fetchKlines(
+        symbol: symbol,
+        interval: interval,
+        limit: latestOnly && hasCandles ? 2 : _historyLimit,
+      );
+      // Ignore a response for a symbol or timeframe the user has left behind.
+      if (_isDisposed || symbol != _activeSymbol || interval != _interval) {
+        return;
+      }
+      _candles = latestOnly
+          ? _mergeLatestCandles(hasCandles ? _candles : const [], candles)
+          : candles;
+      _chartError = null;
+      if (!latestOnly) {
+        _showChartLoading = false;
+        _chartVersion++;
+      }
+      _notify();
+    } catch (error) {
+      _chartRefreshTimer?.cancel();
+      if (_isDisposed) return;
+      _chartError = 'K 线加载失败：$error';
+      _showChartLoading = false;
+      _notify();
+    } finally {
+      if (!_isDisposed) {
+        _loadingChart = false;
+        _notify();
+      }
+    }
+  }
+
+  // Preserve the 1000-candle viewport while replacing the still-forming candle.
+  List<Candle> _mergeLatestCandles(List<Candle> history, List<Candle> latest) {
+    final byTime = <int, Candle>{
+      for (final candle in history) candle.time.millisecondsSinceEpoch: candle,
+      for (final candle in latest) candle.time.millisecondsSinceEpoch: candle,
+    };
+    final merged = byTime.values.toList()
+      ..sort((left, right) => left.time.compareTo(right.time));
+    return merged.length > _historyLimit
+        ? merged.sublist(merged.length - _historyLimit)
+        : merged;
+  }
+
+  void retryChart() {
+    if (_loadingChart) return;
+    _chartError = null;
+    _notify();
+    _startChartRefresh();
+  }
+
+  void selectSymbol(String symbol) {
+    _activeSymbol = symbol.toUpperCase();
+    _symbol.text = _activeSymbol;
+    _plan = null;
+    _chartError = null;
+    _notify();
+    _startChartRefresh();
+  }
+
+  void selectInterval(String interval) {
+    _interval = interval;
+    _notify();
+    _startChartRefresh();
+  }
+
+  Future<String> _resolveAnalysisSymbol(String prompt) async {
+    if (_symbols.isEmpty) await _loadSymbols();
+    return _requestedSymbol(prompt) ?? _activeSymbol;
+  }
+
+  Future<List<Candle>> _prepareAnalysisChart(String symbol) async {
+    if (symbol == _activeSymbol && _candles.isNotEmpty) return _candles;
+    _chartRefreshTimer?.cancel();
+    _recordActivity('• Chart - 加载 $symbol');
+    _activeSymbol = symbol;
+    _symbol.text = symbol;
+    _plan = null;
+    _chartError = null;
+    _showChartLoading = true;
+    _notify();
+    try {
+      final candles = await _bybit.fetchKlines(
+        symbol: symbol,
+        interval: _interval,
+        limit: _historyLimit,
+      );
+      if (_isDisposed || _activeSymbol != symbol) return candles;
+      _candles = candles;
+      _showChartLoading = false;
+      _chartVersion++;
+      _notify();
+      _startChartRefresh();
+      return candles;
+    } catch (error) {
+      if (!_isDisposed && _activeSymbol == symbol) {
+        _chartError = 'K 线加载失败：$error';
+        _showChartLoading = false;
+        _notify();
+      }
+      throw Exception('无法加载 $symbol 的 K 线：$error');
+    }
+  }
+
+  String? _requestedSymbol(String prompt) {
+    if (_symbols.isEmpty) return null;
+    final candidates = <String>{};
+    final normalized = prompt.toUpperCase();
+    void addCandidate(String value) {
+      final symbol = value.endsWith('USDT') ? value : '${value}USDT';
+      if (_symbols.contains(symbol)) candidates.add(symbol);
+    }
+
+    for (final match in RegExp(
+      r'\b([A-Z0-9]{2,20})\s*(?:[/_-]\s*)?USDT\b',
+    ).allMatches(normalized)) {
+      addCandidate(match.group(1)!);
+    }
+    for (final match in RegExp(
+      r'\b([A-Z0-9]{2,20})\b',
+    ).allMatches(normalized)) {
+      addCandidate(match.group(1)!);
+    }
+    return candidates.length == 1 ? candidates.single : null;
+  }
+
+  Future<void> runAgent() async {
+    if (_loadingAgent || _isDisposed) return;
+    final hasLlmCredentials = _llm.provider == LlmProvider.openAiCodex
+        ? _apiKeyStatus.hasCodexOAuth
+        : _apiKeyStatus.hasLlmKey;
+    if (!_llm.isComplete || !hasLlmCredentials) {
+      _conversation.add(
+        DashboardMessage.agent(
+          _llm.provider == LlmProvider.openAiCodex
+              ? '> 请先在设置中登录 OpenAI Codex 并选择模型。'
+              : '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
+        ),
+      );
+      _notify();
+      _scheduleConversationScroll();
+      return;
+    }
+    final prompt = _prompt.text.trim();
+    final mode = _agentMode;
+    final previousConversationContext = _conversationContext;
+    _loadingAgent = true;
+    _conversation.add(DashboardMessage.user(prompt));
+    _conversation.add(
+      DashboardMessage.activity(
+        mode == AgentMode.analysis ? '• Thinking - 分析中…' : '• Thinking - 回答中…',
+      ),
+    );
+    _prompt.clear();
+    _notify();
+    _scheduleConversationScroll();
+    try {
+      final analysisSymbol = mode == AgentMode.analysis
+          ? await _resolveAnalysisSymbol(prompt)
+          : _activeSymbol;
+      final analysisCandles = mode == AgentMode.analysis
+          ? await _prepareAnalysisChart(analysisSymbol)
+          : const <Candle>[];
+      if (_isDisposed) return;
+      if (mode == AgentMode.analysis && analysisCandles.isEmpty) {
+        throw Exception('$analysisSymbol 没有可分析的 K 线。');
+      }
+      final answer = await _agent.run(
+        prompt: prompt,
+        symbol: analysisSymbol,
+        candles: analysisCandles,
+        llm: _llm,
+        mcp: _mcp,
+        api: _api,
+        mode: mode,
+        previousAnalysisContext: _lastAnalysisContext,
+        previousAnalysisAt: _lastAnalysisAt,
+        previousConversationContext: previousConversationContext,
+        onActivity: _recordActivity,
+      );
+      if (_isDisposed) return;
+      if (mode == AgentMode.analysis) {
+        final plan = TradePlan.fromResponse(answer.text);
+        final notices = [...answer.warnings];
+        final matchesResponse =
+            plan?.symbol == null || plan!.symbol == analysisSymbol;
+        final matchesChart = _activeSymbol == analysisSymbol;
+        if (!matchesResponse) {
+          notices.add('结果 JSON 的币种与分析币种 $analysisSymbol 不一致，未添加图表标记。');
+        }
+        if (!matchesChart) {
+          notices.add('当前图表已切换为 $_activeSymbol，未添加 $analysisSymbol 的图表标记。');
+        }
+        final displayText = notices.isEmpty
+            ? answer.text
+            : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
+        _conversation.add(DashboardMessage.agent(displayText));
+        _plan = matchesResponse && matchesChart ? plan : null;
+        _lastAnalysisContext =
+            'User analysis request: $prompt\n\nAnalysis response:\n$displayText';
+        _lastAnalysisAt = DateTime.now();
+      } else {
+        _conversation.add(DashboardMessage.agent(answer.text));
+        final turn = 'User: $prompt\nAgent: ${answer.text}';
+        _conversationContext = _conversationContext == null
+            ? turn
+            : '$_conversationContext\n\n$turn';
+      }
+      _notify();
+      _scheduleConversationScroll();
+    } catch (error) {
+      if (_isDisposed) return;
+      _conversation.add(DashboardMessage.agent('> Agent 请求失败：$error'));
+      _notify();
+      _scheduleConversationScroll();
+    } finally {
+      if (!_isDisposed) {
+        _loadingAgent = false;
+        _notify();
+      }
+    }
+  }
+
+  void quickAnalyze() {
+    _agentMode = AgentMode.analysis;
+    _prompt.text = '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
+    _notify();
+    unawaited(runAgent());
+  }
+
+  void selectAgentMode(AgentMode mode) {
+    if (_loadingAgent) return;
+    _agentMode = mode;
+    _notify();
+  }
+
+  void _recordActivity(String activity) {
+    if (_isDisposed) return;
+    _conversation.add(DashboardMessage.activity(activity));
+    _notify();
+    _scheduleConversationScroll();
+  }
+
+  // Show a quick return control whenever the reader leaves the conversation end.
+  void _handleConversationScroll() {
+    if (_isDisposed || !_conversationScrollController.hasClients) return;
+    final position = _conversationScrollController.position;
+    final isAtBottom =
+        position.maxScrollExtent - position.pixels <=
+        _conversationBottomThreshold;
+    _conversationWasAtBottom = isAtBottom;
+    final shouldShowButton = !isAtBottom && _conversation.isNotEmpty;
+    if (shouldShowButton == _showScrollToBottom) return;
+    _showScrollToBottom = shouldShowButton;
+    _notify();
+  }
+
+  void _scheduleConversationScroll() {
+    final shouldFollow = _conversationWasAtBottom;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isDisposed || !_conversationScrollController.hasClients) return;
+      if (shouldFollow) {
+        unawaited(
+          _conversationScrollController.animateTo(
+            _conversationScrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+          ),
+        );
+      } else if (!_showScrollToBottom && _conversation.isNotEmpty) {
+        _showScrollToBottom = true;
+        _notify();
+      }
+    });
+  }
+
+  void scrollConversationToBottom() {
+    if (!_conversationScrollController.hasClients) return;
+    unawaited(
+      _conversationScrollController.animateTo(
+        _conversationScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  void clearAgentContext() {
+    if (_loadingAgent) return;
+    _conversation.clear();
+    _plan = null;
+    _lastAnalysisContext = null;
+    _lastAnalysisAt = null;
+    _conversationContext = null;
+    _prompt.clear();
+    _conversationWasAtBottom = true;
+    _showScrollToBottom = false;
+    // Rebuild the chart so its hover and floating plan widgets reset too.
+    _chartVersion++;
+    _notify();
+  }
+
+  Future<void> saveSettings(
+    LlmSettings llm,
+    McpSettings mcp,
+    ApiSettings api,
+    ApiKeyUpdates apiKeys,
+  ) async {
+    await Future.wait([
+      _llmSettingsStore.save(llm),
+      _llmSettingsStore.saveMcp(mcp),
+      _llmSettingsStore.saveApi(api),
+    ]);
+    await _keyStore.update(apiKeys);
+    final status = await _keyStore.status();
+    if (_isDisposed) return;
+    _llm = llm;
+    _mcp = mcp;
+    _api = api;
+    _apiKeyStatus = status;
+    _notify();
+  }
+
+  Future<void> _loadApiKeyStatus() async {
+    final status = await _keyStore.status();
+    if (_isDisposed) return;
+    _apiKeyStatus = status;
+    _notify();
+  }
+
+  void _notify() {
+    if (!_isDisposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _chartRefreshTimer?.cancel();
+    _bybit.dispose();
+    _agent.dispose();
+    _symbol.dispose();
+    _prompt.dispose();
+    _conversationScrollController
+      ..removeListener(_handleConversationScroll)
+      ..dispose();
+    super.dispose();
+  }
+}

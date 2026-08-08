@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
+import '../app_constants.dart';
 import 'secure_key_store.dart';
 
 class OpenAiCodexAuthService {
@@ -21,7 +22,6 @@ class OpenAiCodexAuthService {
   static const _redirectUri = 'http://localhost:1455/auth/callback';
   static const _issuer = 'https://auth.openai.com';
   static const _codexBase = 'https://chatgpt.com/backend-api/codex';
-  static const _codexClientVersion = '0.147.0';
   final SecureKeyStore _keyStore;
   final http.Client _client;
   final Future<void> Function(Uri uri) _openBrowser;
@@ -71,7 +71,7 @@ class OpenAiCodexAuthService {
       request.response.headers.contentType = ContentType.html;
       request.response.write(
         matchesState && code != null
-            ? '<h2>OpenAI Codex connected</h2><p>You can return to DecMa.</p>'
+            ? '<h2>OpenAI Codex connected</h2><p>You can return to ${AppConstants.appName}.</p>'
             : '<h2>OpenAI Codex sign-in failed</h2><p>You can close this page.</p>',
       );
       await request.response.close();
@@ -142,9 +142,9 @@ class OpenAiCodexAuthService {
 
   Future<List<String>> _fetchModels(CodexOAuthCredentials credentials) async {
     final response = await _client.get(
-      Uri.parse(
-        '$_codexBase/models',
-      ).replace(queryParameters: {'client_version': _codexClientVersion}),
+      Uri.parse('$_codexBase/models').replace(
+        queryParameters: {'client_version': AppConstants.codexClientVersion},
+      ),
       headers: _headers(credentials),
     );
     final values = _json(response.body);
