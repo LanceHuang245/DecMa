@@ -11,6 +11,7 @@ class AgentSettingsDialog extends StatefulWidget {
   const AgentSettingsDialog({
     super.key,
     required this.llm,
+    required this.llmConnections,
     required this.mcp,
     required this.api,
     required this.keyStatus,
@@ -19,12 +20,13 @@ class AgentSettingsDialog extends StatefulWidget {
   });
 
   final LlmSettings llm;
+  final LlmConnectionSettings llmConnections;
   final McpSettings mcp;
   final ApiSettings api;
   final ApiKeyStatus keyStatus;
   final bool nodeAvailable;
   final Future<void> Function(
-    LlmSettings llm,
+    LlmConnectionSettings llmConnections,
     McpSettings mcp,
     ApiSettings api,
     ApiKeyUpdates apiKeys,
@@ -36,17 +38,20 @@ class AgentSettingsDialog extends StatefulWidget {
 }
 
 class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
+  late List<LlmSettings> _connections;
+  late String _selectedConnectionId;
   late LlmProvider _provider;
   late bool _useBybit;
   late bool _useNansen;
   late bool _useOpenWebSearch;
   late bool _useCoinalyze;
   late final TextEditingController _endpoint;
+  late final TextEditingController _connectionName;
   late final TextEditingController _apiKey;
   late final TextEditingController _model;
   late final TextEditingController _nansenKey;
   late final TextEditingController _coinalyzeKey;
-  late final String? _llmMask;
+  late String? _llmMask;
   late final String? _nansenMask;
   late final String? _coinalyzeMask;
   late final OpenAiCodexAuthService _codexAuth;
@@ -60,6 +65,8 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   @override
   void initState() {
     super.initState();
+    _connections = List.of(widget.llmConnections.connections);
+    _selectedConnectionId = widget.llm.id;
     _provider = widget.llm.provider;
     _codexConnected = widget.keyStatus.hasCodexOAuth;
     _useBybit = widget.nodeAvailable && widget.mcp.useBybit;
@@ -67,7 +74,8 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _useOpenWebSearch = widget.nodeAvailable && widget.mcp.useOpenWebSearch;
     _useCoinalyze = widget.api.useCoinalyze;
     _endpoint = TextEditingController(text: widget.llm.endpoint);
-    _llmMask = createSecretMask(widget.keyStatus.hasLlmKey);
+    _connectionName = TextEditingController(text: widget.llm.name);
+    _llmMask = createSecretMask(widget.keyStatus.hasLlmKeyFor(widget.llm.id));
     _apiKey = TextEditingController(text: _llmMask);
     _model = TextEditingController(text: widget.llm.model);
     _nansenMask = createSecretMask(widget.keyStatus.hasNansenKey);
@@ -83,6 +91,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   @override
   void dispose() {
     _endpoint.dispose();
+    _connectionName.dispose();
     _apiKey.dispose();
     _model.dispose();
     _nansenKey.dispose();
@@ -107,6 +116,44 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: InfoLabel(
+                      label: '已保存的配置',
+                      child: ComboBox<String>(
+                        value: _selectedConnectionId,
+                        isExpanded: true,
+                        items: [
+                          for (final connection in _connections)
+                            ComboBoxItem(
+                              value: connection.id,
+                              child: Text(connection.name),
+                            ),
+                        ],
+                        onChanged: (id) {
+                          if (id == null || id == _selectedConnectionId) {
+                            return;
+                          }
+                          _selectConnection(id);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton(
+                    onPressed: _createConnection,
+                    child: const Text('新建配置'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              InfoLabel(
+                label: '配置名称',
+                child: TextBox(controller: _connectionName),
+              ),
+              const SizedBox(height: 8),
               InfoLabel(
                 label: '接口类型',
                 child: ComboBox<LlmProvider>(
@@ -390,17 +437,63 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     );
   }
 
+  void _selectConnection(String id) {
+    final connection = _connections.firstWhere((item) => item.id == id);
+    setState(() {
+      _selectedConnectionId = connection.id;
+      _connectionName.text = connection.name;
+      _provider = connection.provider;
+      _endpoint.text = connection.endpoint;
+      _model.text = connection.model;
+      _llmMask = createSecretMask(widget.keyStatus.hasLlmKeyFor(connection.id));
+      _apiKey.text = _llmMask ?? '';
+      _codexError = null;
+    });
+    if (connection.provider == LlmProvider.openAiCodex && _codexConnected) {
+      unawaited(_loadCodexModels());
+    }
+  }
+
+  void _createConnection() {
+    final connection = LlmSettings(
+      id: 'connection-${DateTime.now().microsecondsSinceEpoch}',
+      name: '新建配置',
+      provider: LlmProvider.openAiResponses,
+      endpoint: LlmProvider.openAiResponses.defaultEndpoint,
+      model: 'gpt-4.1',
+    );
+    _connections.add(connection);
+    _selectConnection(connection.id);
+  }
+
   Future<void> _save() async {
     setState(() {
       _saving = true;
       _saveError = null;
     });
     try {
+      final name = _connectionName.text.trim();
+      if (name.isEmpty) throw Exception('配置名称不能为空。');
+      if (_connections.any(
+        (item) => item.id != _selectedConnectionId && item.name == name,
+      )) {
+        throw Exception('配置名称已存在。');
+      }
+      final connection = LlmSettings(
+        id: _selectedConnectionId,
+        name: name,
+        provider: _provider,
+        endpoint: _endpoint.text.trim(),
+        model: _model.text.trim(),
+      );
+      _connections = [
+        for (final item in _connections)
+          item.id == connection.id ? connection : item,
+      ];
       await widget.onSave(
-        LlmSettings(
-          provider: _provider,
-          endpoint: _endpoint.text.trim(),
-          model: _model.text.trim(),
+        LlmConnectionSettings(
+          connections: _connections,
+          activeConnectionId: connection.id,
         ),
         McpSettings(
           useBybit: _useBybit,
@@ -410,6 +503,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
         ApiSettings(useCoinalyze: _useCoinalyze),
         ApiKeyUpdates(
           llmKey: _newKey(_apiKey, _llmMask),
+          llmConnectionId: connection.id,
           nansenKey: _newKey(_nansenKey, _nansenMask),
           coinalyzeKey: _newKey(_coinalyzeKey, _coinalyzeMask),
         ),

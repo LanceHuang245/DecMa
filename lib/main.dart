@@ -27,14 +27,14 @@ Future<void> main() async {
   });
   final nodeAvailable = await NodeRuntimeService.isAvailable();
   final settingsStore = LlmSettingsStore();
-  final initialLlm = await settingsStore.read();
+  final initialLlmConnections = await settingsStore.readConnections();
   final initialMcp = await settingsStore.readMcp();
   final initialApi = await settingsStore.readApi();
   final initialNews = await settingsStore.readNews();
   runApp(
     DecmaApp(
       nodeAvailable: nodeAvailable,
-      initialLlm: initialLlm,
+      initialLlmConnections: initialLlmConnections,
       initialMcp: initialMcp,
       initialApi: initialApi,
       initialNews: initialNews,
@@ -46,14 +46,14 @@ class DecmaApp extends StatelessWidget {
   const DecmaApp({
     super.key,
     this.nodeAvailable = true,
-    this.initialLlm,
+    this.initialLlmConnections,
     this.initialMcp,
     this.initialApi,
     this.initialNews,
   });
 
   final bool nodeAvailable;
-  final LlmSettings? initialLlm;
+  final LlmConnectionSettings? initialLlmConnections;
   final McpSettings? initialMcp;
   final ApiSettings? initialApi;
   final NewsSettings? initialNews;
@@ -69,7 +69,7 @@ class DecmaApp extends StatelessWidget {
       ),
       home: DashboardPage(
         nodeAvailable: nodeAvailable,
-        initialLlm: initialLlm,
+        initialLlmConnections: initialLlmConnections,
         initialMcp: initialMcp,
         initialApi: initialApi,
         initialNews: initialNews,

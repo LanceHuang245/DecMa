@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/trading_models.dart';
@@ -6,9 +8,11 @@ class LlmSettingsStore {
   LlmSettingsStore({SharedPreferencesAsync? preferences})
     : _preferences = preferences ?? SharedPreferencesAsync();
 
-  static const _providerKey = 'decma.llm.provider';
-  static const _endpointKey = 'decma.llm.endpoint';
-  static const _modelKey = 'decma.llm.model';
+  static const _connectionsKey = 'decma.llm.connections';
+  static const _activeConnectionKey = 'decma.llm.active_connection';
+  static const _legacyProviderKey = 'decma.llm.provider';
+  static const _legacyEndpointKey = 'decma.llm.endpoint';
+  static const _legacyModelKey = 'decma.llm.model';
   static const _bybitMcpKey = 'decma.mcp.bybit';
   static const _nansenMcpKey = 'decma.mcp.nansen';
   static const _openWebSearchMcpKey = 'decma.mcp.open_web_search';
@@ -19,11 +23,36 @@ class LlmSettingsStore {
   static const _federalReserveNewsKey = 'decma.news.federal_reserve';
   final SharedPreferencesAsync _preferences;
 
-  Future<LlmSettings?> read() async {
+  Future<LlmConnectionSettings> readConnections() async {
+    final saved = await _preferences.getString(_connectionsKey);
+    if (saved != null) {
+      try {
+        final decoded = jsonDecode(saved);
+        if (decoded is List) {
+          final connections = decoded
+              .map(LlmSettings.fromJson)
+              .whereType<LlmSettings>()
+              .toList();
+          final activeId = await _preferences.getString(_activeConnectionKey);
+          if (connections.isNotEmpty) {
+            return LlmConnectionSettings(
+              connections: connections,
+              activeConnectionId:
+                  connections.any((connection) => connection.id == activeId)
+                  ? activeId!
+                  : connections.first.id,
+            );
+          }
+        }
+      } catch (_) {
+        // Fall back to the legacy single-connection settings below.
+      }
+    }
+
     final values = await Future.wait([
-      _preferences.getString(_providerKey),
-      _preferences.getString(_endpointKey),
-      _preferences.getString(_modelKey),
+      _preferences.getString(_legacyProviderKey),
+      _preferences.getString(_legacyEndpointKey),
+      _preferences.getString(_legacyModelKey),
     ]);
     final providerName = values[0];
     final endpoint = values[1];
@@ -31,20 +60,29 @@ class LlmSettingsStore {
     final provider = LlmProvider.values.where(
       (item) => item.name == providerName,
     );
-    if (provider.length != 1 || endpoint == null || model == null) return null;
-    return LlmSettings(
-      provider: provider.single,
-      endpoint: endpoint,
-      model: model,
+    final connection = LlmSettings(
+      id: LlmSettings.defaultId,
+      name: LlmSettings.defaultName,
+      provider: provider.length == 1
+          ? provider.single
+          : LlmProvider.openAiResponses,
+      endpoint: endpoint ?? LlmProvider.openAiResponses.defaultEndpoint,
+      model: model ?? 'gpt-4.1',
+    );
+    return LlmConnectionSettings(
+      connections: [connection],
+      activeConnectionId: connection.id,
     );
   }
 
-  // Persist only non-secret connection settings; API keys stay in secure storage.
-  Future<void> save(LlmSettings settings) async {
+  // Persist only non-secret connection metadata; API keys stay in secure storage.
+  Future<void> saveConnections(LlmConnectionSettings settings) async {
     await Future.wait([
-      _preferences.setString(_providerKey, settings.provider.name),
-      _preferences.setString(_endpointKey, settings.endpoint),
-      _preferences.setString(_modelKey, settings.model),
+      _preferences.setString(
+        _connectionsKey,
+        jsonEncode(settings.connections.map((item) => item.toJson()).toList()),
+      ),
+      _preferences.setString(_activeConnectionKey, settings.active.id),
     ]);
   }
 

@@ -1,8 +1,11 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../models/trading_models.dart';
+
 class ApiKeyStatus {
   const ApiKeyStatus({
     this.hasLlmKey = false,
+    this.llmKeyConnectionIds = const {},
     this.hasCodexOAuth = false,
     this.hasNansenKey = false,
     this.hasCoinalyzeKey = false,
@@ -10,10 +13,14 @@ class ApiKeyStatus {
   });
 
   final bool hasLlmKey;
+  final Set<String> llmKeyConnectionIds;
   final bool hasCodexOAuth;
   final bool hasNansenKey;
   final bool hasCoinalyzeKey;
   final bool hasFinnhubKey;
+
+  bool hasLlmKeyFor(String connectionId) =>
+      llmKeyConnectionIds.contains(connectionId);
 }
 
 class CodexOAuthCredentials {
@@ -33,12 +40,14 @@ class CodexOAuthCredentials {
 class ApiKeyUpdates {
   const ApiKeyUpdates({
     this.llmKey,
+    this.llmConnectionId = LlmSettings.defaultId,
     this.nansenKey,
     this.coinalyzeKey,
     this.finnhubKey,
   });
 
   final String? llmKey;
+  final String llmConnectionId;
   final String? nansenKey;
   final String? coinalyzeKey;
   final String? finnhubKey;
@@ -48,7 +57,7 @@ class SecureKeyStore {
   SecureKeyStore({FlutterSecureStorage? storage})
     : _storage = storage ?? const FlutterSecureStorage();
 
-  static const _llmKey = 'decma.llm_api_key';
+  static const _legacyLlmKey = 'decma.llm_api_key';
   static const _codexAccessToken = 'decma.codex.access_token';
   static const _codexRefreshToken = 'decma.codex.refresh_token';
   static const _codexAccountId = 'decma.codex.account_id';
@@ -58,9 +67,15 @@ class SecureKeyStore {
   static const _finnhubKey = 'decma.finnhub_api_key';
   final FlutterSecureStorage _storage;
 
-  Future<ApiKeyStatus> status() async {
-    final saved = await Future.wait([
-      _storage.containsKey(key: _llmKey),
+  Future<ApiKeyStatus> status({
+    Iterable<String> llmConnectionIds = const [LlmSettings.defaultId],
+  }) async {
+    final connectionIds = llmConnectionIds.toSet();
+    if (connectionIds.isEmpty) {
+      connectionIds.add(LlmSettings.defaultId);
+    }
+    final saved = await Future.wait<bool>([
+      for (final id in connectionIds) _hasLlmKey(id),
       _storage.containsKey(key: _codexAccessToken),
       _storage.containsKey(key: _codexRefreshToken),
       _storage.containsKey(key: _codexAccountId),
@@ -69,19 +84,33 @@ class SecureKeyStore {
       _storage.containsKey(key: _coinalyzeKey),
       _storage.containsKey(key: _finnhubKey),
     ]);
+    final keyedConnections = <String>{};
+    for (var index = 0; index < connectionIds.length; index++) {
+      if (saved[index]) {
+        keyedConnections.add(connectionIds.elementAt(index));
+      }
+    }
     return ApiKeyStatus(
-      hasLlmKey: saved[0],
-      hasCodexOAuth: saved[1] && saved[2] && saved[3] && saved[4],
-      hasNansenKey: saved[5],
-      hasCoinalyzeKey: saved[6],
-      hasFinnhubKey: saved[7],
+      hasLlmKey: keyedConnections.isNotEmpty,
+      llmKeyConnectionIds: keyedConnections,
+      hasCodexOAuth:
+          saved[connectionIds.length] &&
+          saved[connectionIds.length + 1] &&
+          saved[connectionIds.length + 2] &&
+          saved[connectionIds.length + 3],
+      hasNansenKey: saved[connectionIds.length + 4],
+      hasCoinalyzeKey: saved[connectionIds.length + 5],
+      hasFinnhubKey: saved[connectionIds.length + 6],
     );
   }
 
   // Blank fields mean "keep existing key" so settings never need to read it back.
   Future<void> update(ApiKeyUpdates updates) async {
     if (updates.llmKey case final key?) {
-      await _storage.write(key: _llmKey, value: key);
+      await _storage.write(
+        key: _llmKeyFor(updates.llmConnectionId),
+        value: key,
+      );
     }
     if (updates.nansenKey case final key?) {
       await _storage.write(key: _nansenKey, value: key);
@@ -94,7 +123,20 @@ class SecureKeyStore {
     }
   }
 
-  Future<String?> readLlmKey() => _storage.read(key: _llmKey);
+  Future<String?> readLlmKey({
+    String connectionId = LlmSettings.defaultId,
+  }) async {
+    final saved = await _storage.read(key: _llmKeyFor(connectionId));
+    if (saved != null || connectionId != LlmSettings.defaultId) return saved;
+    return _storage.read(key: _legacyLlmKey);
+  }
+
+  String _llmKeyFor(String connectionId) => 'decma.llm_api_key.$connectionId';
+
+  Future<bool> _hasLlmKey(String connectionId) async =>
+      await _storage.containsKey(key: _llmKeyFor(connectionId)) ||
+      (connectionId == LlmSettings.defaultId &&
+          await _storage.containsKey(key: _legacyLlmKey));
 
   Future<CodexOAuthCredentials?> readCodexOAuth() async {
     final values = await Future.wait([

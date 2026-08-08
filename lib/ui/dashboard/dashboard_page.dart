@@ -16,14 +16,14 @@ class DashboardPage extends StatefulWidget {
   const DashboardPage({
     super.key,
     required this.nodeAvailable,
-    this.initialLlm,
+    this.initialLlmConnections,
     this.initialMcp,
     this.initialApi,
     this.initialNews,
   });
 
   final bool nodeAvailable;
-  final LlmSettings? initialLlm;
+  final LlmConnectionSettings? initialLlmConnections;
   final McpSettings? initialMcp;
   final ApiSettings? initialApi;
   final NewsSettings? initialNews;
@@ -40,7 +40,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     _controller = DashboardController(
       nodeAvailable: widget.nodeAvailable,
-      initialLlm: widget.initialLlm,
+      initialLlmConnections: widget.initialLlmConnections,
       initialMcp: widget.initialMcp,
       initialApi: widget.initialApi,
       initialNews: widget.initialNews,
@@ -89,6 +89,7 @@ class _DashboardPageState extends State<DashboardPage> {
       context: context,
       builder: (context) => AgentSettingsDialog(
         llm: _controller.llm,
+        llmConnections: _controller.llmConnections,
         mcp: _controller.mcp,
         api: _controller.api,
         keyStatus: _controller.apiKeyStatus,

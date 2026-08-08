@@ -30,18 +30,23 @@ class DashboardMessage {
 class DashboardController extends ChangeNotifier {
   DashboardController({
     required bool nodeAvailable,
-    LlmSettings? initialLlm,
+    LlmConnectionSettings? initialLlmConnections,
     McpSettings? initialMcp,
     ApiSettings? initialApi,
     NewsSettings? initialNews,
   }) {
-    _llm =
-        initialLlm ??
-        LlmSettings(
-          provider: LlmProvider.openAiResponses,
-          endpoint: LlmProvider.openAiResponses.defaultEndpoint,
-          model: 'gpt-4.1',
+    final defaultLlm = LlmSettings(
+      provider: LlmProvider.openAiResponses,
+      endpoint: LlmProvider.openAiResponses.defaultEndpoint,
+      model: 'gpt-4.1',
+    );
+    _llmConnections =
+        initialLlmConnections ??
+        LlmConnectionSettings(
+          connections: [defaultLlm],
+          activeConnectionId: defaultLlm.id,
         );
+    _llm = _llmConnections.active;
     if (initialMcp != null) _mcp = initialMcp;
     if (initialApi != null) _api = initialApi;
     if (initialNews != null) _news = initialNews;
@@ -90,6 +95,7 @@ class DashboardController extends ChangeNotifier {
   bool _isDisposed = false;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
   late LlmSettings _llm;
+  late LlmConnectionSettings _llmConnections;
   McpSettings _mcp = const McpSettings(
     useBybit: true,
     useNansen: false,
@@ -125,6 +131,7 @@ class DashboardController extends ChangeNotifier {
   bool get showScrollToBottom => _showScrollToBottom;
   ApiKeyStatus get apiKeyStatus => _apiKeyStatus;
   LlmSettings get llm => _llm;
+  LlmConnectionSettings get llmConnections => _llmConnections;
   McpSettings get mcp => _mcp;
   ApiSettings get api => _api;
   NewsSettings get news => _news;
@@ -330,7 +337,7 @@ class DashboardController extends ChangeNotifier {
     if (_loadingAgent || _isDisposed) return;
     final hasLlmCredentials = _llm.provider == LlmProvider.openAiCodex
         ? _apiKeyStatus.hasCodexOAuth
-        : _apiKeyStatus.hasLlmKey;
+        : _apiKeyStatus.hasLlmKeyFor(_llm.id);
     if (!_llm.isComplete || !hasLlmCredentials) {
       _conversation.add(
         DashboardMessage.agent(
@@ -507,20 +514,23 @@ class DashboardController extends ChangeNotifier {
   }
 
   Future<void> saveSettings(
-    LlmSettings llm,
+    LlmConnectionSettings llmConnections,
     McpSettings mcp,
     ApiSettings api,
     ApiKeyUpdates apiKeys,
   ) async {
     await Future.wait([
-      _llmSettingsStore.save(llm),
+      _llmSettingsStore.saveConnections(llmConnections),
       _llmSettingsStore.saveMcp(mcp),
       _llmSettingsStore.saveApi(api),
     ]);
     await _keyStore.update(apiKeys);
-    final status = await _keyStore.status();
+    final status = await _keyStore.status(
+      llmConnectionIds: llmConnections.connections.map((item) => item.id),
+    );
     if (_isDisposed) return;
-    _llm = llm;
+    _llmConnections = llmConnections;
+    _llm = llmConnections.active;
     _mcp = mcp;
     _api = api;
     _apiKeyStatus = status;
@@ -535,7 +545,9 @@ class DashboardController extends ChangeNotifier {
       _llmSettingsStore.saveNews(settings),
       _keyStore.update(apiKeys),
     ]);
-    final status = await _keyStore.status();
+    final status = await _keyStore.status(
+      llmConnectionIds: _llmConnections.connections.map((item) => item.id),
+    );
     if (_isDisposed) return;
     _news = settings;
     _apiKeyStatus = status;
@@ -544,7 +556,9 @@ class DashboardController extends ChangeNotifier {
   }
 
   Future<void> _loadApiKeyStatus() async {
-    final status = await _keyStore.status();
+    final status = await _keyStore.status(
+      llmConnectionIds: _llmConnections.connections.map((item) => item.id),
+    );
     if (_isDisposed) return;
     _apiKeyStatus = status;
     _notify();

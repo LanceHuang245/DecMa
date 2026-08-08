@@ -67,7 +67,8 @@ class AgentService {
         ? await _codexAuth.currentCredentials()
         : null;
     final llmApiKey =
-        codexCredentials?.accessToken ?? await _keyStore.readLlmKey();
+        codexCredentials?.accessToken ??
+        await _keyStore.readLlmKey(connectionId: llm.id);
     if (llmApiKey == null || llmApiKey.isEmpty) {
       throw Exception('请先在设置中保存 LLM API Key 或登录 OpenAI Codex。');
     }
