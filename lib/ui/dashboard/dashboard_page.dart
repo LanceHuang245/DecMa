@@ -269,11 +269,16 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _runAgent() async {
     if (_loadingAgent) return;
-    if (!_llm.isComplete || !_apiKeyStatus.hasLlmKey) {
+    final hasLlmCredentials = _llm.provider == LlmProvider.openAiCodex
+        ? _apiKeyStatus.hasCodexOAuth
+        : _apiKeyStatus.hasLlmKey;
+    if (!_llm.isComplete || !hasLlmCredentials) {
       setState(
         () => _conversation.add(
-          const DashboardMessage.agent(
-            '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
+          DashboardMessage.agent(
+            _llm.provider == LlmProvider.openAiCodex
+                ? '> 请先在设置中登录 OpenAI Codex 并选择模型。'
+                : '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
           ),
         ),
       );
@@ -567,6 +572,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             scrollController: _conversationScrollController,
                             showScrollToBottom: _showScrollToBottom,
                             mode: _agentMode,
+                            llm: _llm,
                             loading: _loadingAgent,
                             promptController: _prompt,
                             onModeChanged: (mode) =>

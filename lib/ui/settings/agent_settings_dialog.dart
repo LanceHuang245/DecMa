@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
+import '../../services/openai_codex_oauth.dart';
 import '../../services/secure_key_store.dart';
 
 class AgentSettingsDialog extends StatefulWidget {
@@ -47,6 +49,11 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   late final String? _llmMask;
   late final String? _nansenMask;
   late final String? _coinalyzeMask;
+  late final OpenAiCodexAuthService _codexAuth;
+  List<String> _codexModels = const [];
+  bool _codexConnected = false;
+  bool _codexLoading = false;
+  String? _codexError;
   bool _saving = false;
   String? _saveError;
 
@@ -54,6 +61,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   void initState() {
     super.initState();
     _provider = widget.llm.provider;
+    _codexConnected = widget.keyStatus.hasCodexOAuth;
     _useBybit = widget.nodeAvailable && widget.mcp.useBybit;
     _useNansen = widget.mcp.useNansen;
     _useOpenWebSearch = widget.nodeAvailable && widget.mcp.useOpenWebSearch;
@@ -66,6 +74,10 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _nansenKey = TextEditingController(text: _nansenMask);
     _coinalyzeMask = _newMask(widget.keyStatus.hasCoinalyzeKey);
     _coinalyzeKey = TextEditingController(text: _coinalyzeMask);
+    _codexAuth = OpenAiCodexAuthService();
+    if (_provider == LlmProvider.openAiCodex && _codexConnected) {
+      unawaited(_loadCodexModels());
+    }
   }
 
   @override
@@ -115,29 +127,37 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                       }
                       _provider = provider;
                     });
+                    if (provider == LlmProvider.openAiCodex &&
+                        _codexConnected) {
+                      unawaited(_loadCodexModels());
+                    }
                   },
                 ),
               ),
               const SizedBox(height: 8),
-              InfoLabel(
-                label: 'Endpoint',
-                child: TextBox(controller: _endpoint),
-              ),
-              const SizedBox(height: 8),
-              InfoLabel(
-                label: 'Model',
-                child: TextBox(controller: _model),
-              ),
-              const SizedBox(height: 8),
-              InfoLabel(
-                label: 'LLM API Key',
-                child: TextBox(
-                  controller: _apiKey,
-                  obscureText: true,
-                  placeholder: '输入新密钥以加密保存',
-                  onTap: () => _selectMask(_apiKey, _llmMask),
+              if (_provider == LlmProvider.openAiCodex)
+                _buildCodexSettings()
+              else ...[
+                InfoLabel(
+                  label: 'Endpoint',
+                  child: TextBox(controller: _endpoint),
                 ),
-              ),
+                const SizedBox(height: 8),
+                InfoLabel(
+                  label: 'Model',
+                  child: TextBox(controller: _model),
+                ),
+                const SizedBox(height: 8),
+                InfoLabel(
+                  label: 'LLM API Key',
+                  child: TextBox(
+                    controller: _apiKey,
+                    obscureText: true,
+                    placeholder: '输入新密钥以加密保存',
+                    onTap: () => _selectMask(_apiKey, _llmMask),
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               IntrinsicHeight(
                 child: Row(
@@ -255,6 +275,111 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   String? _newKey(TextEditingController controller, String? mask) {
     final value = controller.text.trim();
     return value.isEmpty || value == mask ? null : value;
+  }
+
+  Widget _buildCodexSettings() {
+    final models = {
+      ..._codexModels,
+      if (_model.text.trim().isNotEmpty) _model.text.trim(),
+    }.toList()..sort();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _codexConnected
+                    ? '已登录 ChatGPT，使用 Codex 订阅额度。'
+                    : '通过 ChatGPT 登录以使用 Codex。',
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton(
+              onPressed: _codexLoading ? null : _signInToCodex,
+              child: Text(
+                _codexLoading
+                    ? '正在连接…'
+                    : _codexConnected
+                    ? '重新登录'
+                    : '登录 ChatGPT',
+              ),
+            ),
+          ],
+        ),
+        if (_codexConnected) ...[
+          const SizedBox(height: 8),
+          InfoLabel(
+            label: 'Model',
+            child: ComboBox<String>(
+              value: _model.text.trim().isEmpty ? null : _model.text.trim(),
+              isExpanded: true,
+              placeholder: const Text('正在获取可用模型'),
+              items: [
+                for (final model in models)
+                  ComboBoxItem(value: model, child: Text(model)),
+              ],
+              onChanged: models.isEmpty
+                  ? null
+                  : (model) => setState(() => _model.text = model ?? ''),
+            ),
+          ),
+        ],
+        if (_codexError != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            _codexError!,
+            style: const TextStyle(color: Colors.errorPrimaryColor),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _signInToCodex() async {
+    setState(() {
+      _codexLoading = true;
+      _codexError = null;
+    });
+    try {
+      final models = await _codexAuth.signIn();
+      if (!mounted) return;
+      setState(() {
+        _codexConnected = true;
+        _codexModels = models;
+        _endpoint.text = LlmProvider.openAiCodex.defaultEndpoint;
+        if (models.isNotEmpty && !models.contains(_model.text.trim())) {
+          _model.text = models.first;
+        }
+      });
+    } catch (error) {
+      if (mounted) setState(() => _codexError = 'OpenAI Codex 登录失败：$error');
+    } finally {
+      if (mounted) setState(() => _codexLoading = false);
+    }
+  }
+
+  Future<void> _loadCodexModels() async {
+    if (_codexLoading) return;
+    setState(() {
+      _codexLoading = true;
+      _codexError = null;
+    });
+    try {
+      final models = await _codexAuth.fetchModels();
+      if (mounted) {
+        setState(() {
+          _codexModels = models;
+          if (models.isNotEmpty && !models.contains(_model.text.trim())) {
+            _model.text = models.first;
+          }
+        });
+      }
+    } catch (_) {
+      // A cached OAuth session can still be refreshed when the Agent runs.
+    } finally {
+      if (mounted) setState(() => _codexLoading = false);
+    }
   }
 
   void _selectMask(TextEditingController controller, String? mask) {

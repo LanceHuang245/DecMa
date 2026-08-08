@@ -8,6 +8,7 @@ import 'agent_prompts.dart';
 import 'coinalyze_api_tools.dart';
 import 'llm_transport.dart';
 import 'mcp_hub.dart';
+import 'openai_codex_oauth.dart';
 import 'secure_key_store.dart';
 
 enum AgentMode { conversation, analysis }
@@ -34,6 +35,7 @@ class AgentService {
        _keyStore = keyStore ?? SecureKeyStore(),
        _client = client ?? http.Client() {
     _transport = LlmTransport(_client);
+    _codexAuth = OpenAiCodexAuthService(keyStore: _keyStore, client: _client);
   }
 
   final McpHub _mcpHub;
@@ -41,6 +43,7 @@ class AgentService {
   final SecureKeyStore _keyStore;
   final http.Client _client;
   late final LlmTransport _transport;
+  late final OpenAiCodexAuthService _codexAuth;
 
   Future<AgentResult> run({
     required String prompt,
@@ -58,9 +61,13 @@ class AgentService {
     if (!llm.isComplete) {
       throw Exception('Please configure endpoint and model first.');
     }
-    final llmApiKey = await _keyStore.readLlmKey();
+    final codexCredentials = llm.provider == LlmProvider.openAiCodex
+        ? await _codexAuth.currentCredentials()
+        : null;
+    final llmApiKey =
+        codexCredentials?.accessToken ?? await _keyStore.readLlmKey();
     if (llmApiKey == null || llmApiKey.isEmpty) {
-      throw Exception('Please save an LLM API key in secure storage first.');
+      throw Exception('请先在设置中保存 LLM API Key 或登录 OpenAI Codex。');
     }
     final nansenApiKey = mcp.useNansen ? await _keyStore.readNansenKey() : null;
     final coinalyzeApiKey = api.useCoinalyze
@@ -99,6 +106,7 @@ class AgentService {
       final reply = await _transport.complete(
         settings: llm,
         apiKey: llmApiKey,
+        codexAccountId: codexCredentials?.accountId,
         system: isAnalysis ? analysisPrompt : conversationPrompt,
         input: context,
         tools: [...mcpTools, ...coinalyzeTools],

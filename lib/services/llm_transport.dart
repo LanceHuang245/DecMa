@@ -37,6 +37,7 @@ class LlmTransport {
   Future<String> complete({
     required LlmSettings settings,
     required String apiKey,
+    String? codexAccountId,
     required String system,
     required String input,
     required List<McpTool> tools,
@@ -70,7 +71,50 @@ class LlmTransport {
       maxToolRounds,
       callTools,
     ),
+    LlmProvider.openAiCodex => _runOpenAiCodex(
+      settings,
+      apiKey,
+      codexAccountId,
+      system,
+      input,
+      tools,
+      maxToolRounds,
+      callTools,
+    ),
   };
+
+  Future<String> _runOpenAiCodex(
+    LlmSettings settings,
+    String accessToken,
+    String? accountId,
+    String system,
+    String input,
+    List<McpTool> tools,
+    int maxToolRounds,
+    LlmToolHandler callTools,
+  ) {
+    if (accountId == null || accountId.isEmpty) {
+      throw Exception('OpenAI Codex OAuth 缺少 ChatGPT account ID，请重新登录。');
+    }
+    return _runOpenAiResponses(
+      settings,
+      accessToken,
+      system,
+      input,
+      tools,
+      maxToolRounds,
+      callTools,
+      extraHeaders: {
+        'ChatGPT-Account-Id': accountId,
+        'OpenAI-Beta': 'responses=experimental',
+        'originator': 'codex_cli_rs',
+        'Accept': 'text/event-stream',
+      },
+      store: false,
+      codex: true,
+      stream: true,
+    );
+  }
 
   Future<String> _runAnthropic(
     LlmSettings settings,
@@ -199,15 +243,23 @@ class LlmTransport {
     String input,
     List<McpTool> tools,
     int maxToolRounds,
-    LlmToolHandler callTools,
-  ) async {
+    LlmToolHandler callTools, {
+    Map<String, String> extraHeaders = const {},
+    bool? store,
+    bool codex = false,
+    bool stream = false,
+  }) async {
+    final codexInput = <Map<String, dynamic>>[];
+    if (codex) codexInput.addAll(_codexInput(input));
     var response = await _post(
       _openAiUri(settings.endpoint, 'responses'),
-      {'Authorization': 'Bearer $apiKey'},
+      {'Authorization': 'Bearer $apiKey', ...extraHeaders},
       {
         'model': settings.model.trim(),
         'instructions': system,
-        'input': input,
+        'input': codex ? codexInput : input,
+        'store': ?store,
+        if (stream) 'stream': true,
         if (tools.isNotEmpty)
           'tools': tools
               .map(
@@ -215,6 +267,7 @@ class LlmTransport {
               )
               .toList(),
       },
+      stream: stream,
     );
     for (var turn = 0; turn < maxToolRounds; turn++) {
       final calls = _list(response['output'])
@@ -230,22 +283,38 @@ class LlmTransport {
           .toList();
       if (calls.isEmpty) return _responsesText(response);
       final results = await callTools(calls);
+      if (codex) {
+        // Codex continues with the prior output items instead of a response ID.
+        codexInput.addAll(_list(response['output']).map(_map));
+        codexInput.addAll(
+          results.map(
+            (result) => {
+              'type': 'function_call_output',
+              'call_id': result.id,
+              'output': result.output,
+            },
+          ),
+        );
+      }
       response = await _post(
         _openAiUri(settings.endpoint, 'responses'),
-        {'Authorization': 'Bearer $apiKey'},
+        {'Authorization': 'Bearer $apiKey', ...extraHeaders},
         {
           'model': settings.model.trim(),
-          // Responses does not inherit instructions from previous_response_id.
           'instructions': system,
-          'previous_response_id': response['id'],
-          'input': [
-            for (final result in results)
-              {
-                'type': 'function_call_output',
-                'call_id': result.id,
-                'output': result.output,
-              },
-          ],
+          if (!codex) 'previous_response_id': response['id'],
+          'input': codex
+              ? codexInput
+              : [
+                  for (final result in results)
+                    {
+                      'type': 'function_call_output',
+                      'call_id': result.id,
+                      'output': result.output,
+                    },
+                ],
+          'store': ?store,
+          if (stream) 'stream': true,
           // Keep function definitions available for any follow-up tool round.
           if (tools.isNotEmpty)
             'tools': tools
@@ -257,6 +326,7 @@ class LlmTransport {
                 )
                 .toList(),
         },
+        stream: stream,
       );
     }
     throw Exception('Agent reached the maximum of $maxToolRounds tool rounds.');
@@ -265,23 +335,26 @@ class LlmTransport {
   Future<Map<String, dynamic>> _post(
     Uri uri,
     Map<String, String> headers,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    bool stream = false,
+  }) async {
     // Log only the JSON body because API credentials are sent through headers.
     final requestBody = jsonEncode(body);
     debugPrint('LLM request [POST $uri]:\n$requestBody');
+    final request = http.Request('POST', uri)
+      ..headers.addAll({'Content-Type': 'application/json', ...headers})
+      ..body = requestBody;
     final response = await _client
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json', ...headers},
-          body: requestBody,
-        )
+        .send(request)
         .timeout(const Duration(minutes: 5));
-    debugPrint(
-      'LLM response [${response.statusCode} ${response.reasonPhrase ?? ''}]:\n${response.body}',
+    final responseBody = await response.stream.bytesToString().timeout(
+      const Duration(minutes: 5),
     );
-    final decoded = _map(jsonDecode(response.body));
+    debugPrint(
+      'LLM response [${response.statusCode} ${response.reasonPhrase ?? ''}]:\n$responseBody',
+    );
     if (response.statusCode >= 400) {
+      final decoded = _tryJson(responseBody);
       throw Exception(
         decoded['error'] is Map
             ? _map(decoded['error'])['message']
@@ -289,7 +362,92 @@ class LlmTransport {
                   'LLM request failed (${response.statusCode}).',
       );
     }
-    return decoded;
+    return _decodedResponse(responseBody, stream: stream);
+  }
+
+  List<Map<String, dynamic>> _codexInput(String input) => [
+    {
+      'type': 'message',
+      'role': 'user',
+      'content': [
+        {'type': 'input_text', 'text': input},
+      ],
+    },
+  ];
+
+  Map<String, dynamic> _decodedResponse(String body, {required bool stream}) {
+    if (!stream) return _map(jsonDecode(body));
+    try {
+      final decoded = _map(jsonDecode(body));
+      if (decoded.isNotEmpty) return decoded;
+    } on FormatException {
+      // Codex emits one JSON object per Server-Sent Event data line.
+    }
+    Map<String, dynamic>? completed;
+    final textDeltas = StringBuffer();
+    final completedTextParts = <String>[];
+    final outputItems = <int, Map<String, dynamic>>{};
+    for (final line in body.split(RegExp(r'\r?\n'))) {
+      if (!line.startsWith('data:')) continue;
+      final data = line.substring('data:'.length).trim();
+      if (data.isEmpty || data == '[DONE]') continue;
+      try {
+        final event = _map(jsonDecode(data));
+        if (event['type'] == 'response.output_text.delta' &&
+            event['delta'] is String) {
+          textDeltas.write(event['delta']);
+        }
+        if (event['type'] == 'response.output_text.done' &&
+            event['text'] is String) {
+          completedTextParts.add(event['text'] as String);
+        }
+        if (event['type'] == 'response.output_item.done' &&
+            event['item'] is Map) {
+          final index = event['output_index'];
+          if (index is num) {
+            outputItems[index.toInt()] = _map(event['item']);
+          }
+        }
+        if (event['type'] == 'response.completed' && event['response'] is Map) {
+          completed = _map(event['response']);
+        }
+      } on FormatException {
+        continue;
+      }
+    }
+    final streamedText = completedTextParts.isNotEmpty
+        ? completedTextParts.join('\n')
+        : textDeltas.toString();
+    final streamedOutput = outputItems.entries.toList()
+      ..sort((left, right) => left.key.compareTo(right.key));
+    if (completed != null) {
+      if (_list(completed['output']).isEmpty && streamedOutput.isNotEmpty) {
+        completed = {
+          ...completed,
+          'output': streamedOutput.map((entry) => entry.value).toList(),
+        };
+      }
+      if (streamedText.isNotEmpty && _responsesText(completed).isEmpty) {
+        return {...completed, 'output_text': streamedText};
+      }
+      return completed;
+    }
+    if (streamedText.isNotEmpty || streamedOutput.isNotEmpty) {
+      return {
+        if (streamedText.isNotEmpty) 'output_text': streamedText,
+        if (streamedOutput.isNotEmpty)
+          'output': streamedOutput.map((entry) => entry.value).toList(),
+      };
+    }
+    throw const FormatException('Codex did not return a completed response.');
+  }
+
+  Map<String, dynamic> _tryJson(String body) {
+    try {
+      return _map(jsonDecode(body));
+    } on FormatException {
+      return const {};
+    }
   }
 
   Uri _openAiUri(String endpoint, String path) {
@@ -311,16 +469,20 @@ class LlmTransport {
       .join('\n');
 
   String _responsesText(Map<String, dynamic> response) {
-    if (response['output_text'] != null) {
-      return response['output_text'].toString();
+    final outputText = response['output_text'];
+    if (outputText is String && outputText.isNotEmpty) {
+      return outputText;
     }
     return _list(response['output'])
         .map(_map)
         .where((item) => item['type'] == 'message')
         .expand((item) => _list(item['content']))
         .map(_map)
-        .where((item) => item['type'] == 'output_text')
+        .where(
+          (item) => item['type'] == 'output_text' || item['type'] == 'text',
+        )
         .map((item) => item['text'].toString())
+        .where((text) => text != 'null' && text.isNotEmpty)
         .join('\n');
   }
 }

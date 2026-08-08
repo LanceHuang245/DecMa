@@ -27,6 +27,7 @@ class DashboardAgentPanel extends StatelessWidget {
     required this.scrollController,
     required this.showScrollToBottom,
     required this.mode,
+    required this.llm,
     required this.loading,
     required this.promptController,
     required this.onModeChanged,
@@ -41,6 +42,7 @@ class DashboardAgentPanel extends StatelessWidget {
   final ScrollController scrollController;
   final bool showScrollToBottom;
   final AgentMode mode;
+  final LlmSettings llm;
   final bool loading;
   final TextEditingController promptController;
   final ValueChanged<AgentMode> onModeChanged;
@@ -116,7 +118,6 @@ class DashboardAgentPanel extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
               ToggleButton(
                 checked: mode == AgentMode.analysis,
@@ -136,6 +137,25 @@ class DashboardAgentPanel extends StatelessWidget {
                         if (checked) onModeChanged(AgentMode.conversation);
                       },
                 child: const Text('对话'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Tooltip(
+                    message: '${llm.provider.label} · ${llm.model}',
+                    child: Text(
+                      '${llm.provider.label} · ${llm.model}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: resources.textFillColorSecondary,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),

@@ -1,18 +1,20 @@
 import 'dart:convert';
 
-enum LlmProvider { anthropic, openAiResponses, openAiCompletions }
+enum LlmProvider { anthropic, openAiResponses, openAiCompletions, openAiCodex }
 
 extension LlmProviderLabel on LlmProvider {
   String get label => switch (this) {
     LlmProvider.anthropic => 'Anthropic Messages',
     LlmProvider.openAiResponses => 'OpenAI Responses',
     LlmProvider.openAiCompletions => 'OpenAI Chat Completions',
+    LlmProvider.openAiCodex => 'OpenAI Codex',
   };
 
   String get defaultEndpoint => switch (this) {
     LlmProvider.anthropic => 'https://api.anthropic.com',
     LlmProvider.openAiResponses => 'https://api.openai.com/v1',
     LlmProvider.openAiCompletions => 'https://api.openai.com/v1',
+    LlmProvider.openAiCodex => 'https://chatgpt.com/backend-api/codex',
   };
 }
 
