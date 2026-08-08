@@ -11,8 +11,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
   const windowOptions = WindowOptions(
-    size: Size(1280, 800),
-    minimumSize: Size(1280, 800),
+    size: Size(1540, 900),
+    minimumSize: Size(1540, 900),
     center: true,
     titleBarStyle: TitleBarStyle.hidden,
   );
@@ -30,12 +30,14 @@ Future<void> main() async {
   final initialLlm = await settingsStore.read();
   final initialMcp = await settingsStore.readMcp();
   final initialApi = await settingsStore.readApi();
+  final initialNews = await settingsStore.readNews();
   runApp(
     DecmaApp(
       nodeAvailable: nodeAvailable,
       initialLlm: initialLlm,
       initialMcp: initialMcp,
       initialApi: initialApi,
+      initialNews: initialNews,
     ),
   );
 }
@@ -47,12 +49,14 @@ class DecmaApp extends StatelessWidget {
     this.initialLlm,
     this.initialMcp,
     this.initialApi,
+    this.initialNews,
   });
 
   final bool nodeAvailable;
   final LlmSettings? initialLlm;
   final McpSettings? initialMcp;
   final ApiSettings? initialApi;
+  final NewsSettings? initialNews;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +72,7 @@ class DecmaApp extends StatelessWidget {
         initialLlm: initialLlm,
         initialMcp: initialMcp,
         initialApi: initialApi,
+        initialNews: initialNews,
       ),
     );
   }

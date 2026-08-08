@@ -3,6 +3,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../models/trading_models.dart';
 import '../../services/agent_service.dart';
+import '../../utils/display_formatters.dart';
 import 'dashboard_controller.dart';
 
 class DashboardAgentPanel extends StatelessWidget {
@@ -21,6 +22,7 @@ class DashboardAgentPanel extends StatelessWidget {
     required this.onSend,
     required this.onClear,
     required this.onScrollToBottom,
+    required this.onOpenSettings,
   });
 
   final TradePlan? plan;
@@ -36,6 +38,7 @@ class DashboardAgentPanel extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onClear;
   final VoidCallback onScrollToBottom;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -44,10 +47,20 @@ class DashboardAgentPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Trading Agent',
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Trading Agent',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(FluentIcons.settings),
+                onPressed: onOpenSettings,
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           if (plan != null) ...[const SizedBox(height: 8), _PlanCard(plan!)],
@@ -323,11 +336,6 @@ class _PlanCard extends StatelessWidget {
     ),
   );
 
-  String _price(double? value) => value == null
-      ? '—'
-      : value >= 1000
-      ? value.toStringAsFixed(1)
-      : value >= 1
-      ? value.toStringAsFixed(4)
-      : value.toStringAsFixed(6);
+  String _price(double? value) =>
+      value == null ? '—' : formatMarketPrice(value);
 }

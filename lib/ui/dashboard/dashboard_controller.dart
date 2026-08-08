@@ -7,6 +7,9 @@ import '../../services/agent_service.dart';
 import '../../services/bybit_service.dart';
 import '../../services/llm_settings_store.dart';
 import '../../services/secure_key_store.dart';
+import '../../services/news/event_selector.dart';
+import '../../services/news/news_service.dart';
+import '../../models/news_event.dart';
 
 enum DashboardMessageKind { user, agent, activity }
 
@@ -30,6 +33,7 @@ class DashboardController extends ChangeNotifier {
     LlmSettings? initialLlm,
     McpSettings? initialMcp,
     ApiSettings? initialApi,
+    NewsSettings? initialNews,
   }) {
     _llm =
         initialLlm ??
@@ -40,6 +44,7 @@ class DashboardController extends ChangeNotifier {
         );
     if (initialMcp != null) _mcp = initialMcp;
     if (initialApi != null) _api = initialApi;
+    if (initialNews != null) _news = initialNews;
     if (!nodeAvailable) {
       _mcp = const McpSettings(
         useBybit: false,
@@ -55,6 +60,8 @@ class DashboardController extends ChangeNotifier {
 
   final _bybit = BybitService();
   final _agent = AgentService();
+  final _newsService = NewsService();
+  final _eventSelector = const EventSelector();
   final _keyStore = SecureKeyStore();
   final _llmSettingsStore = LlmSettingsStore();
   final _symbol = TextEditingController(text: 'BTCUSDT');
@@ -62,10 +69,12 @@ class DashboardController extends ChangeNotifier {
   final _conversationScrollController = ScrollController();
   final _conversation = <DashboardMessage>[];
   Timer? _chartRefreshTimer;
+  Timer? _newsRefreshTimer;
   var _activeSymbol = 'BTCUSDT';
   var _interval = '15';
   var _candles = <Candle>[];
   var _symbols = <String>[];
+  var _newsEvents = <NewsEvent>[];
   TradePlan? _plan;
   String? _lastAnalysisContext;
   DateTime? _lastAnalysisAt;
@@ -87,6 +96,12 @@ class DashboardController extends ChangeNotifier {
     useOpenWebSearch: true,
   );
   ApiSettings _api = const ApiSettings(useCoinalyze: false);
+  NewsSettings _news = const NewsSettings(
+    useFinnhub: false,
+    useBls: true,
+    useBea: true,
+    useFederalReserve: true,
+  );
 
   TextEditingController get symbolController => _symbol;
   TextEditingController get promptController => _prompt;
@@ -96,6 +111,9 @@ class DashboardController extends ChangeNotifier {
   String get interval => _interval;
   List<Candle> get candles => _candles;
   List<String> get symbols => _symbols;
+  List<NewsEvent> get newsEvents => _newsEvents;
+  Map<String, NewsProviderStatus> get newsProviderStatuses =>
+      _newsService.statuses;
   TradePlan? get plan => _plan;
   List<DashboardMessage> get conversation => _conversation;
   String? get chartError => _chartError;
@@ -109,11 +127,14 @@ class DashboardController extends ChangeNotifier {
   LlmSettings get llm => _llm;
   McpSettings get mcp => _mcp;
   ApiSettings get api => _api;
+  NewsSettings get news => _news;
 
   void initialize() {
     unawaited(_loadApiKeyStatus());
     unawaited(_loadSymbols());
+    unawaited(_loadCachedNews());
     _startChartRefresh();
+    _startNewsRefresh();
   }
 
   // Poll public Kline data once per second without allowing overlapping requests.
@@ -124,6 +145,38 @@ class DashboardController extends ChangeNotifier {
       const Duration(seconds: 1),
       (_) => unawaited(_loadChart(latestOnly: true)),
     );
+  }
+
+  // News polls independently, so a feed outage cannot interrupt chart polling.
+  void _startNewsRefresh() {
+    _newsRefreshTimer?.cancel();
+    unawaited(_refreshNews());
+    _newsRefreshTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => unawaited(_refreshNews()),
+    );
+  }
+
+  Future<void> _loadCachedNews() async {
+    final events = await _newsService.readCached();
+    if (_isDisposed) return;
+    _newsEvents = events;
+    _notify();
+  }
+
+  Future<void> _refreshNews() async {
+    if (_isDisposed) return;
+    try {
+      final events = await _newsService.refresh(
+        settings: _news,
+        finnhubApiKey: await _keyStore.readFinnhubKey(),
+      );
+      if (_isDisposed) return;
+      _newsEvents = events;
+      _notify();
+    } catch (_) {
+      // Per-provider failures are represented by NewsService status entries.
+    }
   }
 
   Future<void> _loadSymbols() async {
@@ -314,6 +367,9 @@ class DashboardController extends ChangeNotifier {
       if (mode == AgentMode.analysis && analysisCandles.isEmpty) {
         throw Exception('$analysisSymbol 没有可分析的 K 线。');
       }
+      final eventSnapshot = mode == AgentMode.analysis
+          ? _eventSelector.select(events: _newsEvents, symbol: analysisSymbol)
+          : null;
       final answer = await _agent.run(
         prompt: prompt,
         symbol: analysisSymbol,
@@ -322,6 +378,7 @@ class DashboardController extends ChangeNotifier {
         mcp: _mcp,
         api: _api,
         mode: mode,
+        eventSnapshot: eventSnapshot,
         previousAnalysisContext: _lastAnalysisContext,
         previousAnalysisAt: _lastAnalysisAt,
         previousConversationContext: previousConversationContext,
@@ -470,6 +527,22 @@ class DashboardController extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> saveNewsSettings(
+    NewsSettings settings,
+    ApiKeyUpdates apiKeys,
+  ) async {
+    await Future.wait([
+      _llmSettingsStore.saveNews(settings),
+      _keyStore.update(apiKeys),
+    ]);
+    final status = await _keyStore.status();
+    if (_isDisposed) return;
+    _news = settings;
+    _apiKeyStatus = status;
+    _notify();
+    unawaited(_refreshNews());
+  }
+
   Future<void> _loadApiKeyStatus() async {
     final status = await _keyStore.status();
     if (_isDisposed) return;
@@ -485,8 +558,10 @@ class DashboardController extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _chartRefreshTimer?.cancel();
+    _newsRefreshTimer?.cancel();
     _bybit.dispose();
     _agent.dispose();
+    _newsService.dispose();
     _symbol.dispose();
     _prompt.dispose();
     _conversationScrollController

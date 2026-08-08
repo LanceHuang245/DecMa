@@ -18,6 +18,7 @@ dependencies:
   http: 
   shared_preferences: 
   window_manager: 
+  url_launcher: 
 
 dev_dependencies:
   flutter_test:

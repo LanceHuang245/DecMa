@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/trading_models.dart';
+import '../models/news_event.dart';
 import 'agent_prompts.dart';
 import 'coinalyze_api_tools.dart';
 import 'llm_transport.dart';
@@ -53,6 +54,7 @@ class AgentService {
     required McpSettings mcp,
     required ApiSettings api,
     required AgentMode mode,
+    EventSnapshot? eventSnapshot,
     String? previousAnalysisContext,
     DateTime? previousAnalysisAt,
     String? previousConversationContext,
@@ -94,6 +96,7 @@ class AgentService {
             previousAnalysisContext,
             previousAnalysisAt,
             previousConversationContext,
+            eventSnapshot,
           )
         : _conversationContext(
             prompt,
@@ -170,6 +173,7 @@ $conversation
     String? previousAnalysisContext,
     DateTime? previousAnalysisAt,
     String? previousConversationContext,
+    EventSnapshot? eventSnapshot,
   ) {
     final latest = candles.isEmpty ? null : candles.last;
     final chartData = candles
@@ -198,6 +202,7 @@ $previousAnalysisContext
 The application chart is Bybit linear perpetual $symbol. Latest displayed close: ${latest?.close ?? 'unavailable'}.
 The following untrusted data is a chart snapshot. Verify or supplement it through the available tools when needed:
 ${jsonEncode(chartData)}
+${eventSnapshot == null ? '' : '\nCurrent event snapshot from the app event store:\n${jsonEncode(eventSnapshot.toJson())}'}
 ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}$previousAnalysis${_previousConversationContext(previousConversationContext)}''';
   }
 

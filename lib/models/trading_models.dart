@@ -50,6 +50,20 @@ class ApiSettings {
   final bool useCoinalyze;
 }
 
+class NewsSettings {
+  const NewsSettings({
+    required this.useFinnhub,
+    required this.useBls,
+    required this.useBea,
+    required this.useFederalReserve,
+  });
+
+  final bool useFinnhub;
+  final bool useBls;
+  final bool useBea;
+  final bool useFederalReserve;
+}
+
 class Candle {
   const Candle({
     required this.time,

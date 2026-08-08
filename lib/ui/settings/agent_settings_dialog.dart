@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
 import '../../services/openai_codex_oauth.dart';
 import '../../services/secure_key_store.dart';
+import '../../utils/secret_mask.dart';
 
 class AgentSettingsDialog extends StatefulWidget {
   const AgentSettingsDialog({
@@ -67,12 +67,12 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _useOpenWebSearch = widget.nodeAvailable && widget.mcp.useOpenWebSearch;
     _useCoinalyze = widget.api.useCoinalyze;
     _endpoint = TextEditingController(text: widget.llm.endpoint);
-    _llmMask = _newMask(widget.keyStatus.hasLlmKey);
+    _llmMask = createSecretMask(widget.keyStatus.hasLlmKey);
     _apiKey = TextEditingController(text: _llmMask);
     _model = TextEditingController(text: widget.llm.model);
-    _nansenMask = _newMask(widget.keyStatus.hasNansenKey);
+    _nansenMask = createSecretMask(widget.keyStatus.hasNansenKey);
     _nansenKey = TextEditingController(text: _nansenMask);
-    _coinalyzeMask = _newMask(widget.keyStatus.hasCoinalyzeKey);
+    _coinalyzeMask = createSecretMask(widget.keyStatus.hasCoinalyzeKey);
     _coinalyzeKey = TextEditingController(text: _coinalyzeMask);
     _codexAuth = OpenAiCodexAuthService();
     if (_provider == LlmProvider.openAiCodex && _codexConnected) {
@@ -388,17 +388,6 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
       baseOffset: 0,
       extentOffset: controller.text.length,
     );
-  }
-
-  // The random text is only a visual mask and is never persisted as a key.
-  String? _newMask(bool hasSavedKey) {
-    if (!hasSavedKey) return null;
-    const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final random = Random.secure();
-    return List.generate(
-      24,
-      (_) => characters[random.nextInt(characters.length)],
-    ).join();
   }
 
   Future<void> _save() async {

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
+import '../../utils/display_formatters.dart';
 import 'candle_chart_colors.dart';
 import 'candle_chart_viewport.dart';
 
@@ -340,16 +341,12 @@ class CandlePainter extends CustomPainter {
   }
 
   String _axisTime(DateTime time, bool daily) {
-    final local = time.toLocal();
     return daily
-        ? '${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}'
-        : '${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+        ? formatLocalDate(time)
+        : '${formatLocalDate(time)} ${formatLocalTime(time)}';
   }
 
-  String _fullTime(DateTime time) {
-    final local = time.toLocal();
-    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
+  String _fullTime(DateTime time) => formatLocalDateTime(time);
 
   @override
   bool shouldRepaint(covariant CandlePainter oldDelegate) =>

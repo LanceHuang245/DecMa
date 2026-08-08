@@ -2,8 +2,11 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
 import '../../services/node_runtime_service.dart';
+import '../../utils/display_formatters.dart';
 import '../chart/candle_chart_colors.dart';
 import '../core/window_title_bar.dart';
+import '../news/news_panel.dart';
+import '../news/news_settings_dialog.dart';
 import '../settings/agent_settings_dialog.dart';
 import 'dashboard_agent_panel.dart';
 import 'dashboard_chart_panel.dart';
@@ -16,12 +19,14 @@ class DashboardPage extends StatefulWidget {
     this.initialLlm,
     this.initialMcp,
     this.initialApi,
+    this.initialNews,
   });
 
   final bool nodeAvailable;
   final LlmSettings? initialLlm;
   final McpSettings? initialMcp;
   final ApiSettings? initialApi;
+  final NewsSettings? initialNews;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -38,6 +43,7 @@ class _DashboardPageState extends State<DashboardPage> {
       initialLlm: widget.initialLlm,
       initialMcp: widget.initialMcp,
       initialApi: widget.initialApi,
+      initialNews: widget.initialNews,
     )..initialize();
     if (!widget.nodeAvailable) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
@@ -92,6 +98,17 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  void _openNewsSettings() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => NewsSettingsDialog(
+        settings: _controller.news,
+        keyStatus: _controller.apiKeyStatus,
+        onSave: _controller.saveNewsSettings,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -121,7 +138,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           if (latest != null) ...[
                             const SizedBox(width: 12),
                             Text(
-                              '${_price(latest.close)} USD',
+                              '${formatMarketPrice(latest.close)} USD',
                               style: TextStyle(
                                 color: candleColor(latest),
                                 fontSize: 16,
@@ -129,59 +146,26 @@ class _DashboardPageState extends State<DashboardPage> {
                               ),
                             ),
                           ],
-                          const Spacer(),
-                          Button(
-                            onPressed: _openSettings,
-                            child: const Text('设置'),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Expanded(
-                        // The 3:2 flex ratio implements the requested 60% / 40% desktop split.
+                        // Keep market, news, and Agent as three independent desktop columns.
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Expanded(
-                              flex: 3,
-                              child: DashboardChartPanel(
-                                symbolController: _controller.symbolController,
-                                symbols: _controller.symbols,
-                                interval: _controller.interval,
-                                activeSymbol: _controller.activeSymbol,
-                                candles: _controller.candles,
-                                plan: _controller.plan,
-                                chartVersion: _controller.chartVersion,
-                                error: _controller.chartError,
-                                loading: _controller.showChartLoading,
-                                loadingChart: _controller.loadingChart,
-                                onSymbolSelected: _controller.selectSymbol,
-                                onIntervalChanged: _controller.selectInterval,
-                                onRetry: _controller.retryChart,
-                              ),
-                            ),
+                            Expanded(flex: 4, child: _chartPanel()),
                             const SizedBox(width: 12),
                             Expanded(
                               flex: 2,
-                              child: DashboardAgentPanel(
-                                plan: _controller.plan,
-                                messages: _controller.conversation,
-                                scrollController:
-                                    _controller.conversationScrollController,
-                                showScrollToBottom:
-                                    _controller.showScrollToBottom,
-                                mode: _controller.agentMode,
-                                llm: _controller.llm,
-                                loading: _controller.loadingAgent,
-                                promptController: _controller.promptController,
-                                onModeChanged: _controller.selectAgentMode,
-                                onQuickAnalysis: _controller.quickAnalyze,
-                                onSend: _controller.runAgent,
-                                onClear: _controller.clearAgentContext,
-                                onScrollToBottom:
-                                    _controller.scrollConversationToBottom,
+                              child: NewsPanel(
+                                events: _controller.newsEvents,
+                                providerStatuses:
+                                    _controller.newsProviderStatuses,
+                                onOpenSettings: _openNewsSettings,
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            Expanded(flex: 3, child: _agentPanel()),
                           ],
                         ),
                       ),
@@ -196,10 +180,36 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // Use precision suitable for the displayed price range.
-  String _price(double value) {
-    if (value >= 1000) return value.toStringAsFixed(1);
-    if (value >= 1) return value.toStringAsFixed(4);
-    return value.toStringAsFixed(6);
-  }
+  Widget _chartPanel() => DashboardChartPanel(
+    symbolController: _controller.symbolController,
+    symbols: _controller.symbols,
+    interval: _controller.interval,
+    activeSymbol: _controller.activeSymbol,
+    candles: _controller.candles,
+    plan: _controller.plan,
+    chartVersion: _controller.chartVersion,
+    error: _controller.chartError,
+    loading: _controller.showChartLoading,
+    loadingChart: _controller.loadingChart,
+    onSymbolSelected: _controller.selectSymbol,
+    onIntervalChanged: _controller.selectInterval,
+    onRetry: _controller.retryChart,
+  );
+
+  Widget _agentPanel() => DashboardAgentPanel(
+    plan: _controller.plan,
+    messages: _controller.conversation,
+    scrollController: _controller.conversationScrollController,
+    showScrollToBottom: _controller.showScrollToBottom,
+    mode: _controller.agentMode,
+    llm: _controller.llm,
+    loading: _controller.loadingAgent,
+    promptController: _controller.promptController,
+    onModeChanged: _controller.selectAgentMode,
+    onQuickAnalysis: _controller.quickAnalyze,
+    onSend: _controller.runAgent,
+    onClear: _controller.clearAgentContext,
+    onScrollToBottom: _controller.scrollConversationToBottom,
+    onOpenSettings: _openSettings,
+  );
 }

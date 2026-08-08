@@ -6,12 +6,14 @@ class ApiKeyStatus {
     this.hasCodexOAuth = false,
     this.hasNansenKey = false,
     this.hasCoinalyzeKey = false,
+    this.hasFinnhubKey = false,
   });
 
   final bool hasLlmKey;
   final bool hasCodexOAuth;
   final bool hasNansenKey;
   final bool hasCoinalyzeKey;
+  final bool hasFinnhubKey;
 }
 
 class CodexOAuthCredentials {
@@ -29,11 +31,17 @@ class CodexOAuthCredentials {
 }
 
 class ApiKeyUpdates {
-  const ApiKeyUpdates({this.llmKey, this.nansenKey, this.coinalyzeKey});
+  const ApiKeyUpdates({
+    this.llmKey,
+    this.nansenKey,
+    this.coinalyzeKey,
+    this.finnhubKey,
+  });
 
   final String? llmKey;
   final String? nansenKey;
   final String? coinalyzeKey;
+  final String? finnhubKey;
 }
 
 class SecureKeyStore {
@@ -47,6 +55,7 @@ class SecureKeyStore {
   static const _codexExpiresAt = 'decma.codex.expires_at';
   static const _nansenKey = 'decma.nansen_api_key';
   static const _coinalyzeKey = 'decma.coinalyze_api_key';
+  static const _finnhubKey = 'decma.finnhub_api_key';
   final FlutterSecureStorage _storage;
 
   Future<ApiKeyStatus> status() async {
@@ -58,12 +67,14 @@ class SecureKeyStore {
       _storage.containsKey(key: _codexExpiresAt),
       _storage.containsKey(key: _nansenKey),
       _storage.containsKey(key: _coinalyzeKey),
+      _storage.containsKey(key: _finnhubKey),
     ]);
     return ApiKeyStatus(
       hasLlmKey: saved[0],
       hasCodexOAuth: saved[1] && saved[2] && saved[3] && saved[4],
       hasNansenKey: saved[5],
       hasCoinalyzeKey: saved[6],
+      hasFinnhubKey: saved[7],
     );
   }
 
@@ -77,6 +88,9 @@ class SecureKeyStore {
     }
     if (updates.coinalyzeKey case final key?) {
       await _storage.write(key: _coinalyzeKey, value: key);
+    }
+    if (updates.finnhubKey case final key?) {
+      await _storage.write(key: _finnhubKey, value: key);
     }
   }
 
@@ -121,4 +135,5 @@ class SecureKeyStore {
 
   Future<String?> readNansenKey() => _storage.read(key: _nansenKey);
   Future<String?> readCoinalyzeKey() => _storage.read(key: _coinalyzeKey);
+  Future<String?> readFinnhubKey() => _storage.read(key: _finnhubKey);
 }

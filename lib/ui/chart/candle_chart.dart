@@ -2,6 +2,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
 
 import '../../models/trading_models.dart';
+import '../../utils/display_formatters.dart';
 import 'candle_chart_painter.dart';
 import 'candle_chart_viewport.dart';
 
@@ -297,8 +298,6 @@ class _CandleChartState extends State<CandleChart> {
 
   String _price(double? value) {
     if (value == null) return '未提供';
-    if (value >= 1000) return value.toStringAsFixed(1);
-    if (value >= 1) return value.toStringAsFixed(4);
-    return value.toStringAsFixed(6);
+    return formatMarketPrice(value);
   }
 }
