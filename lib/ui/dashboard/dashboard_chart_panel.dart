@@ -86,7 +86,6 @@ class DashboardChartPanel extends StatelessWidget {
                   },
                 ),
               ),
-              Text('Bybit Linear · $activeSymbol · 1 秒自动刷新'),
             ],
           ),
           const SizedBox(height: 12),

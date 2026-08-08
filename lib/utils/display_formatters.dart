@@ -23,3 +23,7 @@ String formatLocalDateTime(DateTime value) {
   return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
       '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 }
+
+/// Creates a non-secret placeholder for a key stored in secure storage.
+String? createSecretMask(bool hasSavedKey) =>
+    hasSavedKey ? 'saved-secret' : null;

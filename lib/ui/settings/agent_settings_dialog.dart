@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:decma/app_constants.dart';
+import 'package:decma/utils/display_formatters.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
 import '../../services/openai_codex_oauth.dart';
 import '../../services/secure_key_store.dart';
-import '../../utils/secret_mask.dart';
 import '../core/documentation_help_label.dart';
 
 class AgentSettingsDialog extends StatefulWidget {
