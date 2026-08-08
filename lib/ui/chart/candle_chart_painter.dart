@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
+import 'candle_chart_colors.dart';
 import 'candle_chart_viewport.dart';
 
 class CandlePainter extends CustomPainter {
@@ -19,8 +20,6 @@ class CandlePainter extends CustomPainter {
   final double zoom;
   final double pan;
   final Offset? hoverPosition;
-  static const _up = Color(0xFF27A376);
-  static const _down = Color(0xFFD94C5D);
   static const _grid = Color(0xFFBBC3CC);
 
   @override
@@ -89,7 +88,7 @@ class CandlePainter extends CustomPainter {
     ) {
       final candle = candles[view.start + visibleIndex];
       final x = view.chart.left + view.step * (visibleIndex + 0.5);
-      final color = candle.close >= candle.open ? _up : _down;
+      final color = candleColor(candle);
       final paint = Paint()..color = color;
       canvas.drawLine(
         Offset(x, yOf(candle.high)),
@@ -148,7 +147,7 @@ class CandlePainter extends CustomPainter {
 
   void _drawCurrentPrice(Canvas canvas, Rect chart, double y, Candle latest) {
     if (y < chart.top || y > chart.bottom) return;
-    final color = latest.close >= latest.open ? _up : _down;
+    final color = candleColor(latest);
     final paint = Paint()
       ..color = color
       ..strokeWidth = 1;
@@ -193,9 +192,9 @@ class CandlePainter extends CustomPainter {
       paint,
     );
 
-    final candleColor = candle.close >= candle.open ? _up : _down;
+    final candlePriceColor = candleColor(candle);
     final latest = candles.last;
-    final latestColor = latest.close >= latest.open ? _up : _down;
+    final latestColor = candleColor(latest);
     _tooltip(
       canvas,
       TextSpan(
@@ -206,10 +205,10 @@ class CandlePainter extends CustomPainter {
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           _valueSpan('开', candle.open, Colors.white),
-          _valueSpan('高', candle.high, _up),
+          _valueSpan('高', candle.high, candleUpColor),
           const TextSpan(text: '\n'),
-          _valueSpan('低', candle.low, _down),
-          _valueSpan('收', candle.close, candleColor),
+          _valueSpan('低', candle.low, candleDownColor),
+          _valueSpan('收', candle.close, candlePriceColor),
           const TextSpan(text: '\n'),
           _valueSpan('鼠标', cursorPrice, Colors.white),
           _valueSpan('最新', latest.close, latestColor),
@@ -230,9 +229,9 @@ class CandlePainter extends CustomPainter {
     final entryLow = plan!.entryLow;
     final entryHigh = plan!.entryHigh;
     final entryColor = plan!.decision == 'LONG_SETUP'
-        ? _up
+        ? candleUpColor
         : plan!.decision == 'SHORT_SETUP'
-        ? _down
+        ? candleDownColor
         : Colors.blue;
     final direction = plan!.decision == 'LONG_SETUP'
         ? '做多'
@@ -267,11 +266,17 @@ class CandlePainter extends CustomPainter {
       }
     }
     if (plan!.stopLoss case final stop?) {
-      _level(canvas, chart, yOf(stop), _down, 'SL ${_price(stop)}');
+      _level(canvas, chart, yOf(stop), candleDownColor, 'SL ${_price(stop)}');
     }
     for (var index = 0; index < plan!.takeProfits.length; index++) {
       final price = plan!.takeProfits[index];
-      _level(canvas, chart, yOf(price), _up, 'TP${index + 1} ${_price(price)}');
+      _level(
+        canvas,
+        chart,
+        yOf(price),
+        candleUpColor,
+        'TP${index + 1} ${_price(price)}',
+      );
     }
   }
 

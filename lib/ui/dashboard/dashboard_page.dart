@@ -2,6 +2,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
 import '../../services/node_runtime_service.dart';
+import '../chart/candle_chart_colors.dart';
 import '../core/window_title_bar.dart';
 import '../settings/agent_settings_dialog.dart';
 import 'dashboard_agent_panel.dart';
@@ -95,97 +96,103 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, child) => SafeArea(
-        child: Column(
-          children: [
-            const WindowTitleBar(),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          _controller.activeSymbol,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (_controller.candles.isNotEmpty) ...[
-                          const SizedBox(width: 12),
-                          Text(
-                            _price(_controller.candles.last.close),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                        const Spacer(),
-                        Button(
-                          onPressed: _openSettings,
-                          child: const Text('设置'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      // The 3:2 flex ratio implements the requested 60% / 40% desktop split.
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+      builder: (context, child) {
+        final latest = _controller.candles.isEmpty
+            ? null
+            : _controller.candles.last;
+        return SafeArea(
+          child: Column(
+            children: [
+              const WindowTitleBar(),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Row(
                         children: [
-                          Expanded(
-                            flex: 3,
-                            child: DashboardChartPanel(
-                              symbolController: _controller.symbolController,
-                              symbols: _controller.symbols,
-                              interval: _controller.interval,
-                              activeSymbol: _controller.activeSymbol,
-                              candles: _controller.candles,
-                              plan: _controller.plan,
-                              chartVersion: _controller.chartVersion,
-                              error: _controller.chartError,
-                              loading: _controller.showChartLoading,
-                              loadingChart: _controller.loadingChart,
-                              onSymbolSelected: _controller.selectSymbol,
-                              onIntervalChanged: _controller.selectInterval,
-                              onRetry: _controller.retryChart,
+                          Text(
+                            _controller.activeSymbol,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 2,
-                            child: DashboardAgentPanel(
-                              plan: _controller.plan,
-                              messages: _controller.conversation,
-                              scrollController:
-                                  _controller.conversationScrollController,
-                              showScrollToBottom:
-                                  _controller.showScrollToBottom,
-                              mode: _controller.agentMode,
-                              llm: _controller.llm,
-                              loading: _controller.loadingAgent,
-                              promptController: _controller.promptController,
-                              onModeChanged: _controller.selectAgentMode,
-                              onQuickAnalysis: _controller.quickAnalyze,
-                              onSend: _controller.runAgent,
-                              onClear: _controller.clearAgentContext,
-                              onScrollToBottom:
-                                  _controller.scrollConversationToBottom,
+                          if (latest != null) ...[
+                            const SizedBox(width: 12),
+                            Text(
+                              '${_price(latest.close)} USD',
+                              style: TextStyle(
+                                color: candleColor(latest),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
+                          ],
+                          const Spacer(),
+                          Button(
+                            onPressed: _openSettings,
+                            child: const Text('设置'),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Expanded(
+                        // The 3:2 flex ratio implements the requested 60% / 40% desktop split.
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: DashboardChartPanel(
+                                symbolController: _controller.symbolController,
+                                symbols: _controller.symbols,
+                                interval: _controller.interval,
+                                activeSymbol: _controller.activeSymbol,
+                                candles: _controller.candles,
+                                plan: _controller.plan,
+                                chartVersion: _controller.chartVersion,
+                                error: _controller.chartError,
+                                loading: _controller.showChartLoading,
+                                loadingChart: _controller.loadingChart,
+                                onSymbolSelected: _controller.selectSymbol,
+                                onIntervalChanged: _controller.selectInterval,
+                                onRetry: _controller.retryChart,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: DashboardAgentPanel(
+                                plan: _controller.plan,
+                                messages: _controller.conversation,
+                                scrollController:
+                                    _controller.conversationScrollController,
+                                showScrollToBottom:
+                                    _controller.showScrollToBottom,
+                                mode: _controller.agentMode,
+                                llm: _controller.llm,
+                                loading: _controller.loadingAgent,
+                                promptController: _controller.promptController,
+                                onModeChanged: _controller.selectAgentMode,
+                                onQuickAnalysis: _controller.quickAnalyze,
+                                onSend: _controller.runAgent,
+                                onClear: _controller.clearAgentContext,
+                                onScrollToBottom:
+                                    _controller.scrollConversationToBottom,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 
