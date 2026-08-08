@@ -1,8 +1,10 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
+import '../../app_constants.dart';
 import '../../models/trading_models.dart';
 import '../../services/secure_key_store.dart';
 import '../../utils/secret_mask.dart';
+import '../core/documentation_help_label.dart';
 
 class NewsSettingsDialog extends StatefulWidget {
   const NewsSettingsDialog({
@@ -58,7 +60,11 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
         children: [
           ToggleSwitch(
             checked: _useFinnhub,
-            content: const Text('Finnhub Market News'),
+            content: const DocumentationHelpLabel(
+              label: 'Finnhub Market News',
+              tooltip: '查看 Finnhub Market News 文档',
+              documentationUrl: AppConstants.finnhubDocumentationUrl,
+            ),
             onChanged: (value) => setState(() => _useFinnhub = value),
           ),
           if (_useFinnhub) ...[

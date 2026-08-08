@@ -1,9 +1,8 @@
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../models/news_event.dart';
 import '../../services/news/news_service.dart';
 import '../../utils/display_formatters.dart';
+import '../../utils/external_link.dart';
 
 class NewsPanel extends StatefulWidget {
   const NewsPanel({
@@ -160,7 +159,7 @@ class _NewsItem extends StatelessWidget {
       ],
     );
     return Button(
-      onPressed: uri == null ? null : () => _open(uri),
+      onPressed: uri == null ? null : () => openExternalLink(uri),
       style: const ButtonStyle(
         padding: WidgetStatePropertyAll(EdgeInsets.all(8)),
       ),
@@ -191,7 +190,4 @@ class _NewsItem extends StatelessWidget {
     if (uri == null || uri.host.isEmpty) return null;
     return uri.scheme == 'https' || uri.scheme == 'http' ? uri : null;
   }
-
-  Future<void> _open(Uri uri) =>
-      launchUrl(uri, mode: LaunchMode.externalApplication);
 }

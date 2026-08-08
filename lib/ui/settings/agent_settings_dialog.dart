@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:decma/app_constants.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
 import '../../services/openai_codex_oauth.dart';
 import '../../services/secure_key_store.dart';
 import '../../utils/secret_mask.dart';
+import '../core/documentation_help_label.dart';
 
 class AgentSettingsDialog extends StatefulWidget {
   const AgentSettingsDialog({
@@ -238,7 +240,12 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                           const SizedBox(height: 8),
                           ToggleSwitch(
                             checked: _useNansen,
-                            content: const Text('Nansen MCP'),
+                            content: const DocumentationHelpLabel(
+                              label: 'Nansen MCP',
+                              tooltip: '查看 Nansen MCP 文档',
+                              documentationUrl:
+                                  AppConstants.nansenDocumentationUrl,
+                            ),
                             onChanged: (value) =>
                                 setState(() => _useNansen = value),
                           ),
@@ -272,7 +279,12 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                           const SizedBox(height: 6),
                           ToggleSwitch(
                             checked: _useCoinalyze,
-                            content: const Text('Coinalyze'),
+                            content: const DocumentationHelpLabel(
+                              label: 'Coinalyze',
+                              tooltip: '查看 Coinalyze API 文档',
+                              documentationUrl:
+                                  AppConstants.coinalyzeDocumentationUrl,
+                            ),
                             onChanged: (value) =>
                                 setState(() => _useCoinalyze = value),
                           ),
