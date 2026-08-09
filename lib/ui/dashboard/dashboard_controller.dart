@@ -34,6 +34,7 @@ class DashboardController extends ChangeNotifier {
     McpSettings? initialMcp,
     ApiSettings? initialApi,
     NewsSettings? initialNews,
+    String? initialSymbol,
   }) {
     final defaultLlm = LlmSettings(
       provider: LlmProvider.openAiResponses,
@@ -50,6 +51,10 @@ class DashboardController extends ChangeNotifier {
     if (initialMcp != null) _mcp = initialMcp;
     if (initialApi != null) _api = initialApi;
     if (initialNews != null) _news = initialNews;
+    if (initialSymbol?.trim().isNotEmpty ?? false) {
+      _activeSymbol = initialSymbol!.trim().toUpperCase();
+      _symbol.text = _activeSymbol;
+    }
     if (!nodeAvailable) {
       _mcp = const McpSettings(
         useBybit: false,
@@ -284,6 +289,7 @@ class DashboardController extends ChangeNotifier {
     _chartError = null;
     _notify();
     _startChartRefresh();
+    unawaited(_llmSettingsStore.saveLastViewedSymbol(_activeSymbol));
   }
 
   void selectInterval(String interval) {
@@ -303,6 +309,7 @@ class DashboardController extends ChangeNotifier {
     _recordActivity('• Chart - 加载 $symbol');
     _activeSymbol = symbol;
     _symbol.text = symbol;
+    unawaited(_llmSettingsStore.saveLastViewedSymbol(symbol));
     _plan = null;
     _chartError = null;
     _showChartLoading = true;

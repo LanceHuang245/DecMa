@@ -10,6 +10,7 @@ class LlmSettingsStore {
 
   static const _connectionsKey = 'decma.llm.connections';
   static const _activeConnectionKey = 'decma.llm.active_connection';
+  static const _lastViewedSymbolKey = 'decma.dashboard.last_viewed_symbol';
   static const _legacyProviderKey = 'decma.llm.provider';
   static const _legacyEndpointKey = 'decma.llm.endpoint';
   static const _legacyModelKey = 'decma.llm.model';
@@ -23,6 +24,12 @@ class LlmSettingsStore {
   static const _beaNewsKey = 'decma.news.bea';
   static const _federalReserveNewsKey = 'decma.news.federal_reserve';
   final SharedPreferencesAsync _preferences;
+
+  Future<String?> readLastViewedSymbol() =>
+      _preferences.getString(_lastViewedSymbolKey);
+
+  Future<void> saveLastViewedSymbol(String symbol) =>
+      _preferences.setString(_lastViewedSymbolKey, symbol.toUpperCase());
 
   Future<LlmConnectionSettings> readConnections() async {
     final saved = await _preferences.getString(_connectionsKey);

@@ -31,6 +31,7 @@ Future<void> main() async {
   final initialMcp = await settingsStore.readMcp();
   final initialApi = await settingsStore.readApi();
   final initialNews = await settingsStore.readNews();
+  final initialSymbol = await settingsStore.readLastViewedSymbol();
   runApp(
     DecmaApp(
       nodeAvailable: nodeAvailable,
@@ -38,6 +39,7 @@ Future<void> main() async {
       initialMcp: initialMcp,
       initialApi: initialApi,
       initialNews: initialNews,
+      initialSymbol: initialSymbol,
     ),
   );
 }
@@ -50,6 +52,7 @@ class DecmaApp extends StatelessWidget {
     this.initialMcp,
     this.initialApi,
     this.initialNews,
+    this.initialSymbol,
   });
 
   final bool nodeAvailable;
@@ -57,6 +60,7 @@ class DecmaApp extends StatelessWidget {
   final McpSettings? initialMcp;
   final ApiSettings? initialApi;
   final NewsSettings? initialNews;
+  final String? initialSymbol;
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +77,7 @@ class DecmaApp extends StatelessWidget {
         initialMcp: initialMcp,
         initialApi: initialApi,
         initialNews: initialNews,
+        initialSymbol: initialSymbol,
       ),
     );
   }

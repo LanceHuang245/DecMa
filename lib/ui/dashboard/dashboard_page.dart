@@ -20,6 +20,7 @@ class DashboardPage extends StatefulWidget {
     this.initialMcp,
     this.initialApi,
     this.initialNews,
+    this.initialSymbol,
   });
 
   final bool nodeAvailable;
@@ -27,6 +28,7 @@ class DashboardPage extends StatefulWidget {
   final McpSettings? initialMcp;
   final ApiSettings? initialApi;
   final NewsSettings? initialNews;
+  final String? initialSymbol;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -44,6 +46,7 @@ class _DashboardPageState extends State<DashboardPage> {
       initialMcp: widget.initialMcp,
       initialApi: widget.initialApi,
       initialNews: widget.initialNews,
+      initialSymbol: widget.initialSymbol,
     )..initialize();
     if (!widget.nodeAvailable) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
