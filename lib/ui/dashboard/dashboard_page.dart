@@ -163,6 +163,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               flex: 2,
                               child: NewsPanel(
                                 events: _controller.newsEvents,
+                                currentSymbol: _controller.activeSymbol,
                                 providerStatuses:
                                     _controller.newsProviderStatuses,
                                 onOpenSettings: _openNewsSettings,

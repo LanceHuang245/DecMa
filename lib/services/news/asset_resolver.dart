@@ -1,4 +1,5 @@
 import '../../models/asset_profile.dart';
+import '../../utils/symbol_utils.dart';
 import 'asset_profile_store.dart';
 
 /// Resolves a Bybit perpetual symbol into reusable, conservative news metadata.
@@ -14,7 +15,7 @@ class AssetResolver {
 
   Future<AssetProfile> resolve(String symbol) async {
     await _load();
-    final normalized = symbol.toUpperCase();
+    final normalized = normalizeContractSymbol(symbol);
     final cached = _cache[normalized];
     if (cached != null) return cached;
     final profile = fromSymbol(normalized);
@@ -38,8 +39,8 @@ class AssetResolver {
 
   // Keep only unambiguous project aliases; unknown assets fall back to ticker matching.
   static AssetProfile fromSymbol(String symbol) {
-    final normalized = symbol.toUpperCase();
-    final baseAsset = normalized.replaceFirst(RegExp(r'(USDT|USDC|USD)$'), '');
+    final normalized = normalizeContractSymbol(symbol);
+    final baseAsset = baseAssetFromSymbol(normalized);
     final metadata = _known[baseAsset];
     return AssetProfile(
       symbol: normalized,

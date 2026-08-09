@@ -3,16 +3,21 @@ import '../../models/news_event.dart';
 import '../../services/news/news_service.dart';
 import '../../utils/display_formatters.dart';
 import '../../utils/external_link.dart';
+import '../../utils/symbol_utils.dart';
+
+enum _NewsView { all, currentAsset, macro, crypto, regulation, exchange }
 
 class NewsPanel extends StatefulWidget {
   const NewsPanel({
     super.key,
     required this.events,
+    required this.currentSymbol,
     required this.providerStatuses,
     required this.onOpenSettings,
   });
 
   final List<NewsEvent> events;
+  final String currentSymbol;
   final Map<String, NewsProviderStatus> providerStatuses;
   final VoidCallback onOpenSettings;
 
@@ -21,17 +26,18 @@ class NewsPanel extends StatefulWidget {
 }
 
 class _NewsPanelState extends State<NewsPanel> {
-  NewsCategory? _category;
+  _NewsView _view = _NewsView.all;
   String? _provider;
 
   @override
   Widget build(BuildContext context) {
     final providers =
         widget.events.map((event) => event.provider).toSet().toList()..sort();
+    final currentAsset = baseAssetFromSymbol(widget.currentSymbol);
     final events = widget.events
         .where(
           (event) =>
-              (_category == null || event.category == _category) &&
+              _matchesView(event, currentAsset) &&
               (_provider == null || event.provider == _provider),
         )
         .toList();
@@ -62,11 +68,12 @@ class _NewsPanelState extends State<NewsPanel> {
             spacing: 4,
             runSpacing: 4,
             children: [
-              _filterButton(null, '全部'),
-              _filterButton(NewsCategory.macro, '宏观'),
-              _filterButton(NewsCategory.crypto, 'Crypto'),
-              _filterButton(NewsCategory.regulation, '监管'),
-              _filterButton(NewsCategory.exchange, '交易所'),
+              _filterButton(_NewsView.all, '全部'),
+              _filterButton(_NewsView.currentAsset, '当前币'),
+              _filterButton(_NewsView.macro, '宏观'),
+              _filterButton(_NewsView.crypto, 'Crypto'),
+              _filterButton(_NewsView.regulation, '监管'),
+              _filterButton(_NewsView.exchange, '交易所'),
             ],
           ),
           const SizedBox(height: 6),
@@ -99,13 +106,22 @@ class _NewsPanelState extends State<NewsPanel> {
     );
   }
 
-  Widget _filterButton(NewsCategory? category, String label) => ToggleButton(
-    checked: _category == category,
+  Widget _filterButton(_NewsView view, String label) => ToggleButton(
+    checked: _view == view,
     onChanged: (checked) {
-      if (checked) setState(() => _category = category);
+      if (checked) setState(() => _view = view);
     },
     child: Text(label),
   );
+
+  bool _matchesView(NewsEvent event, String currentAsset) => switch (_view) {
+    _NewsView.all => true,
+    _NewsView.currentAsset => event.directAssets.contains(currentAsset),
+    _NewsView.macro => event.category == NewsCategory.macro,
+    _NewsView.crypto => event.category == NewsCategory.crypto,
+    _NewsView.regulation => event.category == NewsCategory.regulation,
+    _NewsView.exchange => event.category == NewsCategory.exchange,
+  };
 
   Widget _providerFilterButton(String? provider, String label) => ToggleButton(
     checked: _provider == provider,

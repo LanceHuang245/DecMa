@@ -213,7 +213,75 @@ void main() {
       service.dispose();
     },
   );
+
+  test('token refresh TTL survives a NewsService restart', () async {
+    final store = EventStore.memory();
+    final first = NewsService(
+      client: _QueueJsonClient([
+        {
+          'data': [
+            {
+              'symbol': 'CC:ONDO',
+              'name': 'Ondo Finance',
+              'type': 'cryptocurrency',
+            },
+          ],
+        },
+        {
+          'data': [
+            {
+              'uuid': 'ondo-cached',
+              'title': 'Ondo Finance update',
+              'source': 'Example News',
+              'published_at': DateTime.now().toUtc().toIso8601String(),
+              'entities': [
+                {
+                  'symbol': 'CC:ONDO',
+                  'name': 'Ondo Finance',
+                  'type': 'cryptocurrency',
+                  'match_score': 90,
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+      store: store,
+      assetResolver: AssetResolver.memory(),
+    );
+    await first.refreshTokenNews(
+      symbol: 'ONDOUSDT',
+      settings: _marketauxSettings,
+      marketauxApiKey: 'test-key',
+    );
+    first.dispose();
+
+    final secondClient = _CountingErrorClient();
+    final second = NewsService(
+      client: secondClient,
+      store: store,
+      assetResolver: AssetResolver.memory(),
+    );
+    final cached = await second.refreshTokenNews(
+      symbol: 'ONDOUSDT',
+      settings: _marketauxSettings,
+      marketauxApiKey: 'test-key',
+    );
+
+    expect(secondClient.calls, 0);
+    expect(cached.single.eventId, 'marketaux:ondo-cached');
+    expect(second.statuses['Marketaux']?.state, NewsProviderState.active);
+    second.dispose();
+  });
 }
+
+const _marketauxSettings = NewsSettings(
+  useFinnhub: false,
+  useMarketaux: true,
+  useBls: false,
+  useBea: false,
+  useFederalReserve: false,
+);
 
 class _ErrorClient extends http.BaseClient {
   @override
@@ -229,6 +297,31 @@ class _JsonClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async =>
       http.StreamedResponse(Stream.value(utf8.encode(jsonEncode(body))), 200);
+}
+
+class _QueueJsonClient extends http.BaseClient {
+  _QueueJsonClient(this.responses);
+
+  final List<Object> responses;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = responses.removeAt(0);
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(jsonEncode(body))),
+      200,
+    );
+  }
+}
+
+class _CountingErrorClient extends http.BaseClient {
+  var calls = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    calls++;
+    return http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
+  }
 }
 
 NewsEvent _event({

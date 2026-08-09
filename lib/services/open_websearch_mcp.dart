@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../app_constants.dart';
 import 'mcp_connection.dart';
 
 class OpenWebSearchMcp extends StdioMcpConnection {
@@ -8,8 +9,8 @@ class OpenWebSearchMcp extends StdioMcpConnection {
         name: 'OpenWebSearch MCP',
         command: Platform.isWindows ? 'cmd' : 'npx',
         arguments: Platform.isWindows
-            ? const ['/c', 'npx', '-y', 'open-websearch@latest']
-            : const ['-y', 'open-websearch@latest'],
+            ? const ['/c', 'npx', '-y', AppConstants.openWebSearchMcpPackage]
+            : const ['-y', AppConstants.openWebSearchMcpPackage],
         environment: _environment(),
       );
 

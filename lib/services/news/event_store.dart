@@ -9,10 +9,12 @@ class EventStore {
   EventStore.memory() : _preferences = null;
 
   static const _eventsKey = 'decma.news.events.v1';
+  static const _refreshKeyPrefix = 'decma.news.refresh.v1.';
   static const _maxEvents = 500;
   static const _retention = Duration(days: 14);
   final SharedPreferencesAsync? _preferences;
   List<NewsEvent> _memory = const [];
+  final Map<String, DateTime> _memoryRefreshTimes = {};
 
   Future<List<NewsEvent>> read() async {
     if (_preferences == null) return [..._memory];
@@ -39,6 +41,26 @@ class EventStore {
       await _preferences.setString(_eventsKey, NewsEvent.encodeAll(events));
     }
     return events;
+  }
+
+  Future<DateTime?> readRefreshTime(String providerKey) async {
+    if (_preferences == null) return _memoryRefreshTimes[providerKey];
+    final value = await _preferences.getString(
+      '$_refreshKeyPrefix$providerKey',
+    );
+    return value == null ? null : DateTime.tryParse(value)?.toUtc();
+  }
+
+  // Persist provider freshness separately from cached event publication times.
+  Future<void> writeRefreshTime(String providerKey, DateTime value) async {
+    if (_preferences == null) {
+      _memoryRefreshTimes[providerKey] = value.toUtc();
+      return;
+    }
+    await _preferences.setString(
+      '$_refreshKeyPrefix$providerKey',
+      value.toUtc().toIso8601String(),
+    );
   }
 
   // Shared merge logic is deterministic and testable without a local store.

@@ -176,8 +176,18 @@ class NewsService {
       return;
     }
     if (_retryAfter[key]?.isAfter(now) ?? false) return;
-    if (_lastAttempt[key]?.add(interval).isAfter(now) ?? false) return;
+    final lastAttempt = _lastAttempt[key] ?? await _store.readRefreshTime(key);
+    if (lastAttempt?.add(interval).isAfter(now) ?? false) {
+      _statuses[id] = NewsProviderStatus(
+        id: id,
+        state: NewsProviderState.active,
+        message: 'Using cached data',
+        updatedAt: lastAttempt,
+      );
+      return;
+    }
     _lastAttempt[key] = now;
+    await _store.writeRefreshTime(key, now);
     try {
       output.addAll(await task());
       _statuses[id] = NewsProviderStatus(

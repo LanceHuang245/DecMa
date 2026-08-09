@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../app_constants.dart';
 import '../models/trading_models.dart';
 import 'mcp_types.dart';
 
@@ -338,9 +339,10 @@ class LlmTransport {
     Map<String, dynamic> body, {
     bool stream = false,
   }) async {
-    // Log only the JSON body because API credentials are sent through headers.
     final requestBody = jsonEncode(body);
-    debugPrint('LLM request [POST $uri]:\n$requestBody');
+    if (kDebugMode && AppConstants.logLlmPayloads) {
+      debugPrint('LLM request [POST $uri]:\n$requestBody');
+    }
     final request = http.Request('POST', uri)
       ..headers.addAll({'Content-Type': 'application/json', ...headers})
       ..body = requestBody;
@@ -350,9 +352,11 @@ class LlmTransport {
     final responseBody = await response.stream.bytesToString().timeout(
       const Duration(minutes: 5),
     );
-    debugPrint(
-      'LLM response [${response.statusCode} ${response.reasonPhrase ?? ''}]:\n$responseBody',
-    );
+    if (kDebugMode && AppConstants.logLlmPayloads) {
+      debugPrint(
+        'LLM response [${response.statusCode} ${response.reasonPhrase ?? ''}]:\n$responseBody',
+      );
+    }
     if (response.statusCode >= 400) {
       final decoded = _tryJson(responseBody);
       throw Exception(

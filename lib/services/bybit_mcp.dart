@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../app_constants.dart';
 import 'mcp_connection.dart';
 
 class BybitMcp extends StdioMcpConnection {
@@ -8,8 +9,8 @@ class BybitMcp extends StdioMcpConnection {
         name: 'Bybit MCP',
         command: Platform.isWindows ? 'cmd' : 'npx',
         arguments: Platform.isWindows
-            ? const ['/c', 'npx', '-y', 'bybit-official-trading-server@latest']
-            : const ['-y', 'bybit-official-trading-server@latest'],
+            ? const ['/c', 'npx', '-y', AppConstants.bybitMcpPackage]
+            : const ['-y', AppConstants.bybitMcpPackage],
         environment: _publicMarketEnvironment(),
       );
 

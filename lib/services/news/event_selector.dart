@@ -1,4 +1,5 @@
 import '../../models/news_event.dart';
+import '../../utils/symbol_utils.dart';
 
 class EventSelector {
   const EventSelector();
@@ -17,10 +18,7 @@ class EventSelector {
     DateTime? now,
   }) {
     final asOf = (now ?? DateTime.now()).toUtc();
-    final asset = symbol.toUpperCase().replaceFirst(
-      RegExp(r'(USDT|USDC|USD)$'),
-      '',
-    );
+    final asset = baseAssetFromSymbol(symbol);
     final sorted = [...events]..sort(_priorityCompare);
     final used = <String>{};
     List<NewsEvent> take(Iterable<NewsEvent> values, int count) =>
