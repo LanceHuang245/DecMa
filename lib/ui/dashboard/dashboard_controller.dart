@@ -585,7 +585,7 @@ class DashboardController extends ChangeNotifier {
 
   void quickAnalyze() {
     _agentMode = AgentMode.analysis;
-    _prompt.text = '给我一个 $_activeSymbol 的开仓方向与位置以及止盈、止损位置。';
+    _prompt.text = '给我一个 $_activeSymbol 的1小时短线开仓方向与位置以及止盈、止损位置。';
     _notify();
     unawaited(runAgent());
   }
