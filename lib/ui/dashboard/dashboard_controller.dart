@@ -2,14 +2,18 @@ import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
 
+import '../../models/market_snapshot.dart';
+import '../../models/news_event.dart';
 import '../../models/trading_models.dart';
 import '../../services/agent_service.dart';
+import '../../services/analysis/feature_engine.dart';
+import '../../services/analysis/market_snapshot_service.dart';
+import '../../services/analysis/trade_plan_validator.dart';
 import '../../services/bybit_service.dart';
 import '../../services/llm_settings_store.dart';
 import '../../services/secure_key_store.dart';
 import '../../services/news/event_selector.dart';
 import '../../services/news/news_service.dart';
-import '../../models/news_event.dart';
 
 enum DashboardMessageKind { user, agent, activity }
 
@@ -30,12 +34,13 @@ class DashboardMessage {
 class DashboardController extends ChangeNotifier {
   DashboardController({
     required bool nodeAvailable,
+    BybitService? bybit,
     LlmConnectionSettings? initialLlmConnections,
     McpSettings? initialMcp,
     ApiSettings? initialApi,
     NewsSettings? initialNews,
     String? initialSymbol,
-  }) {
+  }) : _bybit = bybit ?? BybitService() {
     final defaultLlm = LlmSettings(
       provider: LlmProvider.openAiResponses,
       endpoint: LlmProvider.openAiResponses.defaultEndpoint,
@@ -67,10 +72,11 @@ class DashboardController extends ChangeNotifier {
 
   static const _historyLimit = 1000;
   static const _conversationBottomThreshold = 24.0;
-  static const _abnormalCandleMultiplier = 3.0;
 
-  final _bybit = BybitService();
+  final BybitService _bybit;
   final _agent = AgentService();
+  final _featureEngine = const FeatureEngine();
+  final _tradePlanValidator = const TradePlanValidator();
   final _newsService = NewsService();
   final _eventSelector = const EventSelector();
   final _keyStore = SecureKeyStore();
@@ -79,6 +85,9 @@ class DashboardController extends ChangeNotifier {
   final _prompt = TextEditingController();
   final _conversationScrollController = ScrollController();
   final _conversation = <DashboardMessage>[];
+  late final MarketSnapshotService _marketSnapshots = MarketSnapshotService(
+    _bybit,
+  );
   Timer? _chartRefreshTimer;
   Timer? _newsRefreshTimer;
   var _activeSymbol = 'BTCUSDT';
@@ -92,7 +101,8 @@ class DashboardController extends ChangeNotifier {
   String? _conversationContext;
   String? _chartError;
   var _chartVersion = 0;
-  bool _loadingChart = false;
+  var _chartLoadGeneration = 0;
+  int? _loadingChartGeneration;
   bool _showChartLoading = false;
   bool _loadingAgent = false;
   AgentMode _agentMode = AgentMode.analysis;
@@ -131,7 +141,7 @@ class DashboardController extends ChangeNotifier {
   List<DashboardMessage> get conversation => _conversation;
   String? get chartError => _chartError;
   int get chartVersion => _chartVersion;
-  bool get loadingChart => _loadingChart;
+  bool get loadingChart => _loadingChartGeneration == _chartLoadGeneration;
   bool get showChartLoading => _showChartLoading;
   bool get loadingAgent => _loadingAgent;
   AgentMode get agentMode => _agentMode;
@@ -153,9 +163,9 @@ class DashboardController extends ChangeNotifier {
   }
 
   // Poll public Kline data once per second without allowing overlapping requests.
-  void _startChartRefresh() {
+  void _startChartRefresh({bool loadImmediately = true}) {
     _chartRefreshTimer?.cancel();
-    unawaited(_loadChart());
+    if (loadImmediately) unawaited(_loadChart());
     _chartRefreshTimer = Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(_loadChart(latestOnly: true)),
@@ -222,41 +232,50 @@ class DashboardController extends ChangeNotifier {
   }
 
   Future<void> _loadChart({bool latestOnly = false}) async {
-    if (_loadingChart || _isDisposed) return;
+    if (_isDisposed) return;
+    final generation = _chartLoadGeneration;
+    if (_loadingChartGeneration == generation) return;
     final symbol = _activeSymbol;
     final interval = _interval;
     final hasCandles = _candles.isNotEmpty;
-    _loadingChart = true;
-    if (!latestOnly) _showChartLoading = true;
+    final fullLoad = !latestOnly || !hasCandles;
+    _loadingChartGeneration = generation;
+    if (fullLoad) _showChartLoading = true;
     _notify();
     try {
       final candles = await _bybit.fetchKlines(
         symbol: symbol,
         interval: interval,
-        limit: latestOnly && hasCandles ? 2 : _historyLimit,
+        limit: fullLoad ? _historyLimit : 2,
       );
-      // Ignore a response for a symbol or timeframe the user has left behind.
-      if (_isDisposed || symbol != _activeSymbol || interval != _interval) {
+      // A stale request must never update a newer chart selection.
+      if (_isDisposed ||
+          generation != _chartLoadGeneration ||
+          symbol != _activeSymbol ||
+          interval != _interval) {
         return;
       }
-      _candles = latestOnly
-          ? _mergeLatestCandles(hasCandles ? _candles : const [], candles)
-          : candles;
+      _candles = fullLoad ? candles : _mergeLatestCandles(_candles, candles);
       _chartError = null;
-      if (!latestOnly) {
+      if (fullLoad) {
         _showChartLoading = false;
         _chartVersion++;
       }
       _notify();
     } catch (error) {
+      if (_isDisposed ||
+          generation != _chartLoadGeneration ||
+          symbol != _activeSymbol ||
+          interval != _interval) {
+        return;
+      }
       _chartRefreshTimer?.cancel();
-      if (_isDisposed) return;
       _chartError = 'K 线加载失败：$error';
       _showChartLoading = false;
       _notify();
     } finally {
-      if (!_isDisposed) {
-        _loadingChart = false;
+      if (!_isDisposed && _loadingChartGeneration == generation) {
+        _loadingChartGeneration = null;
         _notify();
       }
     }
@@ -276,26 +295,40 @@ class DashboardController extends ChangeNotifier {
   }
 
   void retryChart() {
-    if (_loadingChart) return;
+    if (loadingChart) return;
     _chartError = null;
+    _showChartLoading = true;
     _notify();
     _startChartRefresh();
   }
 
   void selectSymbol(String symbol) {
-    _activeSymbol = symbol.toUpperCase();
+    final normalized = symbol.toUpperCase();
+    if (normalized == _activeSymbol) return;
+    _activeSymbol = normalized;
     _symbol.text = _activeSymbol;
-    _plan = null;
-    _chartError = null;
+    _beginChartTransition();
     _notify();
     _startChartRefresh();
     unawaited(_llmSettingsStore.saveLastViewedSymbol(_activeSymbol));
+    unawaited(_refreshTokenNews(_activeSymbol));
   }
 
   void selectInterval(String interval) {
+    if (interval == _interval) return;
     _interval = interval;
+    _beginChartTransition();
     _notify();
     _startChartRefresh();
+  }
+
+  // Invalidate in-flight requests and remove candles from the previous view.
+  void _beginChartTransition() {
+    _chartLoadGeneration++;
+    _candles = const [];
+    _plan = null;
+    _chartError = null;
+    _showChartLoading = true;
   }
 
   Future<String> _resolveAnalysisSymbol(String prompt) async {
@@ -310,9 +343,9 @@ class DashboardController extends ChangeNotifier {
     _activeSymbol = symbol;
     _symbol.text = symbol;
     unawaited(_llmSettingsStore.saveLastViewedSymbol(symbol));
-    _plan = null;
-    _chartError = null;
-    _showChartLoading = true;
+    _beginChartTransition();
+    final generation = _chartLoadGeneration;
+    _loadingChartGeneration = generation;
     _notify();
     try {
       final candles = await _bybit.fetchKlines(
@@ -320,20 +353,31 @@ class DashboardController extends ChangeNotifier {
         interval: _interval,
         limit: _historyLimit,
       );
-      if (_isDisposed || _activeSymbol != symbol) return candles;
+      if (_isDisposed ||
+          generation != _chartLoadGeneration ||
+          _activeSymbol != symbol) {
+        return candles;
+      }
       _candles = candles;
       _showChartLoading = false;
       _chartVersion++;
       _notify();
-      _startChartRefresh();
+      _startChartRefresh(loadImmediately: false);
       return candles;
     } catch (error) {
-      if (!_isDisposed && _activeSymbol == symbol) {
+      if (!_isDisposed &&
+          generation == _chartLoadGeneration &&
+          _activeSymbol == symbol) {
         _chartError = 'K 线加载失败：$error';
         _showChartLoading = false;
         _notify();
       }
       throw Exception('无法加载 $symbol 的 K 线：$error');
+    } finally {
+      if (!_isDisposed && _loadingChartGeneration == generation) {
+        _loadingChartGeneration = null;
+        _notify();
+      }
     }
   }
 
@@ -400,11 +444,20 @@ class DashboardController extends ChangeNotifier {
       if (mode == AgentMode.analysis && analysisCandles.isEmpty) {
         throw Exception('$analysisSymbol 没有可分析的 K 线。');
       }
+      final marketSnapshot = mode == AgentMode.analysis
+          ? await _buildMarketSnapshot(analysisSymbol)
+          : null;
+      final marketFeatures = marketSnapshot == null
+          ? null
+          : _featureEngine.calculate(marketSnapshot);
+      if (marketFeatures != null) {
+        _recordActivity('• Deterministic Engine - 指标计算完成');
+      }
       if (mode == AgentMode.analysis) {
         await _refreshTokenNews(analysisSymbol);
       }
       final eventSnapshot = mode == AgentMode.analysis
-          ? await _eventSnapshot(analysisSymbol, analysisCandles)
+          ? await _eventSnapshot(analysisSymbol, marketFeatures!)
           : null;
       final answer = await _agent.run(
         prompt: prompt,
@@ -414,6 +467,8 @@ class DashboardController extends ChangeNotifier {
         mcp: _mcp,
         api: _api,
         mode: mode,
+        marketSnapshot: marketSnapshot,
+        marketFeatures: marketFeatures,
         eventSnapshot: eventSnapshot,
         previousAnalysisContext: _lastAnalysisContext,
         previousAnalysisAt: _lastAnalysisAt,
@@ -424,9 +479,27 @@ class DashboardController extends ChangeNotifier {
       if (mode == AgentMode.analysis) {
         final plan = TradePlan.fromResponse(answer.text);
         final notices = [...answer.warnings];
+        final validation = plan == null
+            ? null
+            : _tradePlanValidator.validate(
+                plan,
+                tickSize: marketSnapshot?.instrument.tickSize,
+              );
         final matchesResponse =
             plan?.symbol == null || plan!.symbol == analysisSymbol;
         final matchesChart = _activeSymbol == analysisSymbol;
+        if (plan == null) {
+          notices.add('结果中没有可解析的 TradePlan JSON，未添加图表标记。');
+        } else {
+          notices.addAll(validation!.warnings);
+          if (!validation.isValid) {
+            notices.add(
+              'TradePlan 校验失败：${validation.errors.join('；')}，未添加图表标记。',
+            );
+          } else if (!plan.isSetup) {
+            notices.add('${plan.decision} 不是交易 Setup，未添加图表标记。');
+          }
+        }
         if (!matchesResponse) {
           notices.add('结果 JSON 的币种与分析币种 $analysisSymbol 不一致，未添加图表标记。');
         }
@@ -437,7 +510,14 @@ class DashboardController extends ChangeNotifier {
             ? answer.text
             : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
         _conversation.add(DashboardMessage.agent(displayText));
-        _plan = matchesResponse && matchesChart ? plan : null;
+        _plan =
+            plan != null &&
+                plan.isSetup &&
+                validation!.isValid &&
+                matchesResponse &&
+                matchesChart
+            ? plan
+            : null;
         _lastAnalysisContext =
             'User analysis request: $prompt\n\nAnalysis response:\n$displayText';
         _lastAnalysisAt = DateTime.now();
@@ -463,13 +543,23 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
+  Future<MarketSnapshot> _buildMarketSnapshot(String symbol) async {
+    _recordActivity('• Market Snapshot - 获取固定多周期行情');
+    final snapshot = await _marketSnapshots.build(symbol);
+    if (snapshot.instrument.status != 'Trading' ||
+        snapshot.instrument.contractType != 'LinearPerpetual') {
+      throw Exception('$symbol 合约状态或类型无效。');
+    }
+    return snapshot;
+  }
+
   Future<EventSnapshot> _eventSnapshot(
     String symbol,
-    List<Candle> candles,
+    MarketFeatures features,
   ) async {
     final snapshot = _eventSelector.select(events: _newsEvents, symbol: symbol);
     final needsCoverageFallback =
-        snapshot.assetSpecificEvents.isEmpty || _hasAbnormalCandle(candles);
+        snapshot.assetSpecificEvents.isEmpty || features.hasAbnormalShortTerm;
     return EventSnapshot(
       snapshotAsOf: snapshot.snapshotAsOf,
       upcomingCriticalEvents: snapshot.upcomingCriticalEvents,
@@ -481,26 +571,6 @@ class DashboardController extends ChangeNotifier {
           ? await _newsService.tokenNewsSearchQueries(symbol)
           : const [],
     );
-  }
-
-  // Detect only clear candle anomalies; this is a coverage trigger, not a signal.
-  bool _hasAbnormalCandle(List<Candle> candles) {
-    if (candles.length < 21) return false;
-    final latest = candles.last;
-    final previous = candles.sublist(candles.length - 21, candles.length - 1);
-    final averageRange =
-        previous
-            .map((candle) => candle.high - candle.low)
-            .reduce((left, right) => left + right) /
-        previous.length;
-    final averageVolume =
-        previous
-            .map((candle) => candle.volume)
-            .reduce((left, right) => left + right) /
-        previous.length;
-    return (latest.high - latest.low) >=
-            averageRange * _abnormalCandleMultiplier ||
-        latest.volume >= averageVolume * _abnormalCandleMultiplier;
   }
 
   void quickAnalyze() {
