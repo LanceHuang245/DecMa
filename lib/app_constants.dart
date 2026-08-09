@@ -8,4 +8,6 @@ class AppConstants {
   static const coinalyzeDocumentationUrl = 'https://api.coinalyze.net/v1/doc/';
   static const finnhubDocumentationUrl =
       'https://finnhub.io/docs/api/market-news';
+  static const marketauxDocumentationUrl =
+      'https://www.marketaux.com/documentation';
 }

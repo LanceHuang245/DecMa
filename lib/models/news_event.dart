@@ -349,6 +349,7 @@ class EventSnapshot {
     required this.assetSpecificEvents,
     required this.cryptoMarketEvents,
     required this.macroEvents,
+    this.tokenNewsSearchQueries = const [],
   });
 
   final DateTime snapshotAsOf;
@@ -357,6 +358,7 @@ class EventSnapshot {
   final List<NewsEvent> assetSpecificEvents;
   final List<NewsEvent> cryptoMarketEvents;
   final List<NewsEvent> macroEvents;
+  final List<String> tokenNewsSearchQueries;
 
   bool get isEmpty =>
       upcomingCriticalEvents.isEmpty &&
@@ -380,6 +382,7 @@ class EventSnapshot {
         .map((event) => event.toSnapshotJson())
         .toList(),
     'macro_events': macroEvents.map((event) => event.toSnapshotJson()).toList(),
+    'token_news_search_queries': tokenNewsSearchQueries,
   };
 }
 

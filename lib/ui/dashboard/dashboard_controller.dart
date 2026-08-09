@@ -62,6 +62,7 @@ class DashboardController extends ChangeNotifier {
 
   static const _historyLimit = 1000;
   static const _conversationBottomThreshold = 24.0;
+  static const _abnormalCandleMultiplier = 3.0;
 
   final _bybit = BybitService();
   final _agent = AgentService();
@@ -104,6 +105,7 @@ class DashboardController extends ChangeNotifier {
   ApiSettings _api = const ApiSettings(useCoinalyze: false);
   NewsSettings _news = const NewsSettings(
     useFinnhub: false,
+    useMarketaux: false,
     useBls: true,
     useBea: true,
     useFederalReserve: true,
@@ -140,6 +142,7 @@ class DashboardController extends ChangeNotifier {
     unawaited(_loadApiKeyStatus());
     unawaited(_loadSymbols());
     unawaited(_loadCachedNews());
+    unawaited(_refreshTokenNews(_activeSymbol));
     _startChartRefresh();
     _startNewsRefresh();
   }
@@ -183,6 +186,22 @@ class DashboardController extends ChangeNotifier {
       _notify();
     } catch (_) {
       // Per-provider failures are represented by NewsService status entries.
+    }
+  }
+
+  Future<void> _refreshTokenNews(String symbol) async {
+    if (_isDisposed) return;
+    try {
+      final events = await _newsService.refreshTokenNews(
+        symbol: symbol,
+        settings: _news,
+        marketauxApiKey: await _keyStore.readMarketauxKey(),
+      );
+      if (_isDisposed) return;
+      _newsEvents = events;
+      _notify();
+    } catch (_) {
+      // Marketaux failures stay isolated from chart and Agent work.
     }
   }
 
@@ -374,8 +393,11 @@ class DashboardController extends ChangeNotifier {
       if (mode == AgentMode.analysis && analysisCandles.isEmpty) {
         throw Exception('$analysisSymbol 没有可分析的 K 线。');
       }
+      if (mode == AgentMode.analysis) {
+        await _refreshTokenNews(analysisSymbol);
+      }
       final eventSnapshot = mode == AgentMode.analysis
-          ? _eventSelector.select(events: _newsEvents, symbol: analysisSymbol)
+          ? await _eventSnapshot(analysisSymbol, analysisCandles)
           : null;
       final answer = await _agent.run(
         prompt: prompt,
@@ -432,6 +454,46 @@ class DashboardController extends ChangeNotifier {
         _notify();
       }
     }
+  }
+
+  Future<EventSnapshot> _eventSnapshot(
+    String symbol,
+    List<Candle> candles,
+  ) async {
+    final snapshot = _eventSelector.select(events: _newsEvents, symbol: symbol);
+    final needsCoverageFallback =
+        snapshot.assetSpecificEvents.isEmpty || _hasAbnormalCandle(candles);
+    return EventSnapshot(
+      snapshotAsOf: snapshot.snapshotAsOf,
+      upcomingCriticalEvents: snapshot.upcomingCriticalEvents,
+      breakingEvents: snapshot.breakingEvents,
+      assetSpecificEvents: snapshot.assetSpecificEvents,
+      cryptoMarketEvents: snapshot.cryptoMarketEvents,
+      macroEvents: snapshot.macroEvents,
+      tokenNewsSearchQueries: needsCoverageFallback
+          ? await _newsService.tokenNewsSearchQueries(symbol)
+          : const [],
+    );
+  }
+
+  // Detect only clear candle anomalies; this is a coverage trigger, not a signal.
+  bool _hasAbnormalCandle(List<Candle> candles) {
+    if (candles.length < 21) return false;
+    final latest = candles.last;
+    final previous = candles.sublist(candles.length - 21, candles.length - 1);
+    final averageRange =
+        previous
+            .map((candle) => candle.high - candle.low)
+            .reduce((left, right) => left + right) /
+        previous.length;
+    final averageVolume =
+        previous
+            .map((candle) => candle.volume)
+            .reduce((left, right) => left + right) /
+        previous.length;
+    return (latest.high - latest.low) >=
+            averageRange * _abnormalCandleMultiplier ||
+        latest.volume >= averageVolume * _abnormalCandleMultiplier;
   }
 
   void quickAnalyze() {
@@ -553,6 +615,7 @@ class DashboardController extends ChangeNotifier {
     _apiKeyStatus = status;
     _notify();
     unawaited(_refreshNews());
+    unawaited(_refreshTokenNews(_activeSymbol));
   }
 
   Future<void> _loadApiKeyStatus() async {

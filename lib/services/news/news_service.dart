@@ -3,9 +3,13 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../../models/asset_profile.dart';
 import '../../models/news_event.dart';
 import '../../models/trading_models.dart';
+import 'asset_resolver.dart';
 import 'event_store.dart';
+import 'marketaux_news_provider.dart';
+import 'token_news_query_builder.dart';
 
 class NewsProviderStatus {
   const NewsProviderStatus({
@@ -22,15 +26,24 @@ class NewsProviderStatus {
 }
 
 class NewsService {
-  NewsService({http.Client? client, EventStore? store})
-    : _client = client ?? http.Client(),
-      _store = store ?? EventStore();
+  NewsService({
+    http.Client? client,
+    EventStore? store,
+    AssetResolver? assetResolver,
+  }) : _client = client ?? http.Client(),
+       _store = store ?? EventStore(),
+       _assetResolver = assetResolver ?? AssetResolver() {
+    _marketaux = MarketauxNewsProvider(client: _client);
+  }
 
   static const _finnhubInterval = Duration(minutes: 10);
+  static const _marketauxInterval = Duration(minutes: 15);
   static const _officialInterval = Duration(minutes: 30);
   static const _rateLimitBackoff = Duration(hours: 1);
   final http.Client _client;
   final EventStore _store;
+  final AssetResolver _assetResolver;
+  late final MarketauxNewsProvider _marketaux;
   final Map<String, DateTime> _lastAttempt = {};
   final Map<String, DateTime> _retryAfter = {};
   final Map<String, NewsProviderStatus> _statuses = {};
@@ -43,6 +56,7 @@ class NewsService {
     required NewsSettings settings,
     required String? finnhubApiKey,
   }) async {
+    await _assetResolver.all();
     final now = DateTime.now().toUtc();
     final events = <NewsEvent>[];
     await _refreshProvider(
@@ -92,18 +106,68 @@ class NewsService {
       output: events,
     );
     return events.isEmpty
-        ? readCached()
+        ? _storedOrEmpty()
         : _store.upsert(events.map(_normalize).toList());
+  }
+
+  // Token news is refreshed only for the active asset, never for every contract.
+  Future<List<NewsEvent>> refreshTokenNews({
+    required String symbol,
+    required NewsSettings settings,
+    required String? marketauxApiKey,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final profile = await _assetResolver.resolve(symbol);
+    final events = <NewsEvent>[];
+    await _refreshProvider(
+      id: 'Marketaux',
+      cacheKey: 'Marketaux:${profile.symbol}',
+      enabled: settings.useMarketaux,
+      interval: _marketauxInterval,
+      now: now,
+      task: () async {
+        if (marketauxApiKey == null || marketauxApiKey.trim().isEmpty) {
+          throw StateError('Marketaux API Key is required');
+        }
+        final resolved = await _marketaux.resolveProfile(
+          profile: profile,
+          apiKey: marketauxApiKey,
+        );
+        if (resolved != profile) await _assetResolver.save(resolved);
+        return _marketaux.fetch(
+          profile: resolved,
+          apiKey: marketauxApiKey,
+          now: now,
+        );
+      },
+      output: events,
+    );
+    return events.isEmpty
+        ? _storedOrEmpty()
+        : _store.upsert(events.map(_normalize).toList());
+  }
+
+  Future<List<String>> tokenNewsSearchQueries(String symbol) async =>
+      buildTokenNewsQueries(await _assetResolver.resolve(symbol));
+
+  Future<List<NewsEvent>> _storedOrEmpty() async {
+    try {
+      return await readCached();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> _refreshProvider({
     required String id,
+    String? cacheKey,
     required bool enabled,
     required Duration interval,
     required DateTime now,
     required Future<List<NewsEvent>> Function() task,
     required List<NewsEvent> output,
   }) async {
+    final key = cacheKey ?? id;
     if (!enabled) {
       _statuses[id] = NewsProviderStatus(
         id: id,
@@ -111,9 +175,9 @@ class NewsService {
       );
       return;
     }
-    if (_retryAfter[id]?.isAfter(now) ?? false) return;
-    if (_lastAttempt[id]?.add(interval).isAfter(now) ?? false) return;
-    _lastAttempt[id] = now;
+    if (_retryAfter[key]?.isAfter(now) ?? false) return;
+    if (_lastAttempt[key]?.add(interval).isAfter(now) ?? false) return;
+    _lastAttempt[key] = now;
     try {
       output.addAll(await task());
       _statuses[id] = NewsProviderStatus(
@@ -122,7 +186,15 @@ class NewsService {
         updatedAt: now,
       );
     } on _NewsRateLimitException {
-      _retryAfter[id] = now.add(_rateLimitBackoff);
+      _retryAfter[key] = now.add(_rateLimitBackoff);
+      _statuses[id] = NewsProviderStatus(
+        id: id,
+        state: NewsProviderState.rateLimited,
+        message: 'Rate limited; retry later',
+        updatedAt: now,
+      );
+    } on MarketauxRateLimitException {
+      _retryAfter[key] = now.add(_rateLimitBackoff);
       _statuses[id] = NewsProviderStatus(
         id: id,
         state: NewsProviderState.rateLimited,
@@ -301,8 +373,8 @@ class NewsService {
   NewsEvent _normalize(NewsEvent event) {
     final text = '${event.headline} ${event.summary ?? ''}'.toUpperCase();
     final directAssets = <String>{...event.directAssets};
-    for (final entry in _assetTerms.entries) {
-      if (entry.value.any(text.contains)) directAssets.add(entry.key);
+    for (final profile in _cachedProfiles) {
+      if (_mentionsAsset(text, profile)) directAssets.add(profile.baseAsset);
     }
     final category = event.category == NewsCategory.other
         ? _category(text)
@@ -324,12 +396,13 @@ class NewsService {
     );
   }
 
-  static const _assetTerms = <String, List<String>>{
-    'BTC': ['BITCOIN', ' BTC ', 'BTC ETF'],
-    'ETH': ['ETHEREUM', ' ETH '],
-    'XRP': ['RIPPLE', 'XRP LEDGER', 'XRPL', ' XRP '],
-    'SOL': ['SOLANA', ' SOL '],
-  };
+  List<AssetProfile> get _cachedProfiles => _assetResolver.allSync;
+
+  bool _mentionsAsset(String text, AssetProfile profile) => profile.aliases.any(
+    (alias) => RegExp(
+      '(^|[^A-Z0-9])${RegExp.escape(alias.toUpperCase())}([^A-Z0-9]|\$)',
+    ).hasMatch(text),
+  );
 
   NewsCategory _category(String text) {
     if (_contains(text, ['FOMC', 'FEDERAL RESERVE', 'POWELL'])) {

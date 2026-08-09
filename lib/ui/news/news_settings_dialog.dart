@@ -24,11 +24,14 @@ class NewsSettingsDialog extends StatefulWidget {
 
 class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
   late bool _useFinnhub;
+  late bool _useMarketaux;
   late bool _useBls;
   late bool _useBea;
   late bool _useFederalReserve;
   late final String? _finnhubMask;
+  late final String? _marketauxMask;
   late final TextEditingController _finnhubKey;
+  late final TextEditingController _marketauxKey;
   bool _saving = false;
   String? _error;
 
@@ -36,16 +39,20 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
   void initState() {
     super.initState();
     _useFinnhub = widget.settings.useFinnhub;
+    _useMarketaux = widget.settings.useMarketaux;
     _useBls = widget.settings.useBls;
     _useBea = widget.settings.useBea;
     _useFederalReserve = widget.settings.useFederalReserve;
     _finnhubMask = createSecretMask(widget.keyStatus.hasFinnhubKey);
+    _marketauxMask = createSecretMask(widget.keyStatus.hasMarketauxKey);
     _finnhubKey = TextEditingController(text: _finnhubMask);
+    _marketauxKey = TextEditingController(text: _marketauxMask);
   }
 
   @override
   void dispose() {
     _finnhubKey.dispose();
+    _marketauxKey.dispose();
     super.dispose();
   }
 
@@ -75,7 +82,29 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
                 controller: _finnhubKey,
                 obscureText: true,
                 placeholder: '输入新密钥以加密保存',
-                onTap: _selectMask,
+                onTap: () => _selectMask(_finnhubKey, _finnhubMask),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          ToggleSwitch(
+            checked: _useMarketaux,
+            content: const DocumentationHelpLabel(
+              label: 'Marketaux Token News',
+              tooltip: '查看 Marketaux API 文档',
+              documentationUrl: AppConstants.marketauxDocumentationUrl,
+            ),
+            onChanged: (value) => setState(() => _useMarketaux = value),
+          ),
+          if (_useMarketaux) ...[
+            const SizedBox(height: 8),
+            InfoLabel(
+              label: 'Marketaux API Key',
+              child: TextBox(
+                controller: _marketauxKey,
+                obscureText: true,
+                placeholder: '输入新密钥以加密保存',
+                onTap: () => _selectMask(_marketauxKey, _marketauxMask),
               ),
             ),
           ],
@@ -118,11 +147,11 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
     ],
   );
 
-  void _selectMask() {
-    if (_finnhubMask == null || _finnhubKey.text != _finnhubMask) return;
-    _finnhubKey.selection = TextSelection(
+  void _selectMask(TextEditingController controller, String? mask) {
+    if (mask == null || controller.text != mask) return;
+    controller.selection = TextSelection(
       baseOffset: 0,
-      extentOffset: _finnhubKey.text.length,
+      extentOffset: controller.text.length,
     );
   }
 
@@ -136,12 +165,14 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
       await widget.onSave(
         NewsSettings(
           useFinnhub: _useFinnhub,
+          useMarketaux: _useMarketaux,
           useBls: _useBls,
           useBea: _useBea,
           useFederalReserve: _useFederalReserve,
         ),
         ApiKeyUpdates(
           finnhubKey: key.isEmpty || key == _finnhubMask ? null : key,
+          marketauxKey: _savedKey(_marketauxKey, _marketauxMask),
         ),
       );
       if (mounted) Navigator.pop(context);
@@ -150,5 +181,10 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String? _savedKey(TextEditingController controller, String? mask) {
+    final value = controller.text.trim();
+    return value.isEmpty || value == mask ? null : value;
   }
 }

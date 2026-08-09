@@ -10,6 +10,7 @@ class ApiKeyStatus {
     this.hasNansenKey = false,
     this.hasCoinalyzeKey = false,
     this.hasFinnhubKey = false,
+    this.hasMarketauxKey = false,
   });
 
   final bool hasLlmKey;
@@ -18,6 +19,7 @@ class ApiKeyStatus {
   final bool hasNansenKey;
   final bool hasCoinalyzeKey;
   final bool hasFinnhubKey;
+  final bool hasMarketauxKey;
 
   bool hasLlmKeyFor(String connectionId) =>
       llmKeyConnectionIds.contains(connectionId);
@@ -44,6 +46,7 @@ class ApiKeyUpdates {
     this.nansenKey,
     this.coinalyzeKey,
     this.finnhubKey,
+    this.marketauxKey,
   });
 
   final String? llmKey;
@@ -51,6 +54,7 @@ class ApiKeyUpdates {
   final String? nansenKey;
   final String? coinalyzeKey;
   final String? finnhubKey;
+  final String? marketauxKey;
 }
 
 class SecureKeyStore {
@@ -65,6 +69,7 @@ class SecureKeyStore {
   static const _nansenKey = 'decma.nansen_api_key';
   static const _coinalyzeKey = 'decma.coinalyze_api_key';
   static const _finnhubKey = 'decma.finnhub_api_key';
+  static const _marketauxKey = 'decma.marketaux_api_key';
   final FlutterSecureStorage _storage;
 
   Future<ApiKeyStatus> status({
@@ -83,6 +88,7 @@ class SecureKeyStore {
       _storage.containsKey(key: _nansenKey),
       _storage.containsKey(key: _coinalyzeKey),
       _storage.containsKey(key: _finnhubKey),
+      _storage.containsKey(key: _marketauxKey),
     ]);
     final keyedConnections = <String>{};
     for (var index = 0; index < connectionIds.length; index++) {
@@ -101,6 +107,7 @@ class SecureKeyStore {
       hasNansenKey: saved[connectionIds.length + 4],
       hasCoinalyzeKey: saved[connectionIds.length + 5],
       hasFinnhubKey: saved[connectionIds.length + 6],
+      hasMarketauxKey: saved[connectionIds.length + 7],
     );
   }
 
@@ -120,6 +127,9 @@ class SecureKeyStore {
     }
     if (updates.finnhubKey case final key?) {
       await _storage.write(key: _finnhubKey, value: key);
+    }
+    if (updates.marketauxKey case final key?) {
+      await _storage.write(key: _marketauxKey, value: key);
     }
   }
 
@@ -178,4 +188,5 @@ class SecureKeyStore {
   Future<String?> readNansenKey() => _storage.read(key: _nansenKey);
   Future<String?> readCoinalyzeKey() => _storage.read(key: _coinalyzeKey);
   Future<String?> readFinnhubKey() => _storage.read(key: _finnhubKey);
+  Future<String?> readMarketauxKey() => _storage.read(key: _marketauxKey);
 }

@@ -22,11 +22,18 @@ class NewsPanel extends StatefulWidget {
 
 class _NewsPanelState extends State<NewsPanel> {
   NewsCategory? _category;
+  String? _provider;
 
   @override
   Widget build(BuildContext context) {
+    final providers =
+        widget.events.map((event) => event.provider).toSet().toList()..sort();
     final events = widget.events
-        .where((event) => _category == null || event.category == _category)
+        .where(
+          (event) =>
+              (_category == null || event.category == _category) &&
+              (_provider == null || event.provider == _provider),
+        )
         .toList();
     return Card(
       child: Column(
@@ -49,6 +56,8 @@ class _NewsPanelState extends State<NewsPanel> {
             ],
           ),
           const SizedBox(height: 8),
+          const Text('分类', style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 4),
           Wrap(
             spacing: 4,
             runSpacing: 4,
@@ -58,6 +67,18 @@ class _NewsPanelState extends State<NewsPanel> {
               _filterButton(NewsCategory.crypto, 'Crypto'),
               _filterButton(NewsCategory.regulation, '监管'),
               _filterButton(NewsCategory.exchange, '交易所'),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text('来源', style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              _providerFilterButton(null, '全部'),
+              for (final provider in providers)
+                _providerFilterButton(provider, provider),
             ],
           ),
           const SizedBox(height: 8),
@@ -85,6 +106,14 @@ class _NewsPanelState extends State<NewsPanel> {
     },
     child: Text(label),
   );
+
+  Widget _providerFilterButton(String? provider, String label) => ToggleButton(
+    checked: _provider == provider,
+    onChanged: (checked) {
+      if (checked) setState(() => _provider = provider);
+    },
+    child: Text(label),
+  );
 }
 
 class _ProviderStatusLine extends StatelessWidget {
@@ -94,17 +123,34 @@ class _ProviderStatusLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = statuses.values
-        .map((status) => '${status.id}: ${_label(status.state)}')
-        .join(' · ');
-    return Text(
-      text.isEmpty ? '数据源启动中…' : text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontSize: 12,
-        color: FluentTheme.of(context).resources.textFillColorSecondary,
-      ),
+    if (statuses.isEmpty) return const Text('数据源启动中…');
+    return Wrap(
+      spacing: 10,
+      runSpacing: 4,
+      children: statuses.values.map((status) {
+        final active = status.state == NewsProviderState.active;
+        final detail = status.message == null
+            ? '${status.id}: ${_label(status.state)}'
+            : '${status.id}: ${_label(status.state)}\n${status.message}';
+        return Tooltip(
+          message: detail,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${status.id}:', style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 4),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: active ? Colors.green : Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -138,6 +184,7 @@ class _NewsItem extends StatelessWidget {
             ),
             _badge(event.importance.label, _importanceColor(event.importance)),
             _badge(event.category.label, resources.textFillColorSecondary),
+            _badge(event.provider, resources.textFillColorSecondary),
           ],
         ),
         const SizedBox(height: 4),

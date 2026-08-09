@@ -18,6 +18,7 @@ class LlmSettingsStore {
   static const _openWebSearchMcpKey = 'decma.mcp.open_web_search';
   static const _coinalyzeApiKey = 'decma.api.coinalyze';
   static const _finnhubNewsKey = 'decma.news.finnhub';
+  static const _marketauxNewsKey = 'decma.news.marketaux';
   static const _blsNewsKey = 'decma.news.bls';
   static const _beaNewsKey = 'decma.news.bea';
   static const _federalReserveNewsKey = 'decma.news.federal_reserve';
@@ -118,20 +119,23 @@ class LlmSettingsStore {
   Future<NewsSettings> readNews() async {
     final values = await Future.wait([
       _preferences.getBool(_finnhubNewsKey),
+      _preferences.getBool(_marketauxNewsKey),
       _preferences.getBool(_blsNewsKey),
       _preferences.getBool(_beaNewsKey),
       _preferences.getBool(_federalReserveNewsKey),
     ]);
     return NewsSettings(
       useFinnhub: values[0] ?? false,
-      useBls: values[1] ?? true,
-      useBea: values[2] ?? true,
-      useFederalReserve: values[3] ?? true,
+      useMarketaux: values[1] ?? false,
+      useBls: values[2] ?? true,
+      useBea: values[3] ?? true,
+      useFederalReserve: values[4] ?? true,
     );
   }
 
   Future<void> saveNews(NewsSettings settings) => Future.wait([
     _preferences.setBool(_finnhubNewsKey, settings.useFinnhub),
+    _preferences.setBool(_marketauxNewsKey, settings.useMarketaux),
     _preferences.setBool(_blsNewsKey, settings.useBls),
     _preferences.setBool(_beaNewsKey, settings.useBea),
     _preferences.setBool(_federalReserveNewsKey, settings.useFederalReserve),

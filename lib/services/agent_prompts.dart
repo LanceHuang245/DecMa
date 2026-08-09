@@ -229,6 +229,7 @@ Focus on the target asset, major macroeconomic developments, regulatory events, 
 Only newly discovered HIGH/CRITICAL unverified events should be escalated for official-source discovery and Fetch as needed. PRIMARY_SOURCE_CONFIRMED events do not require redundant verification.
 
 * `PRIMARY_SOURCE_CONFIRMED` means the factual event itself has already been confirmed by an official source. Do not search again merely to reconfirm that same fact.
+* `token_news_search_queries`, when present, are bounded discovery hints rather than evidence. Use at most one only when coverage is missing or market behaviour is abnormal.
 * Only prioritize verification of `UNVERIFIED` or `CONFLICTED` events that are `HIGH` or `CRITICAL` and could materially affect the current trade. First seek official or independent high-quality sources, and Fetch the original page when necessary.
 * Do not describe unverified events, search-result summaries, or multiple reports of the same event as multiple independent factual signals.
 * `LOW` events must not independently change the LONG or SHORT direction; news sentiment must not independently generate a trading signal.

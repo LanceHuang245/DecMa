@@ -113,12 +113,14 @@ class ApiSettings {
 class NewsSettings {
   const NewsSettings({
     required this.useFinnhub,
+    required this.useMarketaux,
     required this.useBls,
     required this.useBea,
     required this.useFederalReserve,
   });
 
   final bool useFinnhub;
+  final bool useMarketaux;
   final bool useBls;
   final bool useBea;
   final bool useFederalReserve;

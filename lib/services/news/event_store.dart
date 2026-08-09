@@ -6,12 +6,16 @@ class EventStore {
   EventStore({SharedPreferencesAsync? preferences})
     : _preferences = preferences ?? SharedPreferencesAsync();
 
+  EventStore.memory() : _preferences = null;
+
   static const _eventsKey = 'decma.news.events.v1';
   static const _maxEvents = 500;
   static const _retention = Duration(days: 14);
-  final SharedPreferencesAsync _preferences;
+  final SharedPreferencesAsync? _preferences;
+  List<NewsEvent> _memory = const [];
 
   Future<List<NewsEvent>> read() async {
+    if (_preferences == null) return [..._memory];
     final value = await _preferences.getString(_eventsKey);
     return value == null ? const [] : NewsEvent.decodeAll(value);
   }
@@ -29,7 +33,11 @@ class EventStore {
     if (events.length > _maxEvents) {
       events.removeRange(_maxEvents, events.length);
     }
-    await _preferences.setString(_eventsKey, NewsEvent.encodeAll(events));
+    if (_preferences == null) {
+      _memory = events;
+    } else {
+      await _preferences.setString(_eventsKey, NewsEvent.encodeAll(events));
+    }
     return events;
   }
 
