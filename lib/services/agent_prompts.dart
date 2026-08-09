@@ -256,6 +256,14 @@ You must distinguish:
 
 ### 5.5 Deterministic Calculations
 
+The Harness may provide `Harness core market snapshot` and
+`Deterministic calculated features` before tool use. Treat calculated feature
+values as the authoritative calculation result for their stated snapshot and
+timeframe. Do not mentally recalculate or replace them. Do not repeat Stage 1
+Bybit core retrieval unless the supplied snapshot is missing, stale, degraded,
+or conflicts with a newer execution-critical observation. Fields listed as
+unavailable have not been calculated and must not be inferred.
+
 The following must be calculated using deterministic code or calculation tools:
 
 * EMA

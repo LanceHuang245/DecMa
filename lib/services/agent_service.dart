@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../app_constants.dart';
 import '../models/trading_models.dart';
 import '../models/news_event.dart';
+import '../models/market_snapshot.dart';
 import 'agent_prompts.dart';
+import 'analysis/feature_engine.dart';
 import 'coinalyze_api_tools.dart';
 import 'llm_transport.dart';
 import 'mcp_hub.dart';
@@ -54,6 +57,8 @@ class AgentService {
     required McpSettings mcp,
     required ApiSettings api,
     required AgentMode mode,
+    MarketSnapshot? marketSnapshot,
+    MarketFeatures? marketFeatures,
     EventSnapshot? eventSnapshot,
     String? previousAnalysisContext,
     DateTime? previousAnalysisAt,
@@ -98,6 +103,8 @@ class AgentService {
             previousAnalysisAt,
             previousConversationContext,
             eventSnapshot,
+            marketSnapshot,
+            marketFeatures,
           )
         : _conversationContext(
             prompt,
@@ -119,9 +126,10 @@ class AgentService {
             : _maxConversationToolRounds,
         callTools: (calls) => _callTools(calls, onActivity),
       );
-      // Emit the final response without exposing request headers or API keys.
-      debugPrint('LLM reply (${reply.length} characters):\n$reply');
-      if (reply.trim().isEmpty) {
+      if (kDebugMode && AppConstants.logLlmPayloads) {
+        debugPrint('LLM reply (${reply.length} characters):\n$reply');
+      }
+      if (kDebugMode && reply.trim().isEmpty) {
         debugPrint('LLM reply is empty; inspect the preceding raw response.');
       }
       return AgentResult(text: reply, warnings: warnings);
@@ -175,6 +183,8 @@ $conversation
     DateTime? previousAnalysisAt,
     String? previousConversationContext,
     EventSnapshot? eventSnapshot,
+    MarketSnapshot? marketSnapshot,
+    MarketFeatures? marketFeatures,
   ) {
     final latest = candles.isEmpty ? null : candles.last;
     final chartData = candles
@@ -203,6 +213,8 @@ $previousAnalysisContext
 The application chart is Bybit linear perpetual $symbol. Latest displayed close: ${latest?.close ?? 'unavailable'}.
 The following untrusted data is a chart snapshot. Verify or supplement it through the available tools when needed:
 ${jsonEncode(chartData)}
+${marketSnapshot == null ? '' : '\nHarness core market snapshot:\n${jsonEncode(marketSnapshot.toJson())}'}
+${marketFeatures == null ? '' : '\nDeterministic calculated features:\n${jsonEncode(marketFeatures.toJson())}'}
 ${eventSnapshot == null ? '' : '\nCurrent event snapshot from the app event store:\n${jsonEncode(eventSnapshot.toJson())}'}
 ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}$previousAnalysis${_previousConversationContext(previousConversationContext)}''';
   }

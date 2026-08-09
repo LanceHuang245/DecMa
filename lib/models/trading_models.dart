@@ -144,6 +144,20 @@ class Candle {
   final double volume;
 }
 
+class TradeTarget {
+  const TradeTarget({
+    required this.price,
+    this.closePercentage,
+    this.grossRewardRisk,
+    this.estimatedNetRewardRisk,
+  });
+
+  final double price;
+  final double? closePercentage;
+  final double? grossRewardRisk;
+  final double? estimatedNetRewardRisk;
+}
+
 class TradePlan {
   const TradePlan({
     required this.decision,
@@ -153,7 +167,8 @@ class TradePlan {
     this.entryLow,
     this.entryHigh,
     this.stopLoss,
-    this.takeProfits = const [],
+    this.maximumChasePrice,
+    this.targets = const [],
   });
 
   final String decision;
@@ -163,7 +178,13 @@ class TradePlan {
   final double? entryLow;
   final double? entryHigh;
   final double? stopLoss;
-  final List<double> takeProfits;
+  final double? maximumChasePrice;
+  final List<TradeTarget> targets;
+
+  List<double> get takeProfits =>
+      targets.map((target) => target.price).toList();
+
+  bool get isSetup => decision == 'LONG_SETUP' || decision == 'SHORT_SETUP';
 
   bool get hasPriceLevels =>
       entryLow != null ||
@@ -183,10 +204,19 @@ class TradePlan {
         final request = _map(data['request']);
         final entry = _map(data['entry_plan']);
         final risk = _map(data['risk_plan']);
-        final takeProfits = (_list(data['take_profit_plan']))
+        final targets = (_list(data['take_profit_plan']))
             .map(_map)
-            .map((item) => _number(item['price']))
-            .whereType<double>()
+            .where((item) => _number(item['price']) != null)
+            .map(
+              (item) => TradeTarget(
+                price: _number(item['price'])!,
+                closePercentage: _number(item['close_percentage']),
+                grossRewardRisk: _number(item['gross_reward_risk']),
+                estimatedNetRewardRisk: _number(
+                  item['estimated_net_reward_risk'],
+                ),
+              ),
+            )
             .toList();
         return TradePlan(
           decision: decision['type']?.toString() ?? 'UNKNOWN',
@@ -196,7 +226,8 @@ class TradePlan {
           entryLow: _number(entry['entry_zone_low']),
           entryHigh: _number(entry['entry_zone_high']),
           stopLoss: _number(risk['stop_loss']),
-          takeProfits: takeProfits,
+          maximumChasePrice: _number(entry['maximum_chase_price']),
+          targets: targets,
         );
       } catch (_) {
         continue;
