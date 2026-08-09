@@ -442,15 +442,29 @@ class NewsService {
 
   NewsImportance _importance(String text, NewsImportance current) {
     if (_contains(text, [
+      'FOUNDER DIES',
+      'BANKRUPTCY',
+      'INSOLVENCY',
+      'STABLECOIN DEPEG',
+      'TREASURY COMPROMISE',
+      'BRIDGE INCIDENT',
       'FOMC',
       'INTEREST RATE DECISION',
       'CPI',
       'PAYROLL',
       'EMPLOYMENT SITUATION',
     ])) {
-      return NewsImportance.critical;
+      return _higherImportance(current, NewsImportance.critical);
     }
     if (_contains(text, [
+      'CEO RESIGNS',
+      'LEADERSHIP TRANSITION',
+      'CONTROL DISPUTE',
+      'GOVERNANCE CRISIS',
+      'PROTOCOL PAUSED',
+      'EMERGENCY UPGRADE',
+      'TOKEN UNLOCK',
+      'DELISTING',
       'PPI',
       'JOLTS',
       'GDP',
@@ -460,7 +474,7 @@ class NewsService {
       'HACK',
       'EXPLOIT',
     ])) {
-      return NewsImportance.high;
+      return _higherImportance(current, NewsImportance.high);
     }
     return current;
   }
@@ -472,8 +486,39 @@ class NewsService {
     if (_contains(text, ['PAYROLL', 'EMPLOYMENT SITUATION'])) {
       return 'NFP_EMPLOYMENT';
     }
+    if (_contains(text, [
+      'FOUNDER DIES',
+      'CEO RESIGNS',
+      'CEO APPOINTED',
+      'LEADERSHIP TRANSITION',
+    ])) {
+      return 'PROJECT_LEADERSHIP';
+    }
+    if (_contains(text, ['GOVERNANCE', 'CONTROL DISPUTE'])) {
+      return 'GOVERNANCE';
+    }
+    if (_contains(text, ['HACK', 'EXPLOIT', 'BREACH', 'TREASURY COMPROMISE'])) {
+      return 'SECURITY';
+    }
+    if (_contains(text, ['SEC', 'LAWSUIT', 'COURT', 'REGULATION'])) {
+      return 'LEGAL';
+    }
+    if (_contains(text, ['TOKEN UNLOCK', 'EMISSIONS', 'VESTING'])) {
+      return 'TOKENOMICS';
+    }
+    if (_contains(text, ['DELISTING', 'LISTING'])) return 'EXCHANGE';
+    if (_contains(text, ['PROTOCOL PAUSED', 'EMERGENCY UPGRADE', 'UPGRADE'])) {
+      return 'PROTOCOL_OPERATION';
+    }
+    if (_contains(text, ['BANKRUPTCY', 'INSOLVENCY'])) return 'INSOLVENCY';
+    if (_contains(text, ['PARTNERSHIP', 'INTEGRATION'])) return 'PARTNERSHIP';
     return category.name.toUpperCase();
   }
+
+  NewsImportance _higherImportance(
+    NewsImportance current,
+    NewsImportance classified,
+  ) => classified.index < current.index ? classified : current;
 
   bool _contains(String text, List<String> terms) => terms.any(text.contains);
 

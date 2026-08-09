@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:decma/models/asset_profile.dart';
 import 'package:decma/models/news_event.dart';
 import 'package:decma/models/trading_models.dart';
 import 'package:decma/services/news/asset_resolver.dart';
@@ -34,6 +35,14 @@ void main() {
         'source': 'Example News',
         'url': 'https://example.test/ondo',
         'published_at': _now.toIso8601String(),
+        'entities': [
+          {
+            'symbol': 'CC:ONDO',
+            'name': 'Ondo Finance',
+            'type': 'cryptocurrency',
+            'match_score': 90,
+          },
+        ],
       },
       profile: AssetResolver.fromSymbol('ONDOUSDT'),
       now: _now,
@@ -42,6 +51,41 @@ void main() {
     expect(event.directAssets, ['ONDO']);
     expect(event.scope, NewsScope.assetSpecific);
     expect(event.verificationStatus, NewsVerificationStatus.unverified);
+  });
+
+  test('Marketaux resolves a long-tail canonical crypto entity', () async {
+    final provider = MarketauxNewsProvider(
+      client: _JsonClient({
+        'data': [
+          {'symbol': 'CC:KAITO', 'name': 'Kaito', 'type': 'cryptocurrency'},
+        ],
+      }),
+    );
+
+    final profile = await provider.resolveProfile(
+      profile: AssetResolver.fromSymbol('KAITOUSDT'),
+      apiKey: 'test-key',
+    );
+
+    expect(profile.marketauxSymbol, 'CC:KAITO');
+    expect(profile.projectName, 'Kaito');
+    expect(profile.marketauxResolution, MarketauxResolution.resolved);
+  });
+
+  test('an unresolved Marketaux entity receives a future retry time', () async {
+    final provider = MarketauxNewsProvider(client: _JsonClient({'data': []}));
+
+    final profile = await provider.resolveProfile(
+      profile: AssetResolver.fromSymbol('UNKNOWNUSDT'),
+      apiKey: 'test-key',
+    );
+
+    expect(profile.marketauxResolution, MarketauxResolution.notFound);
+    expect(profile.marketauxRetryAfter, isNotNull);
+    expect(
+      profile.marketauxRetryAfter!.isAfter(DateTime.now().toUtc()),
+      isTrue,
+    );
   });
 
   test('ONDO-specific events enter the ONDO EventSnapshot', () {
@@ -78,6 +122,62 @@ void main() {
       );
 
       expect(EventStore.mergeEvents([marketaux], [finnhub]), hasLength(1));
+    },
+  );
+
+  test('distinct ONDO news within six hours remain separate events', () {
+    final founderDeath = _event(
+      id: 'founder',
+      headline: 'Ondo founder dies',
+      directAssets: const ['ONDO'],
+      scope: NewsScope.assetSpecific,
+      eventType: 'PROJECT_LEADERSHIP',
+    );
+    final ceoAppointment = _event(
+      id: 'ceo',
+      headline: 'Ondo appoints a new CEO',
+      directAssets: const ['ONDO'],
+      scope: NewsScope.assetSpecific,
+      eventType: 'PROJECT_LEADERSHIP',
+      publishedAt: _now.add(const Duration(hours: 2)),
+    );
+
+    expect(
+      EventStore.mergeEvents([founderDeath], [ceoAppointment]),
+      hasLength(2),
+    );
+  });
+
+  test(
+    'project leadership events receive deterministic high importance',
+    () async {
+      final service = NewsService(
+        client: _JsonClient([
+          {
+            'id': 'leadership',
+            'headline': 'Ondo CEO resigns after governance dispute',
+            'source': 'Example News',
+            'datetime': DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000,
+          },
+        ]),
+        store: EventStore.memory(),
+        assetResolver: AssetResolver.memory(),
+      );
+
+      final events = await service.refresh(
+        settings: const NewsSettings(
+          useFinnhub: true,
+          useMarketaux: false,
+          useBls: false,
+          useBea: false,
+          useFederalReserve: false,
+        ),
+        finnhubApiKey: 'test-key',
+      );
+
+      expect(events.single.eventType, 'PROJECT_LEADERSHIP');
+      expect(events.single.importance, NewsImportance.high);
+      service.dispose();
     },
   );
 
@@ -121,27 +221,40 @@ class _ErrorClient extends http.BaseClient {
       http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
 }
 
+class _JsonClient extends http.BaseClient {
+  _JsonClient(this.body);
+
+  final Object body;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async =>
+      http.StreamedResponse(Stream.value(utf8.encode(jsonEncode(body))), 200);
+}
+
 NewsEvent _event({
   required String id,
   String provider = 'Marketaux',
+  String headline = 'Ondo update',
   String? url,
+  String eventType = 'TOKEN_NEWS',
+  DateTime? publishedAt,
   required List<String> directAssets,
   required NewsScope scope,
 }) => NewsEvent(
   eventId: id,
-  headline: 'Ondo update',
+  headline: headline,
   provider: provider,
   originalSource: provider,
   sourceTier: NewsSourceTier.aggregator,
   category: NewsCategory.crypto,
-  eventType: 'TOKEN_NEWS',
+  eventType: eventType,
   scope: scope,
   importance: NewsImportance.low,
   assets: directAssets,
   directAssets: directAssets,
   indirectAssets: const [],
   country: null,
-  publishedAt: _now,
+  publishedAt: publishedAt ?? _now,
   receivedAt: _now,
   url: url,
   verificationStatus: NewsVerificationStatus.unverified,

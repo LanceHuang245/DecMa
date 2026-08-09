@@ -64,7 +64,10 @@ class EventStore {
         left.rawSourceId == right.rawSourceId) {
       return true;
     }
-    if (left.url != null && left.url == right.url) return true;
+    if (_canonicalUrl(left.url) == _canonicalUrl(right.url) &&
+        _canonicalUrl(left.url) != null) {
+      return true;
+    }
     final sameTitle = _title(left.headline) == _title(right.headline);
     final sameType = left.eventType == right.eventType;
     final sameEntity =
@@ -73,9 +76,18 @@ class EventStore {
     final nearTime =
         left.publishedAt.difference(right.publishedAt).abs() <
         const Duration(hours: 6);
-    return nearTime &&
-        left.scope == right.scope &&
-        (sameTitle || (sameType && sameEntity));
+    if (!nearTime || left.scope != right.scope) return false;
+    if (sameTitle) return true;
+    // Official macro releases describe one scheduled data point, unlike token news.
+    if (left.scope == NewsScope.macroGlobal &&
+        sameType &&
+        left.country == right.country) {
+      return true;
+    }
+    // Asset/type/time only narrows candidates; a similar headline is still required.
+    return sameEntity &&
+        sameType &&
+        _headlineSimilarity(left.headline, right.headline) >= 0.72;
   }
 
   // Merge repeated coverage into one event so it remains one evidence item.
@@ -114,6 +126,35 @@ class EventStore {
       .replaceAll(RegExp(r'[^a-z0-9 ]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+
+  static String? _canonicalUrl(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final uri = Uri.tryParse(value);
+    if (uri == null || uri.host.isEmpty) return value;
+    final query = Map<String, String>.from(uri.queryParameters)
+      ..removeWhere((key, _) => key.toLowerCase().startsWith('utm_'));
+    final path = uri.path.length > 1 && uri.path.endsWith('/')
+        ? uri.path.substring(0, uri.path.length - 1)
+        : uri.path;
+    return Uri(
+      scheme: uri.scheme.toLowerCase(),
+      host: uri.host.toLowerCase(),
+      path: path,
+      queryParameters: query.isEmpty ? null : query,
+    ).toString();
+  }
+
+  static double _headlineSimilarity(String left, String right) {
+    final leftTerms = _title(
+      left,
+    ).split(' ').where((item) => item.isNotEmpty).toSet();
+    final rightTerms = _title(
+      right,
+    ).split(' ').where((item) => item.isNotEmpty).toSet();
+    if (leftTerms.isEmpty || rightTerms.isEmpty) return 0;
+    final overlap = leftTerms.intersection(rightTerms).length;
+    return overlap / (leftTerms.length + rightTerms.length - overlap);
+  }
 
   static NewsSourceTier _higherTier(
     NewsSourceTier left,

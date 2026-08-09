@@ -14,13 +14,20 @@ class MarketauxRateLimitException implements Exception {
 class MarketauxNewsProvider {
   MarketauxNewsProvider({required this._client});
 
+  static const _providerVersion = 'v1';
   final http.Client _client;
 
   Future<AssetProfile> resolveProfile({
     required AssetProfile profile,
     required String apiKey,
   }) async {
-    if (profile.marketauxResolved) return profile;
+    final now = DateTime.now().toUtc();
+    if (profile.marketauxResolution == MarketauxResolution.resolved &&
+        profile.marketauxSymbol != null &&
+        profile.marketauxProviderVersion == _providerVersion) {
+      return profile;
+    }
+    if (profile.marketauxRetryAfter?.isAfter(now) ?? false) return profile;
     final response = await _get('/v1/entity/search', {
       'api_token': apiKey,
       'search': profile.projectName ?? profile.baseAsset,
@@ -29,27 +36,42 @@ class MarketauxNewsProvider {
     final data = _items(response);
     final candidates = data.where(_isCryptoEntity).toList();
     final exactSymbol = candidates
-        .where(
-          (item) =>
-              item['symbol']?.toString().toUpperCase() == profile.baseAsset,
-        )
+        .where((item) => _entityTicker(item) == profile.baseAsset)
         .toList();
-    final exactName = candidates
-        .where(
-          (item) =>
-              _normalized(item['name']?.toString()) ==
-              _normalized(profile.projectName),
-        )
-        .toList();
-    final match = exactSymbol.length == 1
-        ? exactSymbol.single
-        : exactName.length == 1
-        ? exactName.single
-        : null;
+    final exactName = profile.projectName == null
+        ? const <Map>[]
+        : candidates
+              .where(
+                (item) =>
+                    _normalized(item['name']?.toString()) ==
+                    _normalized(profile.projectName),
+              )
+              .toList();
+    final matches = exactSymbol.isNotEmpty ? exactSymbol : exactName;
+    final match = matches.length == 1 ? matches.single : null;
+    final state = match != null
+        ? MarketauxResolution.resolved
+        : matches.isEmpty
+        ? MarketauxResolution.notFound
+        : MarketauxResolution.ambiguous;
     final symbol = match?['symbol']?.toString();
     return profile.copyWith(
+      projectName: profile.projectName ?? match?['name']?.toString(),
+      aliases: {
+        ...profile.aliases,
+        if (match?['name']?.toString().isNotEmpty ?? false)
+          match!['name'].toString(),
+      }.toList(),
       marketauxSymbol: symbol == null || symbol.isEmpty ? null : symbol,
-      marketauxResolved: true,
+      clearMarketauxSymbol: state != MarketauxResolution.resolved,
+      marketauxResolution: state,
+      marketauxResolvedAt: now,
+      marketauxRetryAfter: state == MarketauxResolution.notFound
+          ? now.add(const Duration(days: 1))
+          : state == MarketauxResolution.ambiguous
+          ? now.add(const Duration(hours: 6))
+          : null,
+      marketauxProviderVersion: _providerVersion,
     );
   }
 
@@ -92,10 +114,11 @@ class MarketauxNewsProvider {
       'api_token': apiKey,
       ...query,
       'language': 'en',
-      'limit': '10',
+      'limit': '3',
       'published_after': _marketauxTime(since),
     });
     return _items(response)
+        .where((item) => _matchesProfile(item, profile))
         .map((item) => normalizeArticle(item, profile: profile, now: now))
         .whereType<NewsEvent>()
         .toList();
@@ -170,6 +193,28 @@ class MarketauxNewsProvider {
 
   bool _isCryptoEntity(Map item) =>
       item['type']?.toString().toLowerCase() == 'cryptocurrency';
+
+  String _entityTicker(Map item) =>
+      item['symbol']?.toString().toUpperCase().split(':').last ?? '';
+
+  // Only accept articles whose Marketaux entity data confirms the active token.
+  bool _matchesProfile(Map article, AssetProfile profile) {
+    final entities = article['entities'];
+    if (entities is! List) return false;
+    return entities.whereType<Map>().any((entity) {
+      if (!_isCryptoEntity(entity)) return false;
+      final score = entity['match_score'];
+      if (score is num && score <= 0) return false;
+      final symbolMatches =
+          entity['symbol']?.toString() == profile.marketauxSymbol ||
+          _entityTicker(entity) == profile.baseAsset;
+      final nameMatches =
+          profile.projectName != null &&
+          _normalized(entity['name']?.toString()) ==
+              _normalized(profile.projectName);
+      return symbolMatches || nameMatches;
+    });
+  }
 
   String _normalized(String? value) =>
       value?.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '') ?? '';
