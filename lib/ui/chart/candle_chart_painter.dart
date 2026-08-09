@@ -33,8 +33,8 @@ class CandlePainter extends CustomPainter {
       ...visible.map((candle) => candle.high),
       if (plan?.entryLow != null) plan!.entryLow!,
       if (plan?.entryHigh != null) plan!.entryHigh!,
-      if (plan?.stopLoss != null) plan!.stopLoss!,
-      ...?plan?.takeProfits,
+      if (plan?.isSetup == true && plan?.stopLoss != null) plan!.stopLoss!,
+      if (plan?.isSetup == true) ...?plan?.takeProfits,
     ];
     var low = prices.reduce(math.min);
     var high = prices.reduce(math.max);
@@ -234,11 +234,11 @@ class CandlePainter extends CustomPainter {
         : plan!.decision == 'SHORT_SETUP'
         ? candleDownColor
         : Colors.blue;
-    final direction = plan!.decision == 'LONG_SETUP'
+    final entryLabel = plan!.decision == 'LONG_SETUP'
         ? '做多'
         : plan!.decision == 'SHORT_SETUP'
         ? '做空'
-        : '观察';
+        : '等待区';
     if (entryLow != null || entryHigh != null) {
       final lower = math.min(entryLow ?? entryHigh!, entryHigh ?? entryLow!);
       final upper = math.max(entryLow ?? entryHigh!, entryHigh ?? entryLow!);
@@ -254,7 +254,7 @@ class CandlePainter extends CustomPainter {
         chart,
         yOf(lower),
         entryColor,
-        '$direction 开仓 ${_price(lower)}',
+        '${plan!.isSetup ? '$entryLabel 开仓' : entryLabel} ${_price(lower)}',
       );
       if (upper != lower) {
         _level(
@@ -262,10 +262,11 @@ class CandlePainter extends CustomPainter {
           chart,
           yOf(upper),
           entryColor,
-          '$direction 开仓 ${_price(upper)}',
+          '${plan!.isSetup ? '$entryLabel 开仓' : entryLabel} ${_price(upper)}',
         );
       }
     }
+    if (!plan!.isSetup) return;
     if (plan!.stopLoss case final stop?) {
       _level(canvas, chart, yOf(stop), candleDownColor, 'SL ${_price(stop)}');
     }

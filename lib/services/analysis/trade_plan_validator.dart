@@ -2,10 +2,15 @@ import '../../models/trading_models.dart';
 import 'risk_engine.dart';
 
 class TradePlanValidation {
-  const TradePlanValidation({required this.errors, required this.warnings});
+  const TradePlanValidation({
+    required this.errors,
+    required this.warnings,
+    this.canDrawWaitZone = false,
+  });
 
   final List<String> errors;
   final List<String> warnings;
+  final bool canDrawWaitZone;
 
   bool get isValid => errors.isEmpty;
 }
@@ -31,8 +36,24 @@ class TradePlanValidator {
       return TradePlanValidation(errors: errors, warnings: warnings);
     }
     if (!plan.isSetup) {
-      if (plan.hasPriceLevels) warnings.add('非交易 Setup 的价格标记已忽略');
-      return TradePlanValidation(errors: errors, warnings: warnings);
+      final canDrawWaitZone =
+          plan.decision == 'WAIT' && _validWaitZone(plan, tickSize);
+      final hasOtherLevels =
+          plan.stopLoss != null ||
+          plan.maximumChasePrice != null ||
+          plan.takeProfits.isNotEmpty;
+      if (plan.decision == 'WAIT' && plan.hasPriceLevels && !canDrawWaitZone) {
+        warnings.add('候选等待区无效，价格标记已忽略');
+      } else if (canDrawWaitZone && hasOtherLevels) {
+        warnings.add('WAIT 仅保留候选等待区，其他价格标记已忽略');
+      } else if (plan.decision != 'WAIT' && plan.hasPriceLevels) {
+        warnings.add('非交易 Setup 的价格标记已忽略');
+      }
+      return TradePlanValidation(
+        errors: errors,
+        warnings: warnings,
+        canDrawWaitZone: canDrawWaitZone,
+      );
     }
 
     final low = plan.entryLow;
@@ -92,6 +113,22 @@ class TradePlanValidator {
       _compareRewardRisk(plan, direction, warnings);
     }
     return TradePlanValidation(errors: errors, warnings: warnings);
+  }
+
+  bool _validWaitZone(TradePlan plan, double? tickSize) {
+    final low = plan.entryLow;
+    final high = plan.entryHigh;
+    if (low == null || high == null) return false;
+    if (!low.isFinite ||
+        !high.isFinite ||
+        low <= 0 ||
+        high <= 0 ||
+        low > high) {
+      return false;
+    }
+    return tickSize == null ||
+        (_riskEngine.isTickAligned(low, tickSize) &&
+            _riskEngine.isTickAligned(high, tickSize));
   }
 
   void _validatePercentages(TradePlan plan, List<String> errors) {

@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:decma/models/trading_models.dart';
 import 'package:decma/services/bybit_service.dart';
+import 'package:decma/ui/chart/candle_chart.dart';
+import 'package:decma/ui/chart/candle_chart_painter.dart';
 import 'package:decma/ui/dashboard/dashboard_controller.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -37,6 +40,52 @@ void main() {
     expect(controller.loadingChart, isFalse);
 
     controller.dispose();
+  });
+
+  testWidgets('WAIT renders its candidate zone but hides stop and targets', (
+    tester,
+  ) async {
+    const plan = TradePlan(
+      decision: 'WAIT',
+      summary: 'Wait for a retest',
+      parsedJson: '{}',
+      entryLow: 100,
+      entryHigh: 101,
+      stopLoss: 98,
+      targets: [TradeTarget(price: 105)],
+    );
+    await tester.pumpWidget(
+      FluentApp(
+        home: SizedBox(
+          width: 800,
+          height: 500,
+          child: CandleChart(
+            candles: [
+              Candle(
+                time: DateTime.utc(2026, 8, 10),
+                open: 100,
+                high: 101,
+                low: 99,
+                close: 100,
+                volume: 1,
+              ),
+            ],
+            plan: plan,
+            showWaitZone: true,
+          ),
+        ),
+      ),
+    );
+
+    final painter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((paint) => paint.painter)
+        .whereType<CandlePainter>()
+        .single;
+    expect(painter.plan, same(plan));
+    expect(find.text('开仓区：-'), findsNothing);
+    expect(find.text('止损：-'), findsOneWidget);
+    expect(find.text('止盈：-'), findsOneWidget);
   });
 }
 

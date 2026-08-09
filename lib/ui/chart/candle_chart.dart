@@ -11,6 +11,7 @@ class CandleChart extends StatefulWidget {
     super.key,
     required this.candles,
     this.plan,
+    this.showWaitZone = false,
     this.error,
     this.loading = false,
     this.onRetry,
@@ -18,6 +19,7 @@ class CandleChart extends StatefulWidget {
 
   final List<Candle> candles;
   final TradePlan? plan;
+  final bool showWaitZone;
   final String? error;
   final bool loading;
   final VoidCallback? onRetry;
@@ -66,7 +68,11 @@ class _CandleChartState extends State<CandleChart> {
                     child: CustomPaint(
                       painter: CandlePainter(
                         candles: widget.candles,
-                        plan: widget.plan,
+                        // WAIT may draw only a validated candidate zone.
+                        plan:
+                            widget.plan?.isSetup == true || widget.showWaitZone
+                            ? widget.plan
+                            : null,
                         zoom: _zoom,
                         pan: _pan,
                         hoverPosition: _hoverPosition,
@@ -153,15 +159,15 @@ class _CandleChartState extends State<CandleChart> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '开仓区：${_entryRange(plan)}',
+                    '开仓区：${plan.isSetup || widget.showWaitZone ? _entryRange(plan) : '-'}',
                     style: const TextStyle(fontSize: 12),
                   ),
                   Text(
-                    '止损：${_price(plan.stopLoss)}',
+                    '止损：${plan.isSetup ? _price(plan.stopLoss) : '-'}',
                     style: const TextStyle(fontSize: 12),
                   ),
                   Text(
-                    '止盈：${plan.takeProfits.isEmpty ? '未提供' : plan.takeProfits.map(_price).join(' / ')}',
+                    '止盈：${plan.isSetup ? (plan.takeProfits.isEmpty ? '未提供' : plan.takeProfits.map(_price).join(' / ')) : '-'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),

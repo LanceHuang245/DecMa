@@ -70,6 +70,28 @@ void main() {
     expect(result.warnings, isNotEmpty);
   });
 
+  test('WAIT exposes only a valid tick-aligned candidate zone', () {
+    final valid = validator.validate(
+      _plan(
+        decision: 'WAIT',
+        low: 100,
+        high: 101,
+        stop: 98,
+        targets: const [TradeTarget(price: 105)],
+      ),
+      tickSize: 0.1,
+    );
+    final invalid = validator.validate(
+      _plan(decision: 'WAIT', low: 101, high: 100, stop: 98, targets: const []),
+      tickSize: 0.1,
+    );
+
+    expect(valid.canDrawWaitZone, isTrue);
+    expect(valid.warnings, contains('WAIT 仅保留候选等待区，其他价格标记已忽略'));
+    expect(invalid.canDrawWaitZone, isFalse);
+    expect(invalid.warnings, contains('候选等待区无效，价格标记已忽略'));
+  });
+
   test(
     'RiskEngine calculates size and effective leverage deterministically',
     () {

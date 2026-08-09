@@ -96,6 +96,8 @@ class DashboardController extends ChangeNotifier {
   var _symbols = <String>[];
   var _newsEvents = <NewsEvent>[];
   TradePlan? _plan;
+  TradePlan? _chartPlan;
+  bool _showWaitZone = false;
   String? _lastAnalysisContext;
   DateTime? _lastAnalysisAt;
   String? _conversationContext;
@@ -138,6 +140,8 @@ class DashboardController extends ChangeNotifier {
   Map<String, NewsProviderStatus> get newsProviderStatuses =>
       _newsService.statuses;
   TradePlan? get plan => _plan;
+  TradePlan? get chartPlan => _chartPlan;
+  bool get showWaitZone => _showWaitZone;
   List<DashboardMessage> get conversation => _conversation;
   String? get chartError => _chartError;
   int get chartVersion => _chartVersion;
@@ -327,6 +331,8 @@ class DashboardController extends ChangeNotifier {
     _chartLoadGeneration++;
     _candles = const [];
     _plan = null;
+    _chartPlan = null;
+    _showWaitZone = false;
     _chartError = null;
     _showChartLoading = true;
   }
@@ -497,7 +503,11 @@ class DashboardController extends ChangeNotifier {
               'TradePlan 校验失败：${validation.errors.join('；')}，未添加图表标记。',
             );
           } else if (!plan.isSetup) {
-            notices.add('${plan.decision} 不是交易 Setup，未添加图表标记。');
+            notices.add(
+              validation.canDrawWaitZone
+                  ? 'WAIT 不是交易 Setup，仅显示候选等待区。'
+                  : '${plan.decision} 不是交易 Setup，未添加图表标记。',
+            );
           }
         }
         if (!matchesResponse) {
@@ -510,14 +520,14 @@ class DashboardController extends ChangeNotifier {
             ? answer.text
             : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
         _conversation.add(DashboardMessage.agent(displayText));
-        _plan =
+        final canDisplayPlan =
             plan != null &&
-                plan.isSetup &&
-                validation!.isValid &&
-                matchesResponse &&
-                matchesChart
-            ? plan
-            : null;
+            validation!.isValid &&
+            matchesResponse &&
+            matchesChart;
+        _chartPlan = canDisplayPlan ? plan : null;
+        _plan = canDisplayPlan && plan.isSetup ? plan : null;
+        _showWaitZone = canDisplayPlan && validation.canDrawWaitZone;
         _lastAnalysisContext =
             'User analysis request: $prompt\n\nAnalysis response:\n$displayText';
         _lastAnalysisAt = DateTime.now();
@@ -641,6 +651,8 @@ class DashboardController extends ChangeNotifier {
     if (_loadingAgent) return;
     _conversation.clear();
     _plan = null;
+    _chartPlan = null;
+    _showWaitZone = false;
     _lastAnalysisContext = null;
     _lastAnalysisAt = null;
     _conversationContext = null;

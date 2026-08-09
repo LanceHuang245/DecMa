@@ -12,6 +12,7 @@ class DashboardChartPanel extends StatelessWidget {
     required this.activeSymbol,
     required this.candles,
     required this.plan,
+    required this.showWaitZone,
     required this.chartVersion,
     required this.error,
     required this.loading,
@@ -27,6 +28,7 @@ class DashboardChartPanel extends StatelessWidget {
   final String activeSymbol;
   final List<Candle> candles;
   final TradePlan? plan;
+  final bool showWaitZone;
   final int chartVersion;
   final String? error;
   final bool loading;
@@ -95,6 +97,7 @@ class DashboardChartPanel extends StatelessWidget {
               key: ValueKey(chartVersion),
               candles: candles,
               plan: plan,
+              showWaitZone: showWaitZone,
               error: error,
               loading: loading,
               onRetry: loadingChart ? null : onRetry,
