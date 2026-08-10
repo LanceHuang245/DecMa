@@ -168,14 +168,16 @@ class DashboardAgentPanel extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 46),
                 placeholder: '请输入对话或分析请求',
               ),
-              Positioned(
-                right: 8,
-                bottom: 8,
-                child: Button(
-                  onPressed: loading ? null : onQuickAnalysis,
-                  child: const Text('分析当前合约'),
+              // Keep quick analysis available only when working in analysis mode.
+              if (mode == AgentMode.analysis)
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Button(
+                    onPressed: loading ? null : onQuickAnalysis,
+                    child: const Text('分析当前合约'),
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
