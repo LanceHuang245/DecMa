@@ -1,0 +1,121 @@
+name: Build desktop portable packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.44.9
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux
+            architecture: amd64
+            runner: ubuntu-24.04
+            flutter_architecture: x64
+            build_command: flutter build linux --release
+            bundle_path: build/linux/x64/release/bundle
+          - platform: Linux
+            architecture: arm64
+            runner: ubuntu-24.04-arm
+            flutter_architecture: arm64
+            build_command: flutter build linux --release
+            bundle_path: build/linux/arm64/release/bundle
+          - platform: Windows
+            architecture: amd64
+            runner: windows-2022
+            flutter_architecture: x64
+            build_command: flutter build windows --release
+            bundle_path: build/windows/x64/runner/Release
+          - platform: Windows
+            architecture: arm64
+            runner: windows-11-arm
+            flutter_architecture: arm64
+            build_command: flutter build windows --release
+            bundle_path: build/windows/arm64/runner/Release
+          - platform: macOS
+            architecture: arm64
+            runner: macos-14
+            flutter_architecture: arm64
+            build_command: flutter build macos --release
+            bundle_path: build/macos/Build/Products/Release/decma.app
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Linux desktop build dependencies
+        if: matrix.platform == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang cmake ninja-build pkg-config zip \
+            libgtk-3-dev liblzma-dev libsecret-1-dev
+
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: ${{ matrix.flutter_architecture }}
+          cache: true
+          pub-cache: true
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Read application version
+        id: app_version
+        shell: pwsh
+        run: |
+          # Keep artifact names aligned with the version declared by the app.
+          $match = [regex]::Match((Get-Content pubspec.yaml -Raw), '(?m)^version:\s*([^\s#]+)')
+          if (-not $match.Success) {
+            throw 'pubspec.yaml does not define an application version.'
+          }
+          "value=$($match.Groups[1].Value)" >> $env:GITHUB_OUTPUT
+
+      - name: Fetch dependencies
+        run: flutter pub get
+
+      - name: Build release bundle
+        run: ${{ matrix.build_command }}
+
+      - name: Package Linux portable bundle
+        if: matrix.platform == 'Linux'
+        shell: bash
+        run: |
+          archive="DecMa-${{ matrix.architecture }}-${{ steps.app_version.outputs.value }}-${{ matrix.platform }}-portable.zip"
+          cd "${{ matrix.bundle_path }}"
+          zip -r "$GITHUB_WORKSPACE/$archive" .
+
+      - name: Package Windows portable bundle
+        if: matrix.platform == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = 'DecMa-${{ matrix.architecture }}-${{ steps.app_version.outputs.value }}-${{ matrix.platform }}-portable.zip'
+          Compress-Archive -Path "${{ matrix.bundle_path }}/*" -DestinationPath $archive -Force
+
+      - name: Package macOS portable bundle
+        if: matrix.platform == 'macOS'
+        shell: bash
+        run: |
+          archive="DecMa-${{ matrix.architecture }}-${{ steps.app_version.outputs.value }}-${{ matrix.platform }}-portable.zip"
+          ditto -c -k --sequesterRsrc --keepParent "${{ matrix.bundle_path }}" "$archive"
+
+      - name: Upload portable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: DecMa-${{ matrix.architecture }}-${{ steps.app_version.outputs.value }}-${{ matrix.platform }}-portable
+          path: DecMa-${{ matrix.architecture }}-${{ steps.app_version.outputs.value }}-${{ matrix.platform }}-portable.zip
+          if-no-files-found: error
+          compression-level: 0
