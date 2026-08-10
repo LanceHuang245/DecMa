@@ -38,7 +38,7 @@ class HttpMcpConnection implements McpConnection {
       'name': toolName,
       'arguments': arguments,
     });
-    return jsonEncode(result['content'] ?? result);
+    return _encodeToolResult(result);
   }
 
   Future<void> _initialize() async {
@@ -160,7 +160,7 @@ class StdioMcpConnection implements McpConnection {
       'name': toolName,
       'arguments': arguments,
     });
-    return jsonEncode(result['content'] ?? result);
+    return _encodeToolResult(result);
   }
 
   Future<void> _initialize() async {
@@ -254,3 +254,6 @@ class StdioMcpConnection implements McpConnection {
     _pending.clear();
   }
 }
+
+// Preserve MCP error metadata so failed tool results cannot look successful.
+String _encodeToolResult(Map<String, dynamic> result) => jsonEncode(result);

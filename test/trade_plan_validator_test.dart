@@ -1,4 +1,5 @@
 import 'package:decma/models/trading_models.dart';
+import 'package:decma/services/agent_prompts.dart';
 import 'package:decma/services/analysis/risk_engine.dart';
 import 'package:decma/services/analysis/trade_plan_validator.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -134,6 +135,46 @@ Result
     expect(plan.maximumChasePrice, 102);
     expect(plan.targets.single.closePercentage, 100);
     expect(validator.validate(plan).isValid, isTrue);
+  });
+
+  test('accepts targets when every exit allocation is unavailable', () {
+    final plan = TradePlan.fromResponse('''
+{"request":{"symbol":"BTCUSDT"},"decision":{"type":"LONG_SETUP","summary":"test"},"entry_plan":{"entry_zone_low":100,"entry_zone_high":101},"risk_plan":{"stop_loss":98},"take_profit_plan":[{"price":105,"close_percentage":null},{"price":108,"close_percentage":null}]}
+''')!;
+
+    expect(
+      plan.targets.every((target) => target.closePercentage == null),
+      isTrue,
+    );
+    expect(validator.validate(plan).isValid, isTrue);
+  });
+
+  test(
+    'analysis prompt never uses zero for an unavailable exit allocation',
+    () {
+      expect(
+        analysisPrompt,
+        contains('every target must use close_percentage = null'),
+      );
+      expect(analysisPrompt, contains('Never use 0 as a placeholder'));
+      expect(analysisPrompt, isNot(contains('"close_percentage": 0')));
+    },
+  );
+
+  test('full-source enrichment requires real bounded data calls', () {
+    expect(analysisPrompt, contains('`FULL_SOURCE_ENRICHMENT`'));
+    expect(
+      analysisPrompt,
+      contains('Calling `decma_discover_mcp_tools` only discovers schemas'),
+    );
+    expect(
+      analysisPrompt,
+      contains('only `Coinalyze_API_getFutureMarkets` resolves an identifier'),
+    );
+    expect(
+      analysisPrompt,
+      contains('Failure of an auxiliary source must still only degrade'),
+    );
   });
 }
 

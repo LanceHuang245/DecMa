@@ -17,6 +17,9 @@ class McpHub {
   String? _nansenApiKey;
   bool _didConnect = false;
 
+  Set<String> get availableServers =>
+      _tools.values.map((tool) => tool.serverName).toSet();
+
   // Eagerly discover tools for the full market-analysis workflow.
   Future<List<McpTool>> connect(
     McpSettings settings, {
@@ -148,7 +151,9 @@ class McpHub {
   }
 
   int _score(McpTool tool, Iterable<String> terms) {
-    final source = '${tool.name} ${tool.description}'.toLowerCase();
+    // Include the server so source-specific discovery queries rank correctly.
+    final source = '${tool.serverName} ${tool.name} ${tool.description}'
+        .toLowerCase();
     return terms.where(source.contains).length;
   }
 
