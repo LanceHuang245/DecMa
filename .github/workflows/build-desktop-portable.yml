@@ -1,6 +1,9 @@
 name: Build desktop portable packages
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -23,24 +26,12 @@ jobs:
             flutter_architecture: x64
             build_command: flutter build linux --release
             bundle_path: build/linux/x64/release/bundle
-          - platform: Linux
-            architecture: arm64
-            runner: ubuntu-24.04-arm
-            flutter_architecture: arm64
-            build_command: flutter build linux --release
-            bundle_path: build/linux/arm64/release/bundle
           - platform: Windows
             architecture: amd64
             runner: windows-2022
             flutter_architecture: x64
             build_command: flutter build windows --release
             bundle_path: build/windows/x64/runner/Release
-          - platform: Windows
-            architecture: arm64
-            runner: windows-11-arm
-            flutter_architecture: arm64
-            build_command: flutter build windows --release
-            bundle_path: build/windows/arm64/runner/Release
           - platform: macOS
             architecture: arm64
             runner: macos-14
