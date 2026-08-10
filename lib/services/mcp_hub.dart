@@ -142,7 +142,6 @@ class McpHub {
           (tool) => {
             'function_name': tool.functionName,
             'server': tool.serverName,
-            'tool_name': tool.name,
             'description': tool.description,
             'input_schema': tool.inputSchema,
           },
