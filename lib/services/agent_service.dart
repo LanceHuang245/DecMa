@@ -8,6 +8,7 @@ import '../models/news_event.dart';
 import '../models/market_snapshot.dart';
 import 'agent_prompts.dart';
 import 'analysis/feature_engine.dart';
+import 'bybit_service.dart';
 import 'coinalyze_api_tools.dart';
 import 'llm_transport.dart';
 import 'mcp_hub.dart';
@@ -35,10 +36,12 @@ class AgentService {
   AgentService({
     McpHub? mcpHub,
     CoinalyzeApiTools? coinalyze,
+    BybitService? bybit,
     SecureKeyStore? keyStore,
     Dio? dio,
   }) : _mcpHub = mcpHub ?? McpHub(),
        _coinalyze = coinalyze ?? CoinalyzeApiTools(),
+       _bybit = bybit ?? BybitService(),
        _keyStore = keyStore ?? SecureKeyStore(),
        _dio = dio ?? createDio() {
     _transport = LlmTransport(_dio);
@@ -47,6 +50,7 @@ class AgentService {
 
   final McpHub _mcpHub;
   final CoinalyzeApiTools _coinalyze;
+  final BybitService _bybit;
   final SecureKeyStore _keyStore;
   final Dio _dio;
   late final LlmTransport _transport;
@@ -80,11 +84,18 @@ class AgentService {
     if (llmApiKey == null || llmApiKey.isEmpty) {
       throw Exception('请先在设置中保存 LLM API Key 或登录 OpenAI Codex。');
     }
+    final isAnalysis = mode == AgentMode.analysis;
     final nansenApiKey = mcp.useNansen ? await _keyStore.readNansenKey() : null;
     final coinalyzeApiKey = api.useCoinalyze
         ? await _keyStore.readCoinalyzeKey()
         : null;
-    final isAnalysis = mode == AgentMode.analysis;
+    final useBybitAccountApi = isAnalysis && mcp.useBybit;
+    final bybitApiKey = useBybitAccountApi
+        ? await _keyStore.readBybitApiKey()
+        : null;
+    final bybitApiSecret = useBybitAccountApi
+        ? await _keyStore.readBybitApiSecret()
+        : null;
     final mcpTools = isAnalysis
         ? await _mcpHub.connect(mcp, nansenApiKey: nansenApiKey)
         : await _mcpHub.prepare(mcp, nansenApiKey: nansenApiKey);
@@ -98,6 +109,23 @@ class AgentService {
     final warnings = isAnalysis
         ? [..._mcpHub.warnings, ..._coinalyze.warnings]
         : const <String>[];
+    final hasBybitApiKey = bybitApiKey?.trim().isNotEmpty ?? false;
+    final hasBybitApiSecret = bybitApiSecret?.trim().isNotEmpty ?? false;
+    Map<String, double>? bybitFeeRates;
+    if (isAnalysis && hasBybitApiKey != hasBybitApiSecret) {
+      warnings.add('Bybit 账户 API：API Key 和 API Secret 需同时配置。');
+    } else if (isAnalysis && hasBybitApiKey) {
+      onActivity?.call('• Bybit Account - 获取实际手续费率');
+      try {
+        bybitFeeRates = await _bybit.fetchAccountFeeRates(
+          symbol: symbol,
+          apiKey: bybitApiKey!.trim(),
+          apiSecret: bybitApiSecret!.trim(),
+        );
+      } on AppFailure catch (error) {
+        warnings.add(error.message);
+      }
+    }
     final mcpServers = _mcpHub.availableServers;
     final sourceAvailability = <String, String>{
       'bybit_rest_harness': !isAnalysis
@@ -110,6 +138,17 @@ class AgentService {
           : mcpServers.contains('Bybit MCP')
           ? 'AVAILABLE'
           : 'UNAVAILABLE',
+      'bybit_account_fee_rate': !isAnalysis
+          ? 'NOT_REQUESTED'
+          : !mcp.useBybit
+          ? 'DISABLED'
+          : hasBybitApiKey != hasBybitApiSecret
+          ? 'INCOMPLETE'
+          : hasBybitApiKey
+          ? bybitFeeRates == null
+                ? 'UNAVAILABLE'
+                : 'READY'
+          : 'NOT_CONFIGURED',
       'coinalyze_api': !api.useCoinalyze
           ? 'DISABLED'
           : coinalyzeTools.isNotEmpty
@@ -147,6 +186,7 @@ class AgentService {
             eventSnapshot,
             marketSnapshot,
             marketFeatures,
+            bybitFeeRates,
             sourceAvailability,
           )
         : _conversationContext(
@@ -318,6 +358,7 @@ $conversation
     EventSnapshot? eventSnapshot,
     MarketSnapshot? marketSnapshot,
     MarketFeatures? marketFeatures,
+    Map<String, double>? bybitFeeRates,
     Map<String, String> sourceAvailability,
   ) {
     final latest = candles.isEmpty ? null : candles.last;
@@ -349,6 +390,7 @@ The following untrusted data is a chart snapshot. Verify or supplement it throug
 ${jsonEncode(chartData)}
 ${marketSnapshot == null ? '' : '\nHarness core market snapshot:\n${jsonEncode(marketSnapshot.toJson())}'}
 ${marketFeatures == null ? '' : '\nDeterministic calculated features:\n${jsonEncode(marketFeatures.toJson())}'}
+${bybitFeeRates == null ? '' : '\nBybit authenticated account fee rates:\n${jsonEncode(bybitFeeRates)}'}
 ${eventSnapshot == null ? '' : '\nCurrent event snapshot from the app event store:\n${jsonEncode(eventSnapshot.toJson())}'}
 Configured analysis-source availability (availability is not market evidence):
 ${jsonEncode(sourceAvailability)}

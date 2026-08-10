@@ -53,7 +53,11 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   late final TextEditingController _model;
   late final TextEditingController _nansenKey;
   late final TextEditingController _coinalyzeKey;
+  late final TextEditingController _bybitApiKey;
+  late final TextEditingController _bybitApiSecret;
   late String? _llmMask;
+  late final String? _bybitApiKeyMask;
+  late final String? _bybitApiSecretMask;
   late final String? _nansenMask;
   late final String? _coinalyzeMask;
   late final OpenAiCodexAuthService _codexAuth;
@@ -80,6 +84,10 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _llmMask = createSecretMask(widget.keyStatus.hasLlmKeyFor(widget.llm.id));
     _apiKey = TextEditingController(text: _llmMask);
     _model = TextEditingController(text: widget.llm.model);
+    _bybitApiKeyMask = createSecretMask(widget.keyStatus.hasBybitApiKey);
+    _bybitApiKey = TextEditingController(text: _bybitApiKeyMask);
+    _bybitApiSecretMask = createSecretMask(widget.keyStatus.hasBybitApiSecret);
+    _bybitApiSecret = TextEditingController(text: _bybitApiSecretMask);
     _nansenMask = createSecretMask(widget.keyStatus.hasNansenKey);
     _nansenKey = TextEditingController(text: _nansenMask);
     _coinalyzeMask = createSecretMask(widget.keyStatus.hasCoinalyzeKey);
@@ -96,6 +104,8 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     _connectionName.dispose();
     _apiKey.dispose();
     _model.dispose();
+    _bybitApiKey.dispose();
+    _bybitApiSecret.dispose();
     _nansenKey.dispose();
     _coinalyzeKey.dispose();
     super.dispose();
@@ -228,6 +238,39 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                                 ? (value) => setState(() => _useBybit = value)
                                 : null,
                           ),
+                          if (_useBybit) ...[
+                            const SizedBox(height: 8),
+                            const DocumentationHelpLabel(
+                              label: 'Bybit 账户 API（可选）',
+                              tooltip: '查看 Bybit 只读账户 API 文档',
+                              documentationUrl:
+                                  AppConstants.bybitAccountDocumentationUrl,
+                            ),
+                            const SizedBox(height: 6),
+                            InfoLabel(
+                              label: 'Bybit API Key',
+                              child: TextBox(
+                                controller: _bybitApiKey,
+                                obscureText: true,
+                                placeholder: '仅用于读取实际手续费率',
+                                onTap: () =>
+                                    _selectMask(_bybitApiKey, _bybitApiKeyMask),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            InfoLabel(
+                              label: 'Bybit API Secret',
+                              child: TextBox(
+                                controller: _bybitApiSecret,
+                                obscureText: true,
+                                placeholder: '输入新密钥以加密保存',
+                                onTap: () => _selectMask(
+                                  _bybitApiSecret,
+                                  _bybitApiSecretMask,
+                                ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           ToggleSwitch(
                             checked: _useOpenWebSearch,
@@ -516,11 +559,15 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
         ApiKeyUpdates(
           llmKey: _newKey(_apiKey, _llmMask),
           llmConnectionId: connection.id,
+          bybitApiKey: _newKey(_bybitApiKey, _bybitApiKeyMask),
+          bybitApiSecret: _newKey(_bybitApiSecret, _bybitApiSecretMask),
           nansenKey: _newKey(_nansenKey, _nansenMask),
           coinalyzeKey: _newKey(_coinalyzeKey, _coinalyzeMask),
         ),
       );
       _apiKey.clear();
+      _bybitApiKey.clear();
+      _bybitApiSecret.clear();
       _nansenKey.clear();
       _coinalyzeKey.clear();
       if (mounted) Navigator.pop(context);

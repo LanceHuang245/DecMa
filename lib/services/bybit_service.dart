@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 
 import '../models/market_snapshot.dart';
@@ -10,6 +11,69 @@ class BybitService {
   BybitService({Dio? dio}) : _dio = dio ?? createDio();
 
   final Dio _dio;
+
+  // Read the configured account's actual maker and taker rates without trading.
+  Future<Map<String, double>> fetchAccountFeeRates({
+    required String symbol,
+    required String apiKey,
+    required String apiSecret,
+  }) => _read(() async {
+    final normalized = symbol.trim().toUpperCase();
+    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+    const recvWindow = '5000';
+    final query = 'category=linear&symbol=$normalized';
+    final signature = accountSignature(
+      timestamp: timestamp,
+      apiKey: apiKey,
+      recvWindow: recvWindow,
+      query: query,
+      apiSecret: apiSecret,
+    );
+    final response = await runNetworkRequest(
+      'Bybit Account',
+      () => _dio.getUri<String>(
+        Uri.https('api.bybit.com', '/v5/account/fee-rate', {
+          'category': 'linear',
+          'symbol': normalized,
+        }),
+        options: networkOptions(
+          headers: {
+            'X-BAPI-API-KEY': apiKey,
+            'X-BAPI-TIMESTAMP': '$timestamp',
+            'X-BAPI-RECV-WINDOW': recvWindow,
+            'X-BAPI-SIGN': signature,
+          },
+        ),
+      ),
+    );
+    final body = _accountBody(response);
+    final list = (_map(body['result'])['list'] as List)
+        .whereType<Map>()
+        .toList();
+    if (list.length != 1) {
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'Bybit Account',
+      );
+    }
+    final item = Map<String, dynamic>.from(list.single);
+    return {
+      'maker_fee_rate': double.parse(item['makerFeeRate'].toString()),
+      'taker_fee_rate': double.parse(item['takerFeeRate'].toString()),
+    };
+  });
+
+  // Sign the exact GET payload required by Bybit's authenticated V5 endpoints.
+  static String accountSignature({
+    required int timestamp,
+    required String apiKey,
+    required String recvWindow,
+    required String query,
+    required String apiSecret,
+  }) => Hmac(
+    sha256,
+    utf8.encode(apiSecret),
+  ).convert(utf8.encode('$timestamp$apiKey$recvWindow$query')).toString();
 
   Future<InstrumentSnapshot> fetchInstrument(
     String symbol, {
@@ -167,6 +231,21 @@ class BybitService {
     final body = _map(jsonDecode(response.data ?? ''));
     if (body['retCode'] != 0) {
       throw const AppFailure(kind: AppFailureKind.upstream, provider: 'Bybit');
+    }
+    return body;
+  }
+
+  Map<String, dynamic> _accountBody(Response<String> response) {
+    requireSuccessfulResponse(response, provider: 'Bybit Account');
+    final body = _map(jsonDecode(response.data ?? ''));
+    if (body['retCode'] != 0) {
+      final code = body['retCode'];
+      throw AppFailure(
+        kind: const [10003, 10004, 10005, 10007, 10010].contains(code)
+            ? AppFailureKind.authentication
+            : AppFailureKind.upstream,
+        provider: 'Bybit Account',
+      );
     }
     return body;
   }

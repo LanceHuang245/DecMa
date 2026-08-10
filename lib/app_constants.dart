@@ -6,6 +6,8 @@ class AppConstants {
   static const codexClientVersion = '0.147.0';
   static const bybitMcpPackage = 'bybit-official-trading-server@2.1.16';
   static const openWebSearchMcpPackage = 'open-websearch@2.1.11';
+  static const bybitAccountDocumentationUrl =
+      'https://bybit-exchange.github.io/docs/v5/guide';
   static const nansenDocumentationUrl = 'https://docs.nansen.ai/';
   static const coinalyzeDocumentationUrl = 'https://api.coinalyze.net/v1/doc/';
   static const finnhubDocumentationUrl =

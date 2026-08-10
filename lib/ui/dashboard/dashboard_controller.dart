@@ -654,7 +654,7 @@ class DashboardController extends ChangeNotifier {
         : '';
     // Build and send the analysis request from the confirmed dialog values.
     _prompt.text =
-        '''请分析 $_activeSymbol 的短线开仓机会。本次交易需在${_quickAnalysisValue(tradeWindow, '填写交易完成时限')}内完成。
+        '''请分析 $_activeSymbol 的开仓机会。本次交易需持有${_quickAnalysisValue(tradeWindow, '填写交易完成时限')}。
 
 账户资金：${_quickAnalysisValue(accountBalance, '填写 USDT')}
 单笔最大可接受亏损：${_quickAnalysisValue(maxLoss, '填写 USDT 或 %')}

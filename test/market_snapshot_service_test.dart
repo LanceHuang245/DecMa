@@ -6,6 +6,19 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Bybit account fee signatures use the V5 authenticated GET payload', () {
+    expect(
+      BybitService.accountSignature(
+        timestamp: 1670000000000,
+        apiKey: 'test-key',
+        recvWindow: '5000',
+        query: 'category=linear&symbol=BTCUSDT',
+        apiSecret: 'test-secret',
+      ),
+      'c7a1d6479554a14d1aff5e3cea0c0643ffba6af633008f2768ff888e867729c0',
+    );
+  });
+
   test(
     'MarketSnapshotService always requests fixed analysis timeframes',
     () async {

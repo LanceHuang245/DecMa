@@ -7,6 +7,8 @@ class ApiKeyStatus {
     this.hasLlmKey = false,
     this.llmKeyConnectionIds = const {},
     this.hasCodexOAuth = false,
+    this.hasBybitApiKey = false,
+    this.hasBybitApiSecret = false,
     this.hasNansenKey = false,
     this.hasCoinalyzeKey = false,
     this.hasFinnhubKey = false,
@@ -16,6 +18,8 @@ class ApiKeyStatus {
   final bool hasLlmKey;
   final Set<String> llmKeyConnectionIds;
   final bool hasCodexOAuth;
+  final bool hasBybitApiKey;
+  final bool hasBybitApiSecret;
   final bool hasNansenKey;
   final bool hasCoinalyzeKey;
   final bool hasFinnhubKey;
@@ -43,6 +47,8 @@ class ApiKeyUpdates {
   const ApiKeyUpdates({
     this.llmKey,
     this.llmConnectionId = LlmSettings.defaultId,
+    this.bybitApiKey,
+    this.bybitApiSecret,
     this.nansenKey,
     this.coinalyzeKey,
     this.finnhubKey,
@@ -51,6 +57,8 @@ class ApiKeyUpdates {
 
   final String? llmKey;
   final String llmConnectionId;
+  final String? bybitApiKey;
+  final String? bybitApiSecret;
   final String? nansenKey;
   final String? coinalyzeKey;
   final String? finnhubKey;
@@ -66,6 +74,8 @@ class SecureKeyStore {
   static const _codexRefreshToken = 'decma.codex.refresh_token';
   static const _codexAccountId = 'decma.codex.account_id';
   static const _codexExpiresAt = 'decma.codex.expires_at';
+  static const _bybitApiKey = 'decma.bybit_api_key';
+  static const _bybitApiSecret = 'decma.bybit_api_secret';
   static const _nansenKey = 'decma.nansen_api_key';
   static const _coinalyzeKey = 'decma.coinalyze_api_key';
   static const _finnhubKey = 'decma.finnhub_api_key';
@@ -85,6 +95,8 @@ class SecureKeyStore {
       _storage.containsKey(key: _codexRefreshToken),
       _storage.containsKey(key: _codexAccountId),
       _storage.containsKey(key: _codexExpiresAt),
+      _storage.containsKey(key: _bybitApiKey),
+      _storage.containsKey(key: _bybitApiSecret),
       _storage.containsKey(key: _nansenKey),
       _storage.containsKey(key: _coinalyzeKey),
       _storage.containsKey(key: _finnhubKey),
@@ -104,10 +116,12 @@ class SecureKeyStore {
           saved[connectionIds.length + 1] &&
           saved[connectionIds.length + 2] &&
           saved[connectionIds.length + 3],
-      hasNansenKey: saved[connectionIds.length + 4],
-      hasCoinalyzeKey: saved[connectionIds.length + 5],
-      hasFinnhubKey: saved[connectionIds.length + 6],
-      hasMarketauxKey: saved[connectionIds.length + 7],
+      hasBybitApiKey: saved[connectionIds.length + 4],
+      hasBybitApiSecret: saved[connectionIds.length + 5],
+      hasNansenKey: saved[connectionIds.length + 6],
+      hasCoinalyzeKey: saved[connectionIds.length + 7],
+      hasFinnhubKey: saved[connectionIds.length + 8],
+      hasMarketauxKey: saved[connectionIds.length + 9],
     );
   }
 
@@ -118,6 +132,12 @@ class SecureKeyStore {
         key: _llmKeyFor(updates.llmConnectionId),
         value: key,
       );
+    }
+    if (updates.bybitApiKey case final key?) {
+      await _storage.write(key: _bybitApiKey, value: key);
+    }
+    if (updates.bybitApiSecret case final secret?) {
+      await _storage.write(key: _bybitApiSecret, value: secret);
     }
     if (updates.nansenKey case final key?) {
       await _storage.write(key: _nansenKey, value: key);
@@ -186,6 +206,8 @@ class SecureKeyStore {
       ]).then((_) {});
 
   Future<String?> readNansenKey() => _storage.read(key: _nansenKey);
+  Future<String?> readBybitApiKey() => _storage.read(key: _bybitApiKey);
+  Future<String?> readBybitApiSecret() => _storage.read(key: _bybitApiSecret);
   Future<String?> readCoinalyzeKey() => _storage.read(key: _coinalyzeKey);
   Future<String?> readFinnhubKey() => _storage.read(key: _finnhubKey);
   Future<String?> readMarketauxKey() => _storage.read(key: _marketauxKey);
