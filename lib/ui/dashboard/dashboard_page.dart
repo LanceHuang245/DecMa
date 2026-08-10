@@ -11,6 +11,7 @@ import '../settings/agent_settings_dialog.dart';
 import 'dashboard_agent_panel.dart';
 import 'dashboard_chart_panel.dart';
 import 'dashboard_controller.dart';
+import 'quick_analysis_dialog.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
@@ -109,6 +110,16 @@ class _DashboardPageState extends State<DashboardPage> {
         settings: _controller.news,
         keyStatus: _controller.apiKeyStatus,
         onSave: _controller.saveNewsSettings,
+      ),
+    );
+  }
+
+  void _showQuickAnalysisDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => QuickAnalysisDialog(
+        symbol: _controller.activeSymbol,
+        onConfirm: _controller.quickAnalyze,
       ),
     );
   }
@@ -213,7 +224,7 @@ class _DashboardPageState extends State<DashboardPage> {
     loading: _controller.loadingAgent,
     promptController: _controller.promptController,
     onModeChanged: _controller.selectAgentMode,
-    onQuickAnalysis: _controller.quickAnalyze,
+    onQuickAnalysis: _showQuickAnalysisDialog,
     onSend: _controller.runAgent,
     onClear: _controller.clearAgentContext,
     onScrollToBottom: _controller.scrollConversationToBottom,

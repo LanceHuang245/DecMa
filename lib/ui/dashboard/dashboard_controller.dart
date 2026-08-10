@@ -634,11 +634,45 @@ class DashboardController extends ChangeNotifier {
     );
   }
 
-  void quickAnalyze() {
+  void quickAnalyze({
+    required String analysisPlan,
+    required String tradeWindow,
+    required String accountBalance,
+    required String maxLoss,
+    required String plannedPosition,
+    required String currentPosition,
+    required String currentPositionSize,
+    required String currentPositionEntryPrice,
+  }) {
     _agentMode = AgentMode.analysis;
-    _prompt.text = '给我一个 $_activeSymbol 的1小时短线开仓方向与位置以及止盈、止损位置。';
+    final hasPosition = currentPosition.trim() != '无';
+    final aggressiveInstruction = analysisPlan == '激进'
+        ? '''激进方案要求：不得输出 NO_TRADE 或 WAIT；必须在 LONG 和 SHORT 中选择一个方向，并给出可执行的入场、止损和止盈方案。若条件不足，选择风险更低的一侧，降低仓位并收紧止损。
+
+'''
+        : '';
+    // Build and send the analysis request from the confirmed dialog values.
+    _prompt.text =
+        '''请分析 $_activeSymbol 的短线开仓机会。本次交易需在${_quickAnalysisValue(tradeWindow, '填写交易完成时限')}内完成。
+
+账户资金：${_quickAnalysisValue(accountBalance, '填写 USDT')}
+单笔最大可接受亏损：${_quickAnalysisValue(maxLoss, '填写 USDT 或 %')}
+计划开仓数量：${_quickAnalysisValue(plannedPosition, '填写币数量或 USDT 名义价值')}
+当前持仓：${_quickAnalysisValue(currentPosition, '无 / 多 / 空')}
+当前持仓数量：${hasPosition ? _quickAnalysisValue(currentPositionSize, '无则填 0') : '0'}
+当前持仓均价：${hasPosition ? _quickAnalysisValue(currentPositionEntryPrice, '无则填 0') : '0'}
+
+请同时评估 LONG 和 SHORT，并给出当前更优的开仓方向、等待入场区、入场触发条件、最大追价位置、止损位置、分批止盈位置以及风险收益比。
+
+$aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限制，请根据止损距离给出更合理的最大仓位建议。
+''';
     _notify();
     unawaited(runAgent());
+  }
+
+  String _quickAnalysisValue(String value, String placeholder) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? '{$placeholder}' : trimmed;
   }
 
   void selectAgentMode(AgentMode mode) {

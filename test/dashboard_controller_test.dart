@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:decma/models/trading_models.dart';
+import 'package:decma/services/agent_service.dart';
 import 'package:decma/services/bybit_service.dart';
 import 'package:decma/utils/network.dart';
 import 'package:dio/dio.dart';
@@ -40,6 +41,49 @@ void main() {
     expect(controller.candles.single.close, 1);
     expect(controller.showChartLoading, isFalse);
     expect(controller.loadingChart, isFalse);
+
+    controller.dispose();
+  });
+
+  test('quick analysis sends the confirmed form request', () async {
+    final controller = DashboardController(
+      nodeAvailable: true,
+      initialSymbol: 'ETHUSDT',
+    );
+
+    controller.quickAnalyze(
+      analysisPlan: '激进',
+      tradeWindow: '3 小时',
+      accountBalance: '1,000 USDT',
+      maxLoss: '20 USDT',
+      plannedPosition: '500 USDT',
+      currentPosition: '无',
+      currentPositionSize: '99',
+      currentPositionEntryPrice: '88,888',
+    );
+    await _flushAsync();
+
+    expect(controller.agentMode, AgentMode.analysis);
+    expect(controller.loadingAgent, isFalse);
+    expect(controller.conversation, hasLength(1));
+    expect(
+      controller.promptController.text,
+      '''请分析 ETHUSDT 的短线开仓机会。本次交易需在3 小时内完成，不是 K 线周期。
+
+账户资金：1,000 USDT
+单笔最大可接受亏损：20 USDT
+计划开仓数量：500 USDT
+当前持仓：无
+当前持仓数量：0
+当前持仓均价：0
+
+请同时评估 LONG 和 SHORT，并给出当前更优的开仓方向、等待入场区、入场触发条件、最大追价位置、止损位置、分批止盈位置以及风险收益比。
+
+激进方案要求：不得输出 NO_TRADE 或 WAIT；必须在 LONG 和 SHORT 中选择一个方向，并给出可执行的入场、止损和止盈方案。若条件不足，选择风险更低的一侧，降低仓位并收紧止损。
+
+如果我填写的计划仓位超过上述单笔风险限制，请根据止损距离给出更合理的最大仓位建议。
+''',
+    );
 
     controller.dispose();
   });
