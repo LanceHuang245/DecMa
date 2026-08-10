@@ -55,6 +55,7 @@ class NewsService {
   Future<List<NewsEvent>> refresh({
     required NewsSettings settings,
     required String? finnhubApiKey,
+    void Function(bool refreshing)? onRefreshChanged,
   }) async {
     await _assetResolver.all();
     final now = DateTime.now().toUtc();
@@ -66,6 +67,7 @@ class NewsService {
       now: now,
       task: () => _finnhub(finnhubApiKey, now),
       output: events,
+      onRefreshChanged: onRefreshChanged,
     );
     await _refreshProvider(
       id: 'BLS',
@@ -81,6 +83,7 @@ class NewsService {
         now: now,
       ),
       output: events,
+      onRefreshChanged: onRefreshChanged,
     );
     await _refreshProvider(
       id: 'BEA',
@@ -96,6 +99,7 @@ class NewsService {
         now: now,
       ),
       output: events,
+      onRefreshChanged: onRefreshChanged,
     );
     await _refreshProvider(
       id: 'Federal Reserve',
@@ -104,6 +108,7 @@ class NewsService {
       now: now,
       task: () => _federalReserve(now),
       output: events,
+      onRefreshChanged: onRefreshChanged,
     );
     return events.isEmpty
         ? _storedOrEmpty()
@@ -115,6 +120,7 @@ class NewsService {
     required String symbol,
     required NewsSettings settings,
     required String? marketauxApiKey,
+    void Function(bool refreshing)? onRefreshChanged,
   }) async {
     final now = DateTime.now().toUtc();
     final profile = await _assetResolver.resolve(symbol);
@@ -141,6 +147,7 @@ class NewsService {
         );
       },
       output: events,
+      onRefreshChanged: onRefreshChanged,
     );
     return events.isEmpty
         ? _storedOrEmpty()
@@ -166,6 +173,7 @@ class NewsService {
     required DateTime now,
     required Future<List<NewsEvent>> Function() task,
     required List<NewsEvent> output,
+    void Function(bool refreshing)? onRefreshChanged,
   }) async {
     final key = cacheKey ?? id;
     if (!enabled) {
@@ -188,6 +196,8 @@ class NewsService {
     }
     _lastAttempt[key] = now;
     await _store.writeRefreshTime(key, now);
+    // Only actual provider requests drive the UI refresh indicator.
+    onRefreshChanged?.call(true);
     try {
       output.addAll(await task());
       _statuses[id] = NewsProviderStatus(
@@ -218,6 +228,8 @@ class NewsService {
         message: error.toString(),
         updatedAt: now,
       );
+    } finally {
+      onRefreshChanged?.call(false);
     }
   }
 

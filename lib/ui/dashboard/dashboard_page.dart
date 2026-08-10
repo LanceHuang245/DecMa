@@ -166,6 +166,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                 currentSymbol: _controller.activeSymbol,
                                 providerStatuses:
                                     _controller.newsProviderStatuses,
+                                isRefreshing: _controller.refreshingNews,
                                 onOpenSettings: _openNewsSettings,
                               ),
                             ),

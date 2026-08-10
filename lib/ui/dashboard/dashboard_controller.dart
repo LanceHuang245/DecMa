@@ -90,6 +90,7 @@ class DashboardController extends ChangeNotifier {
   );
   Timer? _chartRefreshTimer;
   Timer? _newsRefreshTimer;
+  var _newsRefreshesInFlight = 0;
   var _activeSymbol = 'BTCUSDT';
   var _interval = '15';
   var _candles = <Candle>[];
@@ -156,12 +157,12 @@ class DashboardController extends ChangeNotifier {
   McpSettings get mcp => _mcp;
   ApiSettings get api => _api;
   NewsSettings get news => _news;
+  bool get refreshingNews => _newsRefreshesInFlight > 0;
 
   void initialize() {
     unawaited(_loadApiKeyStatus());
     unawaited(_loadSymbols());
     unawaited(_loadCachedNews());
-    unawaited(_refreshTokenNews(_activeSymbol));
     _startChartRefresh();
     _startNewsRefresh();
   }
@@ -179,11 +180,17 @@ class DashboardController extends ChangeNotifier {
   // News polls independently, so a feed outage cannot interrupt chart polling.
   void _startNewsRefresh() {
     _newsRefreshTimer?.cancel();
-    unawaited(_refreshNews());
+    _refreshAllNews();
     _newsRefreshTimer = Timer.periodic(
       const Duration(minutes: 1),
-      (_) => unawaited(_refreshNews()),
+      (_) => _refreshAllNews(),
     );
+  }
+
+  // Check all sources every minute; each provider keeps its own cache interval.
+  void _refreshAllNews() {
+    unawaited(_refreshNews());
+    unawaited(_refreshTokenNews(_activeSymbol));
   }
 
   Future<void> _loadCachedNews() async {
@@ -199,6 +206,7 @@ class DashboardController extends ChangeNotifier {
       final events = await _newsService.refresh(
         settings: _news,
         finnhubApiKey: await _keyStore.readFinnhubKey(),
+        onRefreshChanged: _handleNewsRefreshState,
       );
       if (_isDisposed) return;
       _newsEvents = events;
@@ -215,6 +223,7 @@ class DashboardController extends ChangeNotifier {
         symbol: symbol,
         settings: _news,
         marketauxApiKey: await _keyStore.readMarketauxKey(),
+        onRefreshChanged: _handleNewsRefreshState,
       );
       if (_isDisposed) return;
       _newsEvents = events;
@@ -222,6 +231,12 @@ class DashboardController extends ChangeNotifier {
     } catch (_) {
       // Marketaux failures stay isolated from chart and Agent work.
     }
+  }
+
+  void _handleNewsRefreshState(bool refreshing) {
+    if (_isDisposed) return;
+    _newsRefreshesInFlight += refreshing ? 1 : -1;
+    _notify();
   }
 
   Future<void> _loadSymbols() async {

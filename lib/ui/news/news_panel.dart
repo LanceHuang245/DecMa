@@ -13,21 +13,58 @@ class NewsPanel extends StatefulWidget {
     required this.events,
     required this.currentSymbol,
     required this.providerStatuses,
+    required this.isRefreshing,
     required this.onOpenSettings,
   });
 
   final List<NewsEvent> events;
   final String currentSymbol;
   final Map<String, NewsProviderStatus> providerStatuses;
+  final bool isRefreshing;
   final VoidCallback onOpenSettings;
 
   @override
   State<NewsPanel> createState() => _NewsPanelState();
 }
 
-class _NewsPanelState extends State<NewsPanel> {
+class _NewsPanelState extends State<NewsPanel>
+    with SingleTickerProviderStateMixin {
   _NewsView _view = _NewsView.all;
   String? _provider;
+  late final AnimationController _refreshController;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
+    _syncRefreshIndicator();
+  }
+
+  @override
+  void didUpdateWidget(covariant NewsPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isRefreshing != widget.isRefreshing) {
+      _syncRefreshIndicator();
+    }
+  }
+
+  // Keep the disabled icon moving only while a provider is fetching data.
+  void _syncRefreshIndicator() {
+    if (widget.isRefreshing) {
+      _refreshController.repeat();
+    } else {
+      _refreshController.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +91,13 @@ class _NewsPanelState extends State<NewsPanel> {
                   textAlign: TextAlign.left,
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
+              ),
+              IconButton(
+                icon: RotationTransition(
+                  turns: _refreshController,
+                  child: const Icon(FluentIcons.refresh),
+                ),
+                onPressed: null,
               ),
               IconButton(
                 icon: const Icon(FluentIcons.settings),
