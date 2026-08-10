@@ -135,8 +135,8 @@ class _CandleChartState extends State<CandleChart> {
         ? Colors.red
         : Colors.warningPrimaryColor;
     return Positioned(
-      left: 18,
-      bottom: 44,
+      right: 76,
+      top: 18,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         // The overlay only consumes pointer events inside its own small card.
