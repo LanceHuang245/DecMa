@@ -2,6 +2,7 @@ import 'package:decma/models/market_snapshot.dart';
 import 'package:decma/models/trading_models.dart';
 import 'package:decma/services/analysis/market_snapshot_service.dart';
 import 'package:decma/services/bybit_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -24,19 +25,24 @@ class _FakeBybit extends BybitService {
   final intervals = <String>[];
 
   @override
-  Future<InstrumentSnapshot> fetchInstrument(String symbol) async =>
-      InstrumentSnapshot(
-        symbol: symbol,
-        contractType: 'LinearPerpetual',
-        status: 'Trading',
-        tickSize: 0.1,
-        quantityStep: 0.001,
-        fundingIntervalMinutes: 480,
-        observedAt: DateTime.now().toUtc(),
-      );
+  Future<InstrumentSnapshot> fetchInstrument(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) async => InstrumentSnapshot(
+    symbol: symbol,
+    contractType: 'LinearPerpetual',
+    status: 'Trading',
+    tickSize: 0.1,
+    quantityStep: 0.001,
+    fundingIntervalMinutes: 480,
+    observedAt: DateTime.now().toUtc(),
+  );
 
   @override
-  Future<TickerSnapshot> fetchTicker(String symbol) async => TickerSnapshot(
+  Future<TickerSnapshot> fetchTicker(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) async => TickerSnapshot(
     symbol: symbol,
     lastPrice: 100,
     markPrice: 100,
@@ -53,6 +59,7 @@ class _FakeBybit extends BybitService {
     required String symbol,
     required String interval,
     int limit = 160,
+    CancelToken? cancelToken,
   }) async {
     intervals.add(interval);
     return List.generate(

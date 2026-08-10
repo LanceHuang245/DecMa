@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:decma/models/trading_models.dart';
 import 'package:decma/services/bybit_service.dart';
+import 'package:decma/utils/network.dart';
+import 'package:dio/dio.dart';
 import 'package:decma/ui/chart/candle_chart.dart';
 import 'package:decma/ui/chart/candle_chart_painter.dart';
 import 'package:decma/ui/dashboard/dashboard_controller.dart';
@@ -27,8 +29,8 @@ void main() {
     expect(controller.activeSymbol, 'XRPUSDT');
     expect(controller.showChartLoading, isTrue);
 
-    bybit.complete('ETHUSDT', 2000);
     await _flushAsync();
+    expect(bybit.wasCancelled('ETHUSDT'), isTrue);
     expect(controller.activeSymbol, 'XRPUSDT');
     expect(controller.candles, isEmpty);
     expect(controller.showChartLoading, isTrue);
@@ -102,9 +104,23 @@ class _DelayedBybit extends BybitService {
     required String symbol,
     required String interval,
     int limit = 160,
+    CancelToken? cancelToken,
   }) {
-    return (_requests[symbol] ??= Completer<List<Candle>>()).future;
+    final request = _requests[symbol] ??= Completer<List<Candle>>();
+    cancelToken?.whenCancel.then((_) {
+      _cancelled.add(symbol);
+      if (!request.isCompleted) {
+        request.completeError(
+          const AppFailure(kind: AppFailureKind.cancelled, provider: 'Bybit'),
+        );
+      }
+    });
+    return request.future;
   }
+
+  final _cancelled = <String>{};
+
+  bool wasCancelled(String symbol) => _cancelled.contains(symbol);
 
   void complete(String symbol, double close) {
     _requests[symbol]!.complete([

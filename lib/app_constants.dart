@@ -6,10 +6,6 @@ class AppConstants {
   static const codexClientVersion = '0.147.0';
   static const bybitMcpPackage = 'bybit-official-trading-server@2.1.16';
   static const openWebSearchMcpPackage = 'open-websearch@2.1.11';
-  static const logLlmPayloads = bool.fromEnvironment(
-    'DECMA_LOG_LLM_PAYLOADS',
-    defaultValue: false,
-  );
   static const nansenDocumentationUrl = 'https://docs.nansen.ai/';
   static const coinalyzeDocumentationUrl = 'https://api.coinalyze.net/v1/doc/';
   static const finnhubDocumentationUrl =

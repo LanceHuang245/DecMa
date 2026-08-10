@@ -1,31 +1,40 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import '../models/market_snapshot.dart';
 import '../models/trading_models.dart';
+import '../utils/network.dart';
 
 class BybitService {
-  BybitService({http.Client? client}) : _client = client ?? http.Client();
+  BybitService({Dio? dio}) : _dio = dio ?? createDio();
 
-  final http.Client _client;
+  final Dio _dio;
 
-  Future<InstrumentSnapshot> fetchInstrument(String symbol) async {
-    final response = await _client.get(
+  Future<InstrumentSnapshot> fetchInstrument(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) => _read(() async {
+    final response = await _get(
       Uri.https('api.bybit.com', '/v5/market/instruments-info', {
         'category': 'linear',
         'symbol': symbol.toUpperCase(),
       }),
+      cancelToken: cancelToken,
     );
-    final body = _marketBody(response, 'instrument');
-    final result = body['result'] as Map<String, dynamic>;
-    final list = (result['list'] as List).whereType<Map>().toList();
-    if (list.length != 1) throw Exception('Bybit instrument was not found.');
+    final body = _marketBody(response);
+    final list = (_map(body['result'])['list'] as List)
+        .whereType<Map>()
+        .toList();
+    if (list.length != 1) {
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'Bybit',
+      );
+    }
     final item = Map<String, dynamic>.from(list.single);
-    final priceFilter = Map<String, dynamic>.from(item['priceFilter'] as Map);
-    final lotSizeFilter = Map<String, dynamic>.from(
-      item['lotSizeFilter'] as Map,
-    );
+    final priceFilter = _map(item['priceFilter']);
+    final lotSizeFilter = _map(item['lotSizeFilter']);
     return InstrumentSnapshot(
       symbol: item['symbol'].toString(),
       contractType: item['contractType'].toString(),
@@ -35,19 +44,29 @@ class BybitService {
       fundingIntervalMinutes: int.parse(item['fundingInterval'].toString()),
       observedAt: _responseTime(body),
     );
-  }
+  });
 
-  Future<TickerSnapshot> fetchTicker(String symbol) async {
-    final response = await _client.get(
+  Future<TickerSnapshot> fetchTicker(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) => _read(() async {
+    final response = await _get(
       Uri.https('api.bybit.com', '/v5/market/tickers', {
         'category': 'linear',
         'symbol': symbol.toUpperCase(),
       }),
+      cancelToken: cancelToken,
     );
-    final body = _marketBody(response, 'ticker');
-    final result = body['result'] as Map<String, dynamic>;
-    final list = (result['list'] as List).whereType<Map>().toList();
-    if (list.length != 1) throw Exception('Bybit ticker was not found.');
+    final body = _marketBody(response);
+    final list = (_map(body['result'])['list'] as List)
+        .whereType<Map>()
+        .toList();
+    if (list.length != 1) {
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'Bybit',
+      );
+    }
     final item = Map<String, dynamic>.from(list.single);
     return TickerSnapshot(
       symbol: item['symbol'].toString(),
@@ -60,62 +79,53 @@ class BybitService {
       fundingRate: double.tryParse(item['fundingRate']?.toString() ?? ''),
       observedAt: _responseTime(body),
     );
-  }
+  });
 
   // Fetch all active linear contracts once; the search box filters this list locally.
-  Future<List<String>> fetchLinearSymbols() async {
-    final symbols = <String>{};
-    String? cursor;
-    do {
-      final query = <String, String>{'category': 'linear', 'limit': '1000'};
-      if (cursor != null) query['cursor'] = cursor;
-      final response = await _client.get(
-        Uri.https('api.bybit.com', '/v5/market/instruments-info', query),
-      );
-      if (response.statusCode != 200) {
-        throw Exception(
-          'Bybit symbol request failed (${response.statusCode}).',
-        );
-      }
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      if (body['retCode'] != 0) {
-        throw Exception(
-          body['retMsg']?.toString() ?? 'Bybit returned an error.',
-        );
-      }
-      final result = body['result'] as Map<String, dynamic>;
-      for (final item in (result['list'] as List).cast<Map>()) {
-        if (item['status'] == 'Trading') symbols.add(item['symbol'].toString());
-      }
-      cursor = result['nextPageCursor']?.toString();
-    } while (cursor != null && cursor.isNotEmpty);
+  Future<List<String>> fetchLinearSymbols({CancelToken? cancelToken}) =>
+      _read(() async {
+        final symbols = <String>{};
+        String? cursor;
+        do {
+          final query = <String, String>{'category': 'linear', 'limit': '1000'};
+          if (cursor != null) query['cursor'] = cursor;
+          final body = _marketBody(
+            await _get(
+              Uri.https('api.bybit.com', '/v5/market/instruments-info', query),
+              cancelToken: cancelToken,
+            ),
+          );
+          final result = _map(body['result']);
+          for (final item in (result['list'] as List).cast<Map>()) {
+            if (item['status'] == 'Trading') {
+              symbols.add(item['symbol'].toString());
+            }
+          }
+          cursor = result['nextPageCursor']?.toString();
+        } while (cursor != null && cursor.isNotEmpty);
 
-    final result = symbols.toList()..sort();
-    return result;
-  }
+        return symbols.toList()..sort();
+      });
 
   // The public V5 endpoint supplies the free OHLCV data shown in the chart.
   Future<List<Candle>> fetchKlines({
     required String symbol,
     required String interval,
     int limit = 160,
-  }) async {
-    final uri = Uri.https('api.bybit.com', '/v5/market/kline', {
-      'category': 'linear',
-      'symbol': symbol.toUpperCase(),
-      'interval': interval,
-      'limit': '$limit',
-    });
-    final response = await _client.get(uri);
-    if (response.statusCode != 200) {
-      throw Exception('Bybit K-line request failed (${response.statusCode}).');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    if (body['retCode'] != 0) {
-      throw Exception(body['retMsg']?.toString() ?? 'Bybit returned an error.');
-    }
-    final rows = ((body['result'] as Map<String, dynamic>)['list'] as List)
-        .cast<List>();
+    CancelToken? cancelToken,
+  }) => _read(() async {
+    final body = _marketBody(
+      await _get(
+        Uri.https('api.bybit.com', '/v5/market/kline', {
+          'category': 'linear',
+          'symbol': symbol.toUpperCase(),
+          'interval': interval,
+          'limit': '$limit',
+        }),
+        cancelToken: cancelToken,
+      ),
+    );
+    final rows = (_map(body['result'])['list'] as List).cast<List>();
     return rows.reversed.map((row) {
       return Candle(
         time: DateTime.fromMillisecondsSinceEpoch(int.parse(row[0].toString())),
@@ -126,19 +136,43 @@ class BybitService {
         volume: double.parse(row[5].toString()),
       );
     }).toList();
+  });
+
+  Future<Response<String>> _get(Uri uri, {CancelToken? cancelToken}) =>
+      runNetworkRequest(
+        'Bybit',
+        () => _dio.getUri<String>(
+          uri,
+          options: networkOptions(),
+          cancelToken: cancelToken,
+        ),
+      );
+
+  // Convert malformed provider data into one safe, user-facing failure.
+  Future<T> _read<T>(Future<T> Function() task) async {
+    try {
+      return await task();
+    } on AppFailure {
+      rethrow;
+    } catch (_) {
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'Bybit',
+      );
+    }
   }
 
-  // Validate the shared V5 envelope before reading endpoint-specific fields.
-  Map<String, dynamic> _marketBody(http.Response response, String label) {
-    if (response.statusCode != 200) {
-      throw Exception('Bybit $label request failed (${response.statusCode}).');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+  Map<String, dynamic> _marketBody(Response<String> response) {
+    requireSuccessfulResponse(response, provider: 'Bybit');
+    final body = _map(jsonDecode(response.data ?? ''));
     if (body['retCode'] != 0) {
-      throw Exception(body['retMsg']?.toString() ?? 'Bybit returned an error.');
+      throw const AppFailure(kind: AppFailureKind.upstream, provider: 'Bybit');
     }
     return body;
   }
+
+  Map<String, dynamic> _map(Object? value) =>
+      Map<String, dynamic>.from(value as Map);
 
   DateTime _responseTime(Map<String, dynamic> body) =>
       DateTime.fromMillisecondsSinceEpoch(
@@ -146,5 +180,5 @@ class BybitService {
         isUtc: true,
       );
 
-  void dispose() => _client.close();
+  void dispose() => _dio.close(force: true);
 }

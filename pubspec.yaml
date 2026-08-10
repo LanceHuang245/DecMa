@@ -15,7 +15,7 @@ dependencies:
   flutter_markdown_plus: 
   flutter_secure_storage: 
   crypto: 
-  http: 
+  dio:
   shared_preferences: 
   window_manager: 
   url_launcher: 

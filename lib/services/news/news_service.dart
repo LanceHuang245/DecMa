@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import '../../models/asset_profile.dart';
 import '../../models/news_event.dart';
 import '../../models/trading_models.dart';
+import '../../utils/network.dart';
 import 'asset_resolver.dart';
 import 'event_store.dart';
 import 'marketaux_news_provider.dart';
@@ -26,21 +27,18 @@ class NewsProviderStatus {
 }
 
 class NewsService {
-  NewsService({
-    http.Client? client,
-    EventStore? store,
-    AssetResolver? assetResolver,
-  }) : _client = client ?? http.Client(),
-       _store = store ?? EventStore(),
-       _assetResolver = assetResolver ?? AssetResolver() {
-    _marketaux = MarketauxNewsProvider(client: _client);
+  NewsService({Dio? dio, EventStore? store, AssetResolver? assetResolver})
+    : _dio = dio ?? createDio(),
+      _store = store ?? EventStore(),
+      _assetResolver = assetResolver ?? AssetResolver() {
+    _marketaux = MarketauxNewsProvider(dio: _dio);
   }
 
   static const _finnhubInterval = Duration(minutes: 10);
   static const _marketauxInterval = Duration(minutes: 15);
   static const _officialInterval = Duration(minutes: 30);
   static const _rateLimitBackoff = Duration(hours: 1);
-  final http.Client _client;
+  final Dio _dio;
   final EventStore _store;
   final AssetResolver _assetResolver;
   late final MarketauxNewsProvider _marketaux;
@@ -56,6 +54,7 @@ class NewsService {
     required NewsSettings settings,
     required String? finnhubApiKey,
     void Function(bool refreshing)? onRefreshChanged,
+    CancelToken? cancelToken,
   }) async {
     await _assetResolver.all();
     final now = DateTime.now().toUtc();
@@ -65,7 +64,7 @@ class NewsService {
       enabled: settings.useFinnhub,
       interval: _finnhubInterval,
       now: now,
-      task: () => _finnhub(finnhubApiKey, now),
+      task: () => _finnhub(finnhubApiKey, now, cancelToken),
       output: events,
       onRefreshChanged: onRefreshChanged,
     );
@@ -81,6 +80,7 @@ class NewsService {
         category: NewsCategory.macro,
         scope: NewsScope.macroGlobal,
         now: now,
+        cancelToken: cancelToken,
       ),
       output: events,
       onRefreshChanged: onRefreshChanged,
@@ -97,6 +97,7 @@ class NewsService {
         category: NewsCategory.macro,
         scope: NewsScope.macroGlobal,
         now: now,
+        cancelToken: cancelToken,
       ),
       output: events,
       onRefreshChanged: onRefreshChanged,
@@ -106,7 +107,7 @@ class NewsService {
       enabled: settings.useFederalReserve,
       interval: _officialInterval,
       now: now,
-      task: () => _federalReserve(now),
+      task: () => _federalReserve(now, cancelToken),
       output: events,
       onRefreshChanged: onRefreshChanged,
     );
@@ -121,6 +122,7 @@ class NewsService {
     required NewsSettings settings,
     required String? marketauxApiKey,
     void Function(bool refreshing)? onRefreshChanged,
+    CancelToken? cancelToken,
   }) async {
     final now = DateTime.now().toUtc();
     final profile = await _assetResolver.resolve(symbol);
@@ -133,17 +135,22 @@ class NewsService {
       now: now,
       task: () async {
         if (marketauxApiKey == null || marketauxApiKey.trim().isEmpty) {
-          throw StateError('Marketaux API Key is required');
+          throw const AppFailure(
+            kind: AppFailureKind.configuration,
+            provider: 'Marketaux',
+          );
         }
         final resolved = await _marketaux.resolveProfile(
           profile: profile,
           apiKey: marketauxApiKey,
+          cancelToken: cancelToken,
         );
         if (resolved != profile) await _assetResolver.save(resolved);
         return _marketaux.fetch(
           profile: resolved,
           apiKey: marketauxApiKey,
           now: now,
+          cancelToken: cancelToken,
         );
       },
       output: events,
@@ -205,23 +212,18 @@ class NewsService {
         state: NewsProviderState.active,
         updatedAt: now,
       );
-    } on _NewsRateLimitException {
-      _retryAfter[key] = now.add(_rateLimitBackoff);
-      _statuses[id] = NewsProviderStatus(
-        id: id,
-        state: NewsProviderState.rateLimited,
-        message: 'Rate limited; retry later',
-        updatedAt: now,
-      );
-    } on MarketauxRateLimitException {
-      _retryAfter[key] = now.add(_rateLimitBackoff);
-      _statuses[id] = NewsProviderStatus(
-        id: id,
-        state: NewsProviderState.rateLimited,
-        message: 'Rate limited; retry later',
-        updatedAt: now,
-      );
     } catch (error) {
+      if (isRequestCancelled(error)) rethrow;
+      if (error is AppFailure && error.kind == AppFailureKind.rateLimited) {
+        _retryAfter[key] = now.add(error.retryAfter ?? _rateLimitBackoff);
+        _statuses[id] = NewsProviderStatus(
+          id: id,
+          state: NewsProviderState.rateLimited,
+          message: 'Rate limited; retry later',
+          updatedAt: now,
+        );
+        return;
+      }
       _statuses[id] = NewsProviderStatus(
         id: id,
         state: NewsProviderState.error,
@@ -233,9 +235,16 @@ class NewsService {
     }
   }
 
-  Future<List<NewsEvent>> _finnhub(String? apiKey, DateTime now) async {
+  Future<List<NewsEvent>> _finnhub(
+    String? apiKey,
+    DateTime now,
+    CancelToken? cancelToken,
+  ) async {
     if (apiKey == null || apiKey.trim().isEmpty) {
-      throw StateError('Finnhub API Key is required');
+      throw const AppFailure(
+        kind: AppFailureKind.configuration,
+        provider: 'Finnhub',
+      );
     }
     final events = <NewsEvent>[];
     for (final category in ['crypto', 'general', 'forex']) {
@@ -243,9 +252,16 @@ class NewsService {
         'category': category,
         'token': apiKey,
       });
-      final response = await _client.get(uri);
-      _checkResponse(response);
-      final data = jsonDecode(response.body);
+      final response = await runNetworkRequest(
+        'Finnhub',
+        () => _dio.getUri<String>(
+          uri,
+          options: networkOptions(),
+          cancelToken: cancelToken,
+        ),
+      );
+      _checkResponse(response, provider: 'Finnhub');
+      final data = _json(response.data ?? '', 'Finnhub');
       if (data is! List) continue;
       for (final item in data.whereType<Map>()) {
         final published = item['datetime'] is num
@@ -296,7 +312,10 @@ class NewsService {
     return events;
   }
 
-  Future<List<NewsEvent>> _federalReserve(DateTime now) async {
+  Future<List<NewsEvent>> _federalReserve(
+    DateTime now,
+    CancelToken? cancelToken,
+  ) async {
     final urls = [
       'https://www.federalreserve.gov/feeds/press_monetary.xml',
       'https://www.federalreserve.gov/feeds/press_all.xml',
@@ -312,6 +331,7 @@ class NewsService {
           category: NewsCategory.centralBank,
           scope: NewsScope.macroGlobal,
           now: now,
+          cancelToken: cancelToken,
         ),
       );
     }
@@ -325,11 +345,19 @@ class NewsService {
     required NewsCategory category,
     required NewsScope scope,
     required DateTime now,
+    CancelToken? cancelToken,
   }) async {
-    final response = await _client.get(Uri.parse(url));
-    _checkResponse(response);
+    final response = await runNetworkRequest(
+      provider,
+      () => _dio.getUri<String>(
+        Uri.parse(url),
+        options: networkOptions(),
+        cancelToken: cancelToken,
+      ),
+    );
+    _checkResponse(response, provider: provider);
     return RegExp(r'<item\b[^>]*>(.*?)</item>', dotAll: true)
-        .allMatches(response.body)
+        .allMatches(response.data ?? '')
         .map((item) => item.group(1)!)
         .map(
           (item) => _rssEvent(
@@ -544,13 +572,22 @@ class NewsService {
 
   bool _contains(String text, List<String> terms) => terms.any(text.contains);
 
-  void _checkResponse(http.Response response) {
+  Object? _json(String body, String provider) {
+    try {
+      return jsonDecode(body);
+    } on FormatException {
+      throw AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: provider,
+      );
+    }
+  }
+
+  void _checkResponse(Response<dynamic> response, {required String provider}) {
     if (response.statusCode == 429) {
-      throw const _NewsRateLimitException();
+      throw AppFailure.fromResponse(response, provider: provider);
     }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('HTTP ${response.statusCode}');
-    }
+    requireSuccessfulResponse(response, provider: provider);
   }
 
   String? _xmlValue(String item, String tag) {
@@ -578,9 +615,5 @@ class NewsService {
     }
   }
 
-  void dispose() => _client.close();
-}
-
-class _NewsRateLimitException implements Exception {
-  const _NewsRateLimitException();
+  void dispose() => _dio.close(force: true);
 }

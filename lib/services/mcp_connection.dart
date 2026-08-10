@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import '../app_constants.dart';
+import '../utils/network.dart';
 import 'mcp_types.dart';
 
 class HttpMcpConnection implements McpConnection {
@@ -12,13 +13,14 @@ class HttpMcpConnection implements McpConnection {
     required this.name,
     required this.endpoint,
     required this.headers,
-  });
+    Dio? dio,
+  }) : _dio = dio ?? createDio();
 
   @override
   final String name;
   final String endpoint;
   final Map<String, String> headers;
-  final http.Client _client = http.Client();
+  final Dio _dio;
   int _nextId = 1;
   String? _sessionId;
   bool _initialized = false;
@@ -68,9 +70,12 @@ class HttpMcpConnection implements McpConnection {
   }
 
   Future<Map<String, dynamic>> _send(Map<String, dynamic> request) async {
-    final response = await _client
-        .post(
-          Uri.parse(endpoint),
+    final response = await runNetworkRequest(
+      name,
+      () => _dio.postUri<String>(
+        Uri.parse(endpoint),
+        data: jsonEncode(request),
+        options: networkOptions(
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
@@ -80,16 +85,18 @@ class HttpMcpConnection implements McpConnection {
               null => const <String, String>{},
             },
           },
-          body: jsonEncode(request),
-        )
-        .timeout(const Duration(seconds: 30));
-    if (response.statusCode >= 400) {
-      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+          contentType: 'application/json',
+        ),
+      ),
+    );
+    requireSuccessfulResponse(response, provider: name);
+    _sessionId ??= response.headers.value('mcp-session-id');
+    final body = response.data ?? '';
+    if (body.trim().isEmpty) return const {};
+    final decoded = _decodeJsonOrSse(body);
+    if (decoded['error'] != null) {
+      throw AppFailure(kind: AppFailureKind.upstream, provider: name);
     }
-    _sessionId ??= response.headers['mcp-session-id'];
-    if (response.body.trim().isEmpty) return const {};
-    final decoded = _decodeJsonOrSse(response.body);
-    if (decoded['error'] != null) throw Exception(decoded['error']);
     final result = decoded['result'];
     return result is Map<String, dynamic>
         ? result
@@ -97,26 +104,30 @@ class HttpMcpConnection implements McpConnection {
   }
 
   Map<String, dynamic> _decodeJsonOrSse(String body) {
-    // SSE events may start with an `event:` field before their JSON `data:`.
-    final events = body
-        .split(RegExp(r'\r?\n'))
-        .map((line) => line.trimLeft())
-        .where((line) => line.startsWith('data:'))
-        .map((line) => line.substring(5).trim())
-        .where((line) => line.isNotEmpty)
-        .toList();
-    if (events.isEmpty) {
-      return Map<String, dynamic>.from(jsonDecode(body) as Map);
+    try {
+      // SSE events may start with an `event:` field before their JSON `data:`.
+      final events = body
+          .split(RegExp(r'\r?\n'))
+          .map((line) => line.trimLeft())
+          .where((line) => line.startsWith('data:'))
+          .map((line) => line.substring(5).trim())
+          .where((line) => line.isNotEmpty)
+          .toList();
+      if (events.isEmpty) {
+        return Map<String, dynamic>.from(jsonDecode(body) as Map);
+      }
+      for (final event in events) {
+        final decoded = jsonDecode(event);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      }
+    } on FormatException {
+      throw AppFailure(kind: AppFailureKind.invalidResponse, provider: name);
     }
-    for (final event in events) {
-      final decoded = jsonDecode(event);
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    }
-    throw const FormatException('MCP server returned an empty SSE response.');
+    throw AppFailure(kind: AppFailureKind.invalidResponse, provider: name);
   }
 
   @override
-  Future<void> close() async => _client.close();
+  Future<void> close() async => _dio.close(force: true);
 }
 
 class StdioMcpConnection implements McpConnection {

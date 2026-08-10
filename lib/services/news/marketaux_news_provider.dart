@@ -1,25 +1,22 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import '../../models/asset_profile.dart';
 import '../../models/news_event.dart';
-
-class MarketauxRateLimitException implements Exception {
-  const MarketauxRateLimitException();
-}
+import '../../utils/network.dart';
 
 /// Fetches only the currently relevant token and normalizes it into NewsEvent.
 class MarketauxNewsProvider {
-  MarketauxNewsProvider({required this._client});
+  MarketauxNewsProvider({required this._dio});
 
   static const _providerVersion = 'v1';
-  final http.Client _client;
+  final Dio _dio;
 
   Future<AssetProfile> resolveProfile({
     required AssetProfile profile,
     required String apiKey,
+    CancelToken? cancelToken,
   }) async {
     final now = DateTime.now().toUtc();
     if (profile.marketauxResolution == MarketauxResolution.resolved &&
@@ -32,7 +29,7 @@ class MarketauxNewsProvider {
       'api_token': apiKey,
       'search': profile.projectName ?? profile.baseAsset,
       'types': 'cryptocurrency',
-    });
+    }, cancelToken: cancelToken);
     final data = _items(response);
     final candidates = data.where(_isCryptoEntity).toList();
     final exactSymbol = candidates
@@ -79,6 +76,7 @@ class MarketauxNewsProvider {
     required AssetProfile profile,
     required String apiKey,
     required DateTime now,
+    CancelToken? cancelToken,
   }) async {
     final since = now.subtract(const Duration(hours: 24));
     final primary = profile.marketauxSymbol == null
@@ -92,6 +90,7 @@ class MarketauxNewsProvider {
               'filter_entities': 'true',
             },
             since: since,
+            cancelToken: cancelToken,
           );
     if (primary.isNotEmpty || profile.projectName == null) return primary;
     return _news(
@@ -100,6 +99,7 @@ class MarketauxNewsProvider {
       profile: profile,
       query: {'search': profile.projectName!, 'must_have_entities': 'true'},
       since: since,
+      cancelToken: cancelToken,
     );
   }
 
@@ -109,6 +109,7 @@ class MarketauxNewsProvider {
     required AssetProfile profile,
     required Map<String, String> query,
     required DateTime since,
+    CancelToken? cancelToken,
   }) async {
     final response = await _get('/v1/news/all', {
       'api_token': apiKey,
@@ -116,7 +117,7 @@ class MarketauxNewsProvider {
       'language': 'en',
       'limit': '3',
       'published_after': _marketauxTime(since),
-    });
+    }, cancelToken: cancelToken);
     return _items(response)
         .where((item) => _matchesProfile(item, profile))
         .map((item) => normalizeArticle(item, profile: profile, now: now))
@@ -171,19 +172,36 @@ class MarketauxNewsProvider {
     );
   }
 
-  Future<Object?> _get(String path, Map<String, String> parameters) async {
-    final response = await _client.get(
-      Uri.https('api.marketaux.com', path, parameters),
+  Future<Object?> _get(
+    String path,
+    Map<String, String> parameters, {
+    CancelToken? cancelToken,
+  }) async {
+    final response = await runNetworkRequest(
+      'Marketaux',
+      () => _dio.getUri<String>(
+        Uri.https('api.marketaux.com', path, parameters),
+        options: networkOptions(),
+        cancelToken: cancelToken,
+      ),
     );
     if (response.statusCode == 429 ||
         (response.statusCode == 403 &&
-            response.body.toLowerCase().contains('rate'))) {
-      throw const MarketauxRateLimitException();
+            (response.data ?? '').toLowerCase().contains('rate'))) {
+      throw const AppFailure(
+        kind: AppFailureKind.rateLimited,
+        provider: 'Marketaux',
+      );
     }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('HTTP ${response.statusCode}');
+    requireSuccessfulResponse(response, provider: 'Marketaux');
+    try {
+      return jsonDecode(response.data ?? '');
+    } on FormatException {
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'Marketaux',
+      );
     }
-    return jsonDecode(response.body);
   }
 
   List<Map> _items(Object? response) {

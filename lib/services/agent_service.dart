@@ -1,9 +1,8 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
-import '../app_constants.dart';
 import '../models/trading_models.dart';
 import '../models/news_event.dart';
 import '../models/market_snapshot.dart';
@@ -14,6 +13,7 @@ import 'llm_transport.dart';
 import 'mcp_hub.dart';
 import 'openai_codex_oauth.dart';
 import 'secure_key_store.dart';
+import '../utils/network.dart';
 
 enum AgentMode { conversation, analysis }
 
@@ -33,19 +33,19 @@ class AgentService {
     McpHub? mcpHub,
     CoinalyzeApiTools? coinalyze,
     SecureKeyStore? keyStore,
-    http.Client? client,
+    Dio? dio,
   }) : _mcpHub = mcpHub ?? McpHub(),
        _coinalyze = coinalyze ?? CoinalyzeApiTools(),
        _keyStore = keyStore ?? SecureKeyStore(),
-       _client = client ?? http.Client() {
-    _transport = LlmTransport(_client);
-    _codexAuth = OpenAiCodexAuthService(keyStore: _keyStore, client: _client);
+       _dio = dio ?? createDio() {
+    _transport = LlmTransport(_dio);
+    _codexAuth = OpenAiCodexAuthService(keyStore: _keyStore, dio: _dio);
   }
 
   final McpHub _mcpHub;
   final CoinalyzeApiTools _coinalyze;
   final SecureKeyStore _keyStore;
-  final http.Client _client;
+  final Dio _dio;
   late final LlmTransport _transport;
   late final OpenAiCodexAuthService _codexAuth;
 
@@ -126,16 +126,15 @@ class AgentService {
             : _maxConversationToolRounds,
         callTools: (calls) => _callTools(calls, onActivity),
       );
-      if (kDebugMode && AppConstants.logLlmPayloads) {
-        debugPrint('LLM reply (${reply.length} characters):\n$reply');
-      }
       if (kDebugMode && reply.trim().isEmpty) {
         debugPrint('LLM reply is empty; inspect the preceding raw response.');
       }
       return AgentResult(text: reply, warnings: warnings);
     } catch (error, stackTrace) {
-      debugPrint('LLM request failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      if (kDebugMode) {
+        debugPrint('LLM request failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
       rethrow;
     } finally {
       await _mcpHub.close();
@@ -267,7 +266,7 @@ ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}$p
       : value;
 
   void dispose() {
-    _client.close();
+    _dio.close(force: true);
     _coinalyze.dispose();
   }
 }

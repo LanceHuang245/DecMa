@@ -4,18 +4,19 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import '../app_constants.dart';
+import '../utils/network.dart';
 import 'secure_key_store.dart';
 
 class OpenAiCodexAuthService {
   OpenAiCodexAuthService({
     SecureKeyStore? keyStore,
-    http.Client? client,
+    Dio? dio,
     Future<void> Function(Uri uri)? openBrowser,
   }) : _keyStore = keyStore ?? SecureKeyStore(),
-       _client = client ?? http.Client(),
+       _dio = dio ?? createDio(),
        _openBrowser = openBrowser ?? _openSystemBrowser;
 
   static const _clientId = 'app_EMoamEEZ73f0CkXaXp7hrann';
@@ -23,7 +24,7 @@ class OpenAiCodexAuthService {
   static const _issuer = 'https://auth.openai.com';
   static const _codexBase = 'https://chatgpt.com/backend-api/codex';
   final SecureKeyStore _keyStore;
-  final http.Client _client;
+  final Dio _dio;
   final Future<void> Function(Uri uri) _openBrowser;
 
   Future<CodexOAuthCredentials> currentCredentials() async {
@@ -112,15 +113,19 @@ class OpenAiCodexAuthService {
     Map<String, String> body, {
     String? fallbackRefreshToken,
   }) async {
-    final response = await _client.post(
-      Uri.parse('$_issuer/oauth/token'),
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: body,
+    final response = await runNetworkRequest(
+      'OpenAI Codex',
+      () => _dio.postUri<String>(
+        Uri.parse('$_issuer/oauth/token'),
+        data: body,
+        options: networkOptions(
+          headers: {'Content-Type': Headers.formUrlEncodedContentType},
+          contentType: Headers.formUrlEncodedContentType,
+        ),
+      ),
     );
-    final values = _json(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(_message(values, response.statusCode));
-    }
+    requireSuccessfulResponse(response, provider: 'OpenAI Codex');
+    final values = _json(response.data ?? '');
     final accessToken = values['access_token']?.toString();
     final refreshToken =
         values['refresh_token']?.toString() ?? fallbackRefreshToken;
@@ -128,7 +133,10 @@ class OpenAiCodexAuthService {
       values['id_token']?.toString() ?? accessToken ?? '',
     );
     if (accessToken == null || refreshToken == null || accountId == null) {
-      throw Exception('OpenAI Codex OAuth 返回缺少必要凭据。');
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'OpenAI Codex',
+      );
     }
     final seconds =
         int.tryParse(values['expires_in']?.toString() ?? '') ?? 3600;
@@ -141,16 +149,17 @@ class OpenAiCodexAuthService {
   }
 
   Future<List<String>> _fetchModels(CodexOAuthCredentials credentials) async {
-    final response = await _client.get(
-      Uri.parse('$_codexBase/models').replace(
-        queryParameters: {'client_version': AppConstants.codexClientVersion},
+    final response = await runNetworkRequest(
+      'OpenAI Codex',
+      () => _dio.getUri<String>(
+        Uri.parse('$_codexBase/models').replace(
+          queryParameters: {'client_version': AppConstants.codexClientVersion},
+        ),
+        options: networkOptions(headers: _headers(credentials)),
       ),
-      headers: _headers(credentials),
     );
-    final values = _json(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(_message(values, response.statusCode));
-    }
+    requireSuccessfulResponse(response, provider: 'OpenAI Codex');
+    final values = _json(response.data ?? '');
     final models = <String>{};
     for (final list in [values['models'], values['data']]) {
       if (list is! List) continue;
@@ -211,16 +220,6 @@ class OpenAiCodexAuthService {
     } catch (_) {
       return const {};
     }
-  }
-
-  String _message(Map<String, dynamic> body, int statusCode) {
-    final error = body['error'];
-    if (error is Map) {
-      return error['message']?.toString() ?? 'OAuth 请求失败 ($statusCode)。';
-    }
-    return body['detail']?.toString() ??
-        body['error']?.toString() ??
-        'OAuth 请求失败 ($statusCode)。';
   }
 
   static Future<void> _openSystemBrowser(Uri uri) async {

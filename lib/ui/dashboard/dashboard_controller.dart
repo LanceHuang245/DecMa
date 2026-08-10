@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/market_snapshot.dart';
@@ -14,6 +15,7 @@ import '../../services/llm_settings_store.dart';
 import '../../services/secure_key_store.dart';
 import '../../services/news/event_selector.dart';
 import '../../services/news/news_service.dart';
+import '../../utils/network.dart';
 
 enum DashboardMessageKind { user, agent, activity }
 
@@ -90,6 +92,10 @@ class DashboardController extends ChangeNotifier {
   );
   Timer? _chartRefreshTimer;
   Timer? _newsRefreshTimer;
+  CancelToken? _symbolListCancelToken;
+  CancelToken? _chartCancelToken;
+  CancelToken? _macroNewsCancelToken;
+  CancelToken? _tokenNewsCancelToken;
   var _newsRefreshesInFlight = 0;
   var _activeSymbol = 'BTCUSDT';
   var _interval = '15';
@@ -202,34 +208,50 @@ class DashboardController extends ChangeNotifier {
 
   Future<void> _refreshNews() async {
     if (_isDisposed) return;
+    _cancelRequest(_macroNewsCancelToken);
+    final cancelToken = _macroNewsCancelToken = CancelToken();
     try {
       final events = await _newsService.refresh(
         settings: _news,
         finnhubApiKey: await _keyStore.readFinnhubKey(),
         onRefreshChanged: _handleNewsRefreshState,
+        cancelToken: cancelToken,
       );
       if (_isDisposed) return;
       _newsEvents = events;
       _notify();
-    } catch (_) {
+    } catch (error) {
+      if (isRequestCancelled(error)) return;
       // Per-provider failures are represented by NewsService status entries.
+    } finally {
+      if (identical(_macroNewsCancelToken, cancelToken)) {
+        _macroNewsCancelToken = null;
+      }
     }
   }
 
   Future<void> _refreshTokenNews(String symbol) async {
     if (_isDisposed) return;
+    _cancelRequest(_tokenNewsCancelToken);
+    final cancelToken = _tokenNewsCancelToken = CancelToken();
     try {
       final events = await _newsService.refreshTokenNews(
         symbol: symbol,
         settings: _news,
         marketauxApiKey: await _keyStore.readMarketauxKey(),
         onRefreshChanged: _handleNewsRefreshState,
+        cancelToken: cancelToken,
       );
       if (_isDisposed) return;
       _newsEvents = events;
       _notify();
-    } catch (_) {
+    } catch (error) {
+      if (isRequestCancelled(error)) return;
       // Marketaux failures stay isolated from chart and Agent work.
+    } finally {
+      if (identical(_tokenNewsCancelToken, cancelToken)) {
+        _tokenNewsCancelToken = null;
+      }
     }
   }
 
@@ -240,13 +262,19 @@ class DashboardController extends ChangeNotifier {
   }
 
   Future<void> _loadSymbols() async {
+    final cancelToken = _symbolListCancelToken = CancelToken();
     try {
-      final symbols = await _bybit.fetchLinearSymbols();
+      final symbols = await _bybit.fetchLinearSymbols(cancelToken: cancelToken);
       if (_isDisposed) return;
       _symbols = symbols;
       _notify();
-    } catch (_) {
+    } catch (error) {
+      if (isRequestCancelled(error)) return;
       // Kline polling still works when the optional symbol list cannot load.
+    } finally {
+      if (identical(_symbolListCancelToken, cancelToken)) {
+        _symbolListCancelToken = null;
+      }
     }
   }
 
@@ -258,6 +286,7 @@ class DashboardController extends ChangeNotifier {
     final interval = _interval;
     final hasCandles = _candles.isNotEmpty;
     final fullLoad = !latestOnly || !hasCandles;
+    final cancelToken = _chartCancelToken = CancelToken();
     _loadingChartGeneration = generation;
     if (fullLoad) _showChartLoading = true;
     _notify();
@@ -266,6 +295,7 @@ class DashboardController extends ChangeNotifier {
         symbol: symbol,
         interval: interval,
         limit: fullLoad ? _historyLimit : 2,
+        cancelToken: cancelToken,
       );
       // A stale request must never update a newer chart selection.
       if (_isDisposed ||
@@ -282,6 +312,7 @@ class DashboardController extends ChangeNotifier {
       }
       _notify();
     } catch (error) {
+      if (isRequestCancelled(error)) return;
       if (_isDisposed ||
           generation != _chartLoadGeneration ||
           symbol != _activeSymbol ||
@@ -293,6 +324,9 @@ class DashboardController extends ChangeNotifier {
       _showChartLoading = false;
       _notify();
     } finally {
+      if (identical(_chartCancelToken, cancelToken)) {
+        _chartCancelToken = null;
+      }
       if (!_isDisposed && _loadingChartGeneration == generation) {
         _loadingChartGeneration = null;
         _notify();
@@ -343,6 +377,8 @@ class DashboardController extends ChangeNotifier {
 
   // Invalidate in-flight requests and remove candles from the previous view.
   void _beginChartTransition() {
+    _cancelRequest(_chartCancelToken);
+    _chartCancelToken = null;
     _chartLoadGeneration++;
     _candles = const [];
     _plan = null;
@@ -735,11 +771,20 @@ class DashboardController extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
+  // Cancel superseded Dio work before its result becomes stale or the page closes.
+  void _cancelRequest(CancelToken? token) {
+    if (token != null && !token.isCancelled) token.cancel();
+  }
+
   @override
   void dispose() {
     _isDisposed = true;
     _chartRefreshTimer?.cancel();
     _newsRefreshTimer?.cancel();
+    _cancelRequest(_symbolListCancelToken);
+    _cancelRequest(_chartCancelToken);
+    _cancelRequest(_macroNewsCancelToken);
+    _cancelRequest(_tokenNewsCancelToken);
     _bybit.dispose();
     _agent.dispose();
     _newsService.dispose();

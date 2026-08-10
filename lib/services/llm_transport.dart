@@ -1,10 +1,9 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
-import '../app_constants.dart';
 import '../models/trading_models.dart';
+import '../utils/network.dart';
 import 'mcp_types.dart';
 
 class LlmToolCall {
@@ -31,9 +30,9 @@ typedef LlmToolHandler =
 
 // Translate one provider-neutral request into the configured LLM protocol.
 class LlmTransport {
-  LlmTransport(this._client);
+  LlmTransport(this._dio);
 
-  final http.Client _client;
+  final Dio _dio;
 
   Future<String> complete({
     required LlmSettings settings,
@@ -340,33 +339,27 @@ class LlmTransport {
     bool stream = false,
   }) async {
     final requestBody = jsonEncode(body);
-    if (kDebugMode && AppConstants.logLlmPayloads) {
-      debugPrint('LLM request [POST $uri]:\n$requestBody');
-    }
-    final request = http.Request('POST', uri)
-      ..headers.addAll({'Content-Type': 'application/json', ...headers})
-      ..body = requestBody;
-    final response = await _client
-        .send(request)
-        .timeout(const Duration(minutes: 5));
-    final responseBody = await response.stream.bytesToString().timeout(
-      const Duration(minutes: 5),
+    final response = await runNetworkRequest(
+      'LLM',
+      () => _dio.postUri<String>(
+        uri,
+        data: requestBody,
+        options: networkOptions(
+          timeout: const Duration(minutes: 5),
+          headers: {'Content-Type': 'application/json', ...headers},
+          contentType: Headers.jsonContentType,
+        ),
+      ),
     );
-    if (kDebugMode && AppConstants.logLlmPayloads) {
-      debugPrint(
-        'LLM response [${response.statusCode} ${response.reasonPhrase ?? ''}]:\n$responseBody',
+    requireSuccessfulResponse(response, provider: 'LLM');
+    try {
+      return _decodedResponse(response.data ?? '', stream: stream);
+    } on FormatException {
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'LLM',
       );
     }
-    if (response.statusCode >= 400) {
-      final decoded = _tryJson(responseBody);
-      throw Exception(
-        decoded['error'] is Map
-            ? _map(decoded['error'])['message']
-            : decoded['error'] ??
-                  'LLM request failed (${response.statusCode}).',
-      );
-    }
-    return _decodedResponse(responseBody, stream: stream);
   }
 
   List<Map<String, dynamic>> _codexInput(String input) => [
@@ -444,14 +437,6 @@ class LlmTransport {
       };
     }
     throw const FormatException('Codex did not return a completed response.');
-  }
-
-  Map<String, dynamic> _tryJson(String body) {
-    try {
-      return _map(jsonDecode(body));
-    } on FormatException {
-      return const {};
-    }
   }
 
   Uri _openAiUri(String endpoint, String path) {

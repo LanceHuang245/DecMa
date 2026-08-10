@@ -1,11 +1,12 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import 'mcp_types.dart';
+import '../utils/network.dart';
 
 class CoinalyzeApiTools {
-  CoinalyzeApiTools({http.Client? client}) : _client = client ?? http.Client();
+  CoinalyzeApiTools({Dio? dio}) : _dio = dio ?? createDio();
 
   static const _baseUrl = 'api.coinalyze.net';
   static const _intervals = [
@@ -171,7 +172,7 @@ class CoinalyzeApiTools {
     ),
   ];
 
-  final http.Client _client;
+  final Dio _dio;
   final List<String> warnings = [];
   final List<DateTime> _quotaUnits = [];
   String? _apiKey;
@@ -212,23 +213,28 @@ class CoinalyzeApiTools {
       for (final entry in arguments.entries)
         if (entry.value != null) entry.key: entry.value.toString(),
     };
-    final response = await _client
-        .get(
-          Uri.https(_baseUrl, '/v1/$endpoint', query),
+    final response = await runNetworkRequest(
+      'Coinalyze API',
+      () => _dio.getUri<String>(
+        Uri.https(_baseUrl, '/v1/$endpoint', query),
+        options: networkOptions(
           headers: {'Accept': 'application/json', 'api_key': apiKey},
-        )
-        .timeout(const Duration(seconds: 30));
-    if (response.statusCode >= 400) {
-      final retryAfter = response.headers['retry-after'];
-      throw Exception(
-        'Coinalyze API HTTP ${response.statusCode}${retryAfter == null ? '' : ' (retry after $retryAfter seconds)'}: ${response.body}',
+        ),
+      ),
+    );
+    requireSuccessfulResponse(response, provider: 'Coinalyze API');
+    try {
+      return jsonEncode({
+        'source': 'Coinalyze API',
+        'endpoint': endpoint,
+        'data': jsonDecode(response.data ?? ''),
+      });
+    } on FormatException {
+      throw const AppFailure(
+        kind: AppFailureKind.invalidResponse,
+        provider: 'Coinalyze API',
       );
     }
-    return jsonEncode({
-      'source': 'Coinalyze API',
-      'endpoint': endpoint,
-      'data': jsonDecode(response.body),
-    });
   }
 
   // Enforce Coinalyze's rolling quota, where every requested symbol is one unit.
@@ -253,5 +259,5 @@ class CoinalyzeApiTools {
 
   void clear() => _apiKey = null;
 
-  void dispose() => _client.close();
+  void dispose() => _dio.close(force: true);
 }
