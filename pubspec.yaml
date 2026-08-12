@@ -19,11 +19,15 @@ dependencies:
   shared_preferences: 
   window_manager: 
   url_launcher: 
+  flutter_riverpod: 
+  riverpod_annotation: 
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   shared_preferences_platform_interface:
+  build_runner:
+  riverpod_generator:
 
 
   flutter_lints: ^6.0.0

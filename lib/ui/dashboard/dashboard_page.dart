@@ -1,6 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../models/trading_models.dart';
+import '../../providers/app_providers.dart';
 import '../../services/node_runtime_service.dart';
 import '../../utils/display_formatters.dart';
 import '../chart/candle_chart_colors.dart';
@@ -13,43 +14,22 @@ import 'dashboard_chart_panel.dart';
 import 'dashboard_controller.dart';
 import 'quick_analysis_dialog.dart';
 
-class DashboardPage extends StatefulWidget {
-  const DashboardPage({
-    super.key,
-    required this.nodeAvailable,
-    this.initialLlmConnections,
-    this.initialMcp,
-    this.initialApi,
-    this.initialNews,
-    this.initialSymbol,
-  });
-
-  final bool nodeAvailable;
-  final LlmConnectionSettings? initialLlmConnections;
-  final McpSettings? initialMcp;
-  final ApiSettings? initialApi;
-  final NewsSettings? initialNews;
-  final String? initialSymbol;
+class DashboardPage extends ConsumerStatefulWidget {
+  const DashboardPage({super.key});
 
   @override
-  State<DashboardPage> createState() => _DashboardPageState();
+  ConsumerState<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends ConsumerState<DashboardPage> {
   late final DashboardController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = DashboardController(
-      nodeAvailable: widget.nodeAvailable,
-      initialLlmConnections: widget.initialLlmConnections,
-      initialMcp: widget.initialMcp,
-      initialApi: widget.initialApi,
-      initialNews: widget.initialNews,
-      initialSymbol: widget.initialSymbol,
-    )..initialize();
-    if (!widget.nodeAvailable) {
+    _controller = ref.read(dashboardControllerProvider)..initialize();
+    final nodeAvailable = ref.read(appInitialSettingsProvider).nodeAvailable;
+    if (!nodeAvailable) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
     }
   }
@@ -97,7 +77,7 @@ class _DashboardPageState extends State<DashboardPage> {
         mcp: _controller.mcp,
         api: _controller.api,
         keyStatus: _controller.apiKeyStatus,
-        nodeAvailable: widget.nodeAvailable,
+        nodeAvailable: ref.read(appInitialSettingsProvider).nodeAvailable,
         onSave: _controller.saveSettings,
       ),
     );
@@ -126,6 +106,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(dashboardControllerProvider);
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {

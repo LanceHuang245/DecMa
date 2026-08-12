@@ -37,12 +37,20 @@ class DashboardController extends ChangeNotifier {
   DashboardController({
     required bool nodeAvailable,
     BybitService? bybit,
+    AgentService? agent,
+    NewsService? newsService,
+    SecureKeyStore? keyStore,
+    LlmSettingsStore? llmSettingsStore,
     LlmConnectionSettings? initialLlmConnections,
     McpSettings? initialMcp,
     ApiSettings? initialApi,
     NewsSettings? initialNews,
     String? initialSymbol,
   }) : _bybit = bybit ?? BybitService() {
+    _agent = agent ?? AgentService();
+    _newsService = newsService ?? NewsService();
+    _keyStore = keyStore ?? SecureKeyStore();
+    _llmSettingsStore = llmSettingsStore ?? LlmSettingsStore();
     final defaultLlm = LlmSettings(
       provider: LlmProvider.openAiResponses,
       endpoint: LlmProvider.openAiResponses.defaultEndpoint,
@@ -77,13 +85,13 @@ class DashboardController extends ChangeNotifier {
   static const _conversationBottomThreshold = 24.0;
 
   final BybitService _bybit;
-  final _agent = AgentService();
+  late final AgentService _agent;
   final _featureEngine = const FeatureEngine();
   final _tradePlanValidator = const TradePlanValidator();
-  final _newsService = NewsService();
+  late final NewsService _newsService;
   final _eventSelector = const EventSelector();
-  final _keyStore = SecureKeyStore();
-  final _llmSettingsStore = LlmSettingsStore();
+  late final SecureKeyStore _keyStore;
+  late final LlmSettingsStore _llmSettingsStore;
   final _symbol = TextEditingController(text: 'BTCUSDT');
   final _prompt = TextEditingController();
   final _conversationScrollController = ScrollController();
