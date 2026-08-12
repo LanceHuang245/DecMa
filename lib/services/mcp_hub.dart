@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../app_constants.dart';
 import '../models/trading_models.dart';
 import 'bybit_mcp.dart';
@@ -26,6 +28,7 @@ class McpHub {
     String? nansenApiKey,
   }) async {
     await prepare(settings, nansenApiKey: nansenApiKey);
+    if (kDebugMode) debugPrint('[MCP] Eager discovery starting.');
     await _ensureConnected();
     return _tools.isEmpty ? const [] : _bridgeTools;
   }
@@ -41,6 +44,13 @@ class McpHub {
     _nansenApiKey = nansenApiKey;
     if (settings.useNansen && (nansenApiKey == null || nansenApiKey.isEmpty)) {
       warnings.add('Nansen MCP: API Key 未配置。');
+    }
+    if (kDebugMode) {
+      debugPrint(
+        '[MCP] Bridge tools ready. Enabled: '
+        'bybit=${settings.useBybit}, nansen=${settings.useNansen}, '
+        'openWebSearch=${settings.useOpenWebSearch}',
+      );
     }
     return _bridgeTools;
   }
@@ -58,18 +68,47 @@ class McpHub {
         NansenMcp(_nansenApiKey!),
       if (settings.useOpenWebSearch) OpenWebSearchMcp(),
     ];
+    if (kDebugMode) {
+      debugPrint(
+        '[MCP] Connecting to ${connections.length} server(s): '
+        '${connections.map((connection) => connection.name).join(', ')}',
+      );
+    }
     for (final connection in connections) {
       try {
-        final tools = (await connection.listTools()).where(
-          (tool) => _isAllowedTool(connection, tool),
-        );
+        final allTools = await connection.listTools();
+        final allowedTools = allTools
+            .where((tool) => _isAllowedTool(connection, tool))
+            .toList();
         _connections[connection.name] = connection;
-        for (final tool in tools) {
+        for (final tool in allowedTools) {
           _tools[tool.functionName] = tool;
+        }
+        if (kDebugMode) {
+          final filteredCount = allTools.length - allowedTools.length;
+          debugPrint(
+            '[MCP] ${connection.name}: loaded ${allowedTools.length} tool(s)'
+            '${filteredCount > 0 ? ' (filtered $filteredCount)' : ''}',
+          );
+          for (final tool in allowedTools) {
+            debugPrint('[MCP]   - ${tool.name}');
+          }
         }
       } catch (error) {
         warnings.add('${connection.name}: $error');
+        if (kDebugMode) {
+          debugPrint('[MCP] ${connection.name}: failed - $error');
+        }
         await connection.close();
+      }
+    }
+    if (kDebugMode) {
+      debugPrint(
+        '[MCP] Load complete: ${_tools.length} tool(s) from '
+        '${_connections.length} server(s)',
+      );
+      if (warnings.isNotEmpty) {
+        debugPrint('[MCP] Warnings: ${warnings.join('; ')}');
       }
     }
   }

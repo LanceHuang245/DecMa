@@ -4,7 +4,7 @@ class AppConstants {
   static const appVersion = '1.0.0';
   static const mcpProtocolVersion = '2024-11-05';
   static const codexClientVersion = '0.147.0';
-  static const bybitMcpPackage = 'bybit-official-trading-server@2.1.16';
+  static const bybitMcpPackage = 'bybit-official-trading-server@2.1.17';
   static const openWebSearchMcpPackage = 'open-websearch@2.1.11';
   static const bybitAccountDocumentationUrl =
       'https://bybit-exchange.github.io/docs/v5/guide';
