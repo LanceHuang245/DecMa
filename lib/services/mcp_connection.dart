@@ -23,6 +23,7 @@ class HttpMcpConnection implements McpConnection {
   final Dio _dio;
   int _nextId = 1;
   String? _sessionId;
+  String? _negotiatedVersion;
   bool _initialized = false;
 
   @override
@@ -43,7 +44,7 @@ class HttpMcpConnection implements McpConnection {
 
   Future<void> _initialize() async {
     if (_initialized) return;
-    await _request('initialize', {
+    final result = await _request('initialize', {
       'protocolVersion': AppConstants.mcpProtocolVersion,
       'capabilities': {},
       'clientInfo': {
@@ -51,6 +52,11 @@ class HttpMcpConnection implements McpConnection {
         'version': AppConstants.appVersion,
       },
     });
+    // 2025-06-18 requires MCP-Protocol-Version header on subsequent requests.
+    final negotiated = result['protocolVersion']?.toString();
+    _negotiatedVersion = negotiated?.isNotEmpty == true
+        ? negotiated
+        : AppConstants.mcpProtocolVersion;
     await _notification('notifications/initialized');
     _initialized = true;
   }
@@ -80,6 +86,8 @@ class HttpMcpConnection implements McpConnection {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
             ...headers,
+            'MCP-Protocol-Version':
+                _negotiatedVersion ?? AppConstants.mcpProtocolVersion,
             ...switch (_sessionId) {
               final sessionId? => {'Mcp-Session-Id': sessionId},
               null => const <String, String>{},
