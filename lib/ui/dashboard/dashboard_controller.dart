@@ -137,6 +137,8 @@ class DashboardController extends ChangeNotifier {
   bool _conversationWasAtBottom = true;
   bool _showScrollToBottom = false;
   bool _isDisposed = false;
+  bool _loadingOlder = false;
+  bool _hasMoreHistory = true;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
   late LlmSettings _llm;
   late LlmConnectionSettings _llmConnections;
@@ -174,6 +176,8 @@ class DashboardController extends ChangeNotifier {
   bool get loadingChart => _loadingChartGeneration == _chartLoadGeneration;
   bool get showChartLoading => _showChartLoading;
   bool get loadingAgent => _loadingAgent;
+  bool get loadingMore => _loadingOlder;
+  bool get hasMoreHistory => _candles.isNotEmpty && _hasMoreHistory;
   AgentMode get agentMode => _agentMode;
   bool get showScrollToBottom => _showScrollToBottom;
   ApiKeyStatus get apiKeyStatus => _apiKeyStatus;
@@ -355,6 +359,7 @@ class DashboardController extends ChangeNotifier {
   }
 
   // Preserve the per-interval viewport while replacing the still-forming candle.
+  // Keeps the grown window after loadMoreHistory (unlimited) instead of snapping back to initial.
   List<Candle> _mergeLatestCandles(List<Candle> history, List<Candle> latest) {
     final byTime = <int, Candle>{
       for (final candle in history) candle.time.millisecondsSinceEpoch: candle,
@@ -362,7 +367,9 @@ class DashboardController extends ChangeNotifier {
     };
     final merged = byTime.values.toList()
       ..sort((left, right) => left.time.compareTo(right.time));
-    final limit = _limitForInterval(_interval);
+    final base = _limitForInterval(_interval);
+    final current = history.length > base ? history.length : base;
+    final limit = current;
     return merged.length > limit ? merged.sublist(merged.length - limit) : merged;
   }
 
@@ -372,6 +379,61 @@ class DashboardController extends ChangeNotifier {
     _showChartLoading = true;
     _notify();
     _startChartRefresh();
+  }
+
+  // Hyperliquid-like: load older candles when zooming out or panning to the left edge.
+  // No disk cache — only grows in memory and resets on restart / interval switch.
+  // Unlimited: keeps paging until the exchange returns no more candles.
+  Future<void> loadMoreHistory() async {
+    if (_isDisposed ||
+        _loadingOlder ||
+        _candles.isEmpty ||
+        loadingChart ||
+        !_hasMoreHistory) {
+      return;
+    }
+    _loadingOlder = true;
+    _notify();
+    try {
+      final interval = _interval;
+      final symbol = _activeSymbol;
+      final oldestMs = _candles.first.time.millisecondsSinceEpoch;
+      final intervalMs = BybitService.intervalMs(interval);
+      final end = oldestMs - intervalMs;
+      const fetchLimit = 1000;
+      final older = await _bybit.fetchKlines(
+        symbol: symbol,
+        interval: interval,
+        limit: fetchLimit,
+        end: end,
+      );
+      if (_isDisposed || symbol != _activeSymbol || interval != _interval) {
+        return;
+      }
+      if (older.isEmpty) {
+        _hasMoreHistory = false;
+        return;
+      }
+      if (older.length < fetchLimit) {
+        _hasMoreHistory = false;
+      }
+      final byTime = <int, Candle>{
+        for (final c in older) c.time.millisecondsSinceEpoch: c,
+        for (final c in _candles) c.time.millisecondsSinceEpoch: c,
+      };
+      final merged = byTime.values.toList()
+        ..sort((left, right) => left.time.compareTo(right.time));
+      _candles = merged;
+      _chartError = null;
+      _notify();
+    } catch (_) {
+      // Keep existing candles on failure.
+    } finally {
+      if (!_isDisposed) {
+        _loadingOlder = false;
+        _notify();
+      }
+    }
   }
 
   void selectSymbol(String symbol) {
@@ -399,6 +461,8 @@ class DashboardController extends ChangeNotifier {
     _cancelRequest(_chartCancelToken);
     _chartCancelToken = null;
     _chartLoadGeneration++;
+    _loadingOlder = false;
+    _hasMoreHistory = true;
     _candles = const [];
     _plan = null;
     _chartPlan = null;

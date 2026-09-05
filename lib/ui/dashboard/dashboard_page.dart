@@ -193,6 +193,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     onSymbolSelected: _controller.selectSymbol,
     onIntervalChanged: _controller.selectInterval,
     onRetry: _controller.retryChart,
+    onLoadMore: _controller.hasMoreHistory ? _controller.loadMoreHistory : null,
+    loadingMore: _controller.loadingMore,
   );
 
   Widget _agentPanel() => DashboardAgentPanel(

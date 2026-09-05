@@ -28,9 +28,12 @@ class CandleViewport {
     );
     final countAtZoom = (candleCount / zoom).round();
     final minimumCount = countAtZoom < 8 ? 8 : countAtZoom;
-    final visibleCount = minimumCount > candleCount
-        ? candleCount
-        : minimumCount;
+    var visibleCount = minimumCount > candleCount ? candleCount : minimumCount;
+    // Performance guard for unlimited history: cap visible to screen width.
+    if (chart.width > 0 && visibleCount > chart.width) {
+      final maxForWidth = (chart.width / 1.2).ceil().clamp(200, 5000);
+      if (visibleCount > maxForWidth) visibleCount = maxForWidth;
+    }
     final maxPan = (candleCount - visibleCount).toDouble();
     final safePan = pan.clamp(0.0, maxPan).toDouble();
     final start = (candleCount - visibleCount - safePan.round())

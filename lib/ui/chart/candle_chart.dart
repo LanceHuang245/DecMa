@@ -15,6 +15,8 @@ class CandleChart extends StatefulWidget {
     this.error,
     this.loading = false,
     this.onRetry,
+    this.onLoadMore,
+    this.loadingMore = false,
   });
 
   final List<Candle> candles;
@@ -23,6 +25,8 @@ class CandleChart extends StatefulWidget {
   final String? error;
   final bool loading;
   final VoidCallback? onRetry;
+  final Future<void> Function()? onLoadMore;
+  final bool loadingMore;
 
   @override
   State<CandleChart> createState() => _CandleChartState();
@@ -34,6 +38,28 @@ class _CandleChartState extends State<CandleChart> {
   Offset? _hoverPosition;
   Offset? _dragPosition;
   bool _isDragging = false;
+  bool _wasAtLeftEdge = false;
+
+  @override
+  void didUpdateWidget(covariant CandleChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Do not forcibly adjust focus while the user is dragging;
+    // new history will appear on the next left-drag after load completes.
+    // This avoids the viewport being pulled away during an active drag.
+    if (oldWidget.candles.length != widget.candles.length &&
+        widget.candles.length > oldWidget.candles.length &&
+        _wasAtLeftEdge &&
+        !_isDragging) {
+      // Keep the view near the left edge after load, but without forcing
+      // during an active drag. Use a post-frame clamp to avoid jump.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _pan = 1e9;
+        });
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +68,13 @@ class _CandleChartState extends State<CandleChart> {
         : LayoutBuilder(
             builder: (context, constraints) {
               final size = constraints.biggest;
+              // Track whether the current viewport is at the left edge for the next didUpdateWidget.
+              final viewForFlag = _viewFor(size);
+              _wasAtLeftEdge = viewForFlag.start == 0 && viewForFlag.maxPan > 0;
+              // Also consider fully zoomed-out state as at edge.
+              if (widget.candles.length <= viewForFlag.visibleCount) {
+                _wasAtLeftEdge = true;
+              }
               return MouseRegion(
                 cursor: _isDragging
                     ? SystemMouseCursors.grabbing
@@ -122,6 +155,26 @@ class _CandleChartState extends State<CandleChart> {
                   ),
                 ),
               ],
+            ),
+          ),
+        if (widget.loadingMore)
+          const Positioned(
+            right: 80,
+            bottom: 46,
+            child: Card(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: ProgressRing(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 6),
+                  Text('加载更早历史…', style: TextStyle(fontSize: 11)),
+                ],
+              ),
             ),
           ),
       ],
@@ -244,12 +297,22 @@ class _CandleChartState extends State<CandleChart> {
   void _zoomAt(PointerScrollEvent event, Size size) {
     final oldView = _viewFor(size);
     if (!oldView.canPaint) return;
+    // Hyperliquid-like: if already fully zoomed out and user keeps zooming out, load older history.
+    final isZoomingOut = event.scrollDelta.dy < 0;
+    if (isZoomingOut &&
+        _zoom <= 1.05 &&
+        widget.onLoadMore != null &&
+        !widget.loadingMore &&
+        widget.candles.isNotEmpty) {
+      widget.onLoadMore!.call();
+      return;
+    }
     final horizontal =
         ((event.localPosition.dx - oldView.chart.left) / oldView.chart.width)
             .clamp(0.0, 1.0)
             .toDouble();
     final focusedIndex = oldView.start + horizontal * oldView.visibleCount;
-    final zoom = (_zoom * (event.scrollDelta.dy < 0 ? 1.2 : 1 / 1.2))
+    final zoom = (_zoom * (isZoomingOut ? 1.2 : 1 / 1.2))
         .clamp(1.0, 16.0)
         .toDouble();
     final newView = CandleViewport.from(size, widget.candles.length, zoom, 0);
@@ -259,6 +322,15 @@ class _CandleChartState extends State<CandleChart> {
       _zoom = zoom;
       _pan = pan.clamp(0.0, newView.maxPan).toDouble();
     });
+    // After zooming out near the left edge, proactively load more.
+    if (isZoomingOut &&
+        widget.onLoadMore != null &&
+        !widget.loadingMore) {
+      final updatedView = CandleViewport.from(size, widget.candles.length, _zoom, _pan);
+      if (updatedView.start < 5) {
+        widget.onLoadMore!.call();
+      }
+    }
   }
 
   void _drag(PointerMoveEvent event, Size size) {
@@ -267,11 +339,22 @@ class _CandleChartState extends State<CandleChart> {
     final view = _viewFor(size);
     if (!view.canPaint) return;
     final movedCandles = (event.localPosition.dx - previous.dx) / view.step;
+    final oldPan = _pan;
     setState(() {
       _pan = (_pan + movedCandles).clamp(0.0, view.maxPan).toDouble();
       _dragPosition = event.localPosition;
       _hoverPosition = event.localPosition;
     });
+    // Hyperliquid-like: when dragging to the left edge (showing oldest), load older history.
+    final atLeftEdge = view.start == 0 && movedCandles > 0;
+    final nearLeftEdge = view.start < 8 && movedCandles > 0;
+    // Also trigger if pan is already at max and user keeps dragging left.
+    final panAtMax = oldPan >= view.maxPan - 0.5 && movedCandles > 0;
+    if ((atLeftEdge || nearLeftEdge || panAtMax) &&
+        widget.onLoadMore != null &&
+        !widget.loadingMore) {
+      widget.onLoadMore!.call();
+    }
   }
 
   void _stopDragging() {

@@ -20,6 +20,8 @@ class DashboardChartPanel extends StatelessWidget {
     required this.onSymbolSelected,
     required this.onIntervalChanged,
     required this.onRetry,
+    this.onLoadMore,
+    this.loadingMore = false,
   });
 
   final TextEditingController symbolController;
@@ -36,6 +38,8 @@ class DashboardChartPanel extends StatelessWidget {
   final ValueChanged<String> onSymbolSelected;
   final ValueChanged<String> onIntervalChanged;
   final VoidCallback onRetry;
+  final Future<void> Function()? onLoadMore;
+  final bool loadingMore;
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +105,8 @@ class DashboardChartPanel extends StatelessWidget {
               error: error,
               loading: loading,
               onRetry: loadingChart ? null : onRetry,
+              onLoadMore: onLoadMore,
+              loadingMore: loadingMore,
             ),
           ),
           const SizedBox(height: 8),

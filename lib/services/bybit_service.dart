@@ -264,7 +264,9 @@ class BybitService {
   }
 
   // Interval string to milliseconds for pagination stepping.
-  int _intervalMs(String interval) => switch (interval) {
+  static int intervalMs(String interval) => _intervalMsStatic(interval);
+  int _intervalMs(String interval) => _intervalMsStatic(interval);
+  static int _intervalMsStatic(String interval) => switch (interval) {
         '1' => 60 * 1000,
         '3' => 3 * 60 * 1000,
         '5' => 5 * 60 * 1000,
