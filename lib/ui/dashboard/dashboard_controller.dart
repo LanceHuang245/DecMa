@@ -81,7 +81,17 @@ class DashboardController extends ChangeNotifier {
     _conversationScrollController.addListener(_handleConversationScroll);
   }
 
-  static const _historyLimit = 1000;
+  // Per-interval history limits for balanced time coverage.
+  static const _historyLimits = {
+    '1': 1440, // 1m: 1 day (2 pages)
+    '5': 1440, // 5m: 5 days (2 pages)
+    '15': 1440, // 15m: 15 days (2 pages)
+    '60': 1000, // 1h: 41 days
+    '240': 1000, // 4h: 166 days
+    'D': 730, // 1D: 2 years
+  };
+  static int _limitForInterval(String interval) =>
+      _historyLimits[interval] ?? 1000;
   static const _conversationBottomThreshold = 24.0;
 
   final BybitService _bybit;
@@ -300,10 +310,11 @@ class DashboardController extends ChangeNotifier {
     if (fullLoad) _showChartLoading = true;
     _notify();
     try {
+      final limit = _limitForInterval(interval);
       final candles = await _bybit.fetchKlines(
         symbol: symbol,
         interval: interval,
-        limit: fullLoad ? _historyLimit : 2,
+        limit: fullLoad ? limit : 2,
         cancelToken: cancelToken,
       );
       // A stale request must never update a newer chart selection.
@@ -343,7 +354,7 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
-  // Preserve the 1000-candle viewport while replacing the still-forming candle.
+  // Preserve the per-interval viewport while replacing the still-forming candle.
   List<Candle> _mergeLatestCandles(List<Candle> history, List<Candle> latest) {
     final byTime = <int, Candle>{
       for (final candle in history) candle.time.millisecondsSinceEpoch: candle,
@@ -351,9 +362,8 @@ class DashboardController extends ChangeNotifier {
     };
     final merged = byTime.values.toList()
       ..sort((left, right) => left.time.compareTo(right.time));
-    return merged.length > _historyLimit
-        ? merged.sublist(merged.length - _historyLimit)
-        : merged;
+    final limit = _limitForInterval(_interval);
+    return merged.length > limit ? merged.sublist(merged.length - limit) : merged;
   }
 
   void retryChart() {
@@ -417,7 +427,7 @@ class DashboardController extends ChangeNotifier {
       final candles = await _bybit.fetchKlines(
         symbol: symbol,
         interval: _interval,
-        limit: _historyLimit,
+        limit: _limitForInterval(_interval),
       );
       if (_isDisposed ||
           generation != _chartLoadGeneration ||

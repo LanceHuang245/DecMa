@@ -6,7 +6,8 @@ class MarketSnapshotService {
   const MarketSnapshotService(this._bybit);
 
   static const intervals = {'4h': '240', '1h': '60', '15m': '15', '5m': '5'};
-  static const _candleLimit = 200;
+  // Per-interval limits for balanced coverage: 4h 50d, 1h 20d, 15m 4d, 5m 1.3d.
+  static const _candleLimits = {'4h': 300, '1h': 500, '15m': 400, '5m': 400};
   static const _maximumCoreSkew = Duration(seconds: 15);
   final BybitService _bybit;
 
@@ -16,11 +17,11 @@ class MarketSnapshotService {
     final results = await Future.wait<Object>([
       _bybit.fetchInstrument(normalized),
       _bybit.fetchTicker(normalized),
-      for (final interval in intervals.values)
+      for (final entry in intervals.entries)
         _bybit.fetchKlines(
           symbol: normalized,
-          interval: interval,
-          limit: _candleLimit,
+          interval: entry.value,
+          limit: _candleLimits[entry.key]!,
         ),
     ]);
     final completedAt = DateTime.now().toUtc();

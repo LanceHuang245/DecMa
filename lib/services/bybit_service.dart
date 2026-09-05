@@ -176,16 +176,77 @@ class BybitService {
     required String symbol,
     required String interval,
     int limit = 160,
+    int? start,
+    int? end,
     CancelToken? cancelToken,
   }) => _read(() async {
+    // Single page when within Bybit's 1000 limit.
+    if (limit <= 1000) {
+      return _fetchKlinePage(
+        symbol: symbol,
+        interval: interval,
+        limit: limit,
+        start: start,
+        end: end,
+        cancelToken: cancelToken,
+      );
+    }
+    // Paginate backwards from `end` to cover `limit` candles.
+    final all = <Candle>[];
+    int? cursorEnd = end;
+    var remaining = limit;
+    while (remaining > 0) {
+      final pageLimit = remaining > 1000 ? 1000 : remaining;
+      final page = await _fetchKlinePage(
+        symbol: symbol,
+        interval: interval,
+        limit: pageLimit,
+        start: start,
+        end: cursorEnd,
+        cancelToken: cancelToken,
+      );
+      if (page.isEmpty) break;
+      all.addAll(page);
+      if (page.length < pageLimit) break;
+      final oldestMs = all
+          .map((c) => c.time.millisecondsSinceEpoch)
+          .reduce((a, b) => a < b ? a : b);
+      cursorEnd = oldestMs - _intervalMs(interval);
+      if (start != null && cursorEnd < start) break;
+      remaining = limit - all.length;
+      if (all.length >= limit) break;
+    }
+    // Deduplicate by timestamp and keep chronological order.
+    final byTime = <int, Candle>{
+      for (final c in all) c.time.millisecondsSinceEpoch: c,
+    };
+    final merged = byTime.values.toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
+    return merged.length > limit
+        ? merged.sublist(merged.length - limit)
+        : merged;
+  });
+
+  // Fetch a single page of klines; Bybit returns newest first.
+  Future<List<Candle>> _fetchKlinePage({
+    required String symbol,
+    required String interval,
+    required int limit,
+    int? start,
+    int? end,
+    CancelToken? cancelToken,
+  }) async {
+    final query = <String, String>{
+      'category': 'linear',
+      'symbol': symbol.toUpperCase(),
+      'interval': interval,
+      'limit': '$limit',
+    };
+    if (start != null) query['start'] = '$start';
+    if (end != null) query['end'] = '$end';
     final body = _marketBody(
       await _get(
-        Uri.https('api.bybit.com', '/v5/market/kline', {
-          'category': 'linear',
-          'symbol': symbol.toUpperCase(),
-          'interval': interval,
-          'limit': '$limit',
-        }),
+        Uri.https('api.bybit.com', '/v5/market/kline', query),
         cancelToken: cancelToken,
       ),
     );
@@ -200,7 +261,25 @@ class BybitService {
         volume: double.parse(row[5].toString()),
       );
     }).toList();
-  });
+  }
+
+  // Interval string to milliseconds for pagination stepping.
+  int _intervalMs(String interval) => switch (interval) {
+        '1' => 60 * 1000,
+        '3' => 3 * 60 * 1000,
+        '5' => 5 * 60 * 1000,
+        '15' => 15 * 60 * 1000,
+        '30' => 30 * 60 * 1000,
+        '60' => 60 * 60 * 1000,
+        '120' => 120 * 60 * 1000,
+        '240' => 240 * 60 * 1000,
+        '360' => 360 * 60 * 1000,
+        '720' => 720 * 60 * 1000,
+        'D' => 24 * 60 * 60 * 1000,
+        'W' => 7 * 24 * 60 * 60 * 1000,
+        'M' => 30 * 24 * 60 * 60 * 1000,
+        _ => 15 * 60 * 1000,
+      };
 
   Future<Response<String>> _get(Uri uri, {CancelToken? cancelToken}) =>
       runNetworkRequest(

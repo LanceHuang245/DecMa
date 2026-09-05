@@ -68,7 +68,7 @@ void main() {
     expect(controller.conversation, hasLength(1));
     expect(
       controller.promptController.text,
-      '''请分析 ETHUSDT 的短线开仓机会。本次交易需在3 小时内完成。
+      '''请分析 ETHUSDT 的开仓机会。本次交易需持有3 小时。
 
 账户资金：1,000 USDT
 单笔最大可接受亏损：20 USDT
@@ -167,6 +167,8 @@ class _DelayedBybit extends BybitService {
     required String symbol,
     required String interval,
     int limit = 160,
+    int? start,
+    int? end,
     CancelToken? cancelToken,
   }) {
     final request = _requests[symbol] ??= Completer<List<Candle>>();

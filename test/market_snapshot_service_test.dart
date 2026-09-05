@@ -72,6 +72,8 @@ class _FakeBybit extends BybitService {
     required String symbol,
     required String interval,
     int limit = 160,
+    int? start,
+    int? end,
     CancelToken? cancelToken,
   }) async {
     intervals.add(interval);
