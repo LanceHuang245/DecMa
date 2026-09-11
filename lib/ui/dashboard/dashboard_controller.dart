@@ -5,6 +5,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/market_snapshot.dart';
 import '../../models/news_event.dart';
+import '../../models/analysis_risk_profile.dart';
 import '../../models/trading_models.dart';
 import '../../services/agent_service.dart';
 import '../../services/analysis/feature_engine.dart';
@@ -719,10 +720,7 @@ class DashboardController extends ChangeNotifier {
 
   void quickAnalyze({
     required String analysisPlan,
-    required String tradeWindow,
-    required String accountBalance,
-    required String maxLoss,
-    required String plannedPosition,
+    required AnalysisRiskProfile riskProfile,
     required String currentPosition,
     required String currentPositionSize,
     required String currentPositionEntryPrice,
@@ -734,16 +732,20 @@ class DashboardController extends ChangeNotifier {
 
 '''
         : '';
-    // Build and send the analysis request from the confirmed dialog values.
+    // Build the readable request from typed inputs so unavailable values stay explicit.
     _prompt.text =
-        '''请分析 $_activeSymbol 的开仓机会。本次交易需持有${_quickAnalysisValue(tradeWindow, '填写交易完成时限')}。
+        '''请分析 $_activeSymbol 的开仓机会。本次交易需持有${_holdingPeriodText(riskProfile.holdingPeriod)}。
 
-账户资金：${_quickAnalysisValue(accountBalance, '填写 USDT')}
-单笔最大可接受亏损：${_quickAnalysisValue(maxLoss, '填写 USDT 或 %')}
-计划开仓数量：${_quickAnalysisValue(plannedPosition, '填写币数量或 USDT 名义价值')}
-当前持仓：${_quickAnalysisValue(currentPosition, '无 / 多 / 空')}
-当前持仓数量：${hasPosition ? _quickAnalysisValue(currentPositionSize, '无则填 0') : '0'}
-当前持仓均价：${hasPosition ? _quickAnalysisValue(currentPositionEntryPrice, '无则填 0') : '0'}
+账户资金：${_usdtText(riskProfile.accountEquity)}
+单笔最大可接受亏损：${_usdtText(riskProfile.riskCash)}
+计划开仓数量：${_plannedPositionText(riskProfile.plannedPosition)}
+预期单边滑点：${_percentText(riskProfile.expectedSlippageRate)}
+安全缓冲：${_percentText(riskProfile.safetyBufferRate)}
+最低净风险收益比：${_numberText(riskProfile.minimumNetRewardRisk)}
+最大有效杠杆：${_leverageText(riskProfile.maximumEffectiveLeverage)}
+当前持仓：${_currentPositionText(currentPosition)}
+当前持仓数量：${hasPosition ? _currentPositionText(currentPositionSize) : '0'}
+当前持仓均价：${hasPosition ? _currentPositionText(currentPositionEntryPrice) : '0'}
 
 请同时评估 LONG 和 SHORT，并给出当前更优的开仓方向、等待入场区、入场触发条件、最大追价位置、止损位置、分批止盈位置以及风险收益比。
 
@@ -755,9 +757,36 @@ $aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限�
     unawaited(runAgent());
   }
 
-  String _quickAnalysisValue(String value, String placeholder) {
+  String _holdingPeriodText(Duration? value) {
+    if (value == null) return '不可用';
+    return value.inMinutes % 60 == 0
+        ? '${value.inHours} 小时'
+        : '${value.inMinutes} 分钟';
+  }
+
+  String _usdtText(double? value) =>
+      value == null ? '不可用' : '${_numberText(value)} USDT';
+
+  String _plannedPositionText(PlannedPosition? value) {
+    if (value == null) return '不可用';
+    if (value.notionalUsdt != null) return _usdtText(value.notionalUsdt);
+    return '${_numberText(value.assetQuantity)} ${value.asset}';
+  }
+
+  String _percentText(double? value) =>
+      value == null ? '不可用' : '${_numberText(value * 100)}%';
+
+  String _leverageText(double? value) =>
+      value == null ? '不可用' : '${_numberText(value)}x';
+
+  String _numberText(double? value) {
+    if (value == null) return '不可用';
+    return value.toStringAsFixed(8).replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  String _currentPositionText(String value) {
     final trimmed = value.trim();
-    return trimmed.isEmpty ? '{$placeholder}' : trimmed;
+    return trimmed.isEmpty ? '不可用' : trimmed;
   }
 
   void selectAgentMode(AgentMode mode) {

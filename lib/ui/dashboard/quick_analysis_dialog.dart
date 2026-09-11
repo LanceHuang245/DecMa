@@ -1,5 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
+import '../../models/analysis_risk_profile.dart';
+
 class QuickAnalysisDialog extends StatefulWidget {
   const QuickAnalysisDialog({
     super.key,
@@ -10,10 +12,7 @@ class QuickAnalysisDialog extends StatefulWidget {
   final String symbol;
   final void Function({
     required String analysisPlan,
-    required String tradeWindow,
-    required String accountBalance,
-    required String maxLoss,
-    required String plannedPosition,
+    required AnalysisRiskProfile riskProfile,
     required String currentPosition,
     required String currentPositionSize,
     required String currentPositionEntryPrice,
@@ -30,6 +29,10 @@ class _QuickAnalysisDialogState extends State<QuickAnalysisDialog> {
   final _accountBalance = TextEditingController();
   final _maxLoss = TextEditingController();
   final _plannedPosition = TextEditingController();
+  final _expectedSlippage = TextEditingController();
+  final _safetyBuffer = TextEditingController();
+  final _minimumNetRewardRisk = TextEditingController();
+  final _maximumEffectiveLeverage = TextEditingController();
   final _currentPositionSize = TextEditingController();
   final _currentPositionEntryPrice = TextEditingController();
   var _currentPosition = '无';
@@ -40,6 +43,10 @@ class _QuickAnalysisDialogState extends State<QuickAnalysisDialog> {
     _accountBalance.dispose();
     _maxLoss.dispose();
     _plannedPosition.dispose();
+    _expectedSlippage.dispose();
+    _safetyBuffer.dispose();
+    _minimumNetRewardRisk.dispose();
+    _maximumEffectiveLeverage.dispose();
     _currentPositionSize.dispose();
     _currentPositionEntryPrice.dispose();
     super.dispose();
@@ -61,6 +68,17 @@ class _QuickAnalysisDialogState extends State<QuickAnalysisDialog> {
             _field('账户资金', '例如：1,000 USDT', _accountBalance),
             _field('单笔最大可接受亏损', '例如：20 USDT 或 2%', _maxLoss),
             _field('计划开仓数量', '币数量或 USDT 名义价值', _plannedPosition),
+            Expander(
+              header: const Text('可选执行风险参数'),
+              content: Column(
+                children: [
+                  _field('预期单边滑点', '例如：0.05%', _expectedSlippage),
+                  _field('安全缓冲', '例如：0.1%', _safetyBuffer),
+                  _field('最低净风险收益比', '例如：1.5', _minimumNetRewardRisk),
+                  _field('最大有效杠杆', '例如：3x', _maximumEffectiveLeverage),
+                ],
+              ),
+            ),
             _positionField(),
             if (_currentPosition != '无') ...[
               _field('当前持仓数量', '例如：0.1', _currentPositionSize),
@@ -147,13 +165,20 @@ class _QuickAnalysisDialogState extends State<QuickAnalysisDialog> {
   );
 
   void _confirm() {
-    // Send only after the user confirms the values entered in this dialog.
+    // Normalize confirmed risk inputs once before handing them to analysis.
+    final riskProfile = AnalysisRiskProfile.parse(
+      accountEquity: _accountBalance.text,
+      maximumLoss: _maxLoss.text,
+      plannedPosition: _plannedPosition.text,
+      tradeWindow: _tradeWindow.text,
+      expectedSlippage: _expectedSlippage.text,
+      safetyBuffer: _safetyBuffer.text,
+      minimumNetRewardRisk: _minimumNetRewardRisk.text,
+      maximumEffectiveLeverage: _maximumEffectiveLeverage.text,
+    );
     widget.onConfirm(
       analysisPlan: _analysisPlan,
-      tradeWindow: _tradeWindow.text,
-      accountBalance: _accountBalance.text,
-      maxLoss: _maxLoss.text,
-      plannedPosition: _plannedPosition.text,
+      riskProfile: riskProfile,
       currentPosition: _currentPosition,
       currentPositionSize: _currentPositionSize.text,
       currentPositionEntryPrice: _currentPositionEntryPrice.text,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:decma/models/analysis_risk_profile.dart';
 import 'package:decma/models/trading_models.dart';
 import 'package:decma/services/agent_service.dart';
 import 'package:decma/services/bybit_service.dart';
@@ -53,10 +54,16 @@ void main() {
 
     controller.quickAnalyze(
       analysisPlan: '激进',
-      tradeWindow: '3 小时',
-      accountBalance: '1,000 USDT',
-      maxLoss: '20 USDT',
-      plannedPosition: '500 USDT',
+      riskProfile: AnalysisRiskProfile.parse(
+        accountEquity: '1,000 USDT',
+        maximumLoss: '20 USDT',
+        plannedPosition: '500 USDT',
+        tradeWindow: '3 小时',
+        expectedSlippage: '0.05%',
+        safetyBuffer: '0.1%',
+        minimumNetRewardRisk: '1.5',
+        maximumEffectiveLeverage: '3x',
+      ),
       currentPosition: '无',
       currentPositionSize: '99',
       currentPositionEntryPrice: '88,888',
@@ -66,13 +73,15 @@ void main() {
     expect(controller.agentMode, AgentMode.analysis);
     expect(controller.loadingAgent, isFalse);
     expect(controller.conversation, hasLength(1));
-    expect(
-      controller.promptController.text,
-      '''请分析 ETHUSDT 的开仓机会。本次交易需持有3 小时。
+    expect(controller.promptController.text, '''请分析 ETHUSDT 的开仓机会。本次交易需持有3 小时。
 
-账户资金：1,000 USDT
+账户资金：1000 USDT
 单笔最大可接受亏损：20 USDT
 计划开仓数量：500 USDT
+预期单边滑点：0.05%
+安全缓冲：0.1%
+最低净风险收益比：1.5
+最大有效杠杆：3x
 当前持仓：无
 当前持仓数量：0
 当前持仓均价：0
@@ -84,8 +93,7 @@ void main() {
 激进方案要求：只要核心行情数据有效、存在方向性结构优势，并且能够定义入场触发、结构止损和候选目标，就必须在 LONG_SETUP 和 SHORT_SETUP 中选择更优的条件式方案。OI 历史、清算、多空比、CVD、完整订单流、广泛新闻覆盖或尚未到触发点的执行数据缺失时，只能降低置信度、缩小建议仓位并加入入场前复核，不得仅因此输出 WAIT、NO_TRADE 或 DATA_INSUFFICIENT。若核心行情无效、方向大致均衡、无法定义有效止损，或已验证的净风险收益比不合格，仍可输出相应的 WAIT、NO_TRADE 或 DATA_INSUFFICIENT。
 
 如果我填写的计划仓位超过上述单笔风险限制，请根据止损距离给出更合理的最大仓位建议。
-''',
-    );
+''');
 
     controller.dispose();
   });
