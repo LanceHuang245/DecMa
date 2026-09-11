@@ -105,6 +105,15 @@ class BybitService {
       status: item['status'].toString(),
       tickSize: double.parse(priceFilter['tickSize'].toString()),
       quantityStep: double.parse(lotSizeFilter['qtyStep'].toString()),
+      minimumOrderQuantity: double.parse(
+        lotSizeFilter['minOrderQty'].toString(),
+      ),
+      maximumOrderQuantity: double.parse(
+        lotSizeFilter['maxOrderQty'].toString(),
+      ),
+      minimumNotionalValue: double.parse(
+        lotSizeFilter['minNotionalValue'].toString(),
+      ),
       fundingIntervalMinutes: int.parse(item['fundingInterval'].toString()),
       observedAt: _responseTime(body),
     );
@@ -276,7 +285,7 @@ class BybitService {
         '120' => 120 * 60 * 1000,
         '240' => 240 * 60 * 1000,
         '360' => 360 * 60 * 1000,
-        '720' => 720 * 60 * 1000,
+        '720' => 720 * 60 * 60 * 1000,
         'D' => 24 * 60 * 60 * 1000,
         'W' => 7 * 24 * 60 * 60 * 1000,
         'M' => 30 * 24 * 60 * 60 * 1000,

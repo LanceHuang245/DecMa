@@ -7,6 +7,9 @@ class InstrumentSnapshot {
     required this.status,
     required this.tickSize,
     required this.quantityStep,
+    required this.minimumOrderQuantity,
+    required this.maximumOrderQuantity,
+    required this.minimumNotionalValue,
     required this.fundingIntervalMinutes,
     required this.observedAt,
   });
@@ -16,6 +19,9 @@ class InstrumentSnapshot {
   final String status;
   final double tickSize;
   final double quantityStep;
+  final double minimumOrderQuantity;
+  final double maximumOrderQuantity;
+  final double minimumNotionalValue;
   final int fundingIntervalMinutes;
   final DateTime observedAt;
 
@@ -25,6 +31,9 @@ class InstrumentSnapshot {
     'status': status,
     'tick_size': tickSize,
     'quantity_step': quantityStep,
+    'min_order_qty': minimumOrderQuantity,
+    'max_order_qty': maximumOrderQuantity,
+    'min_notional_value': minimumNotionalValue,
     'funding_interval_minutes': fundingIntervalMinutes,
     'observed_at': observedAt.toUtc().toIso8601String(),
   };

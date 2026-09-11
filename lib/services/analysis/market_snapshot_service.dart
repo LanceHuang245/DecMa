@@ -1,11 +1,18 @@
 import '../../models/market_snapshot.dart';
 import '../../models/trading_models.dart';
 import '../bybit_service.dart';
+import 'candle_integrity_validator.dart';
 
 class MarketSnapshotService {
   const MarketSnapshotService(this._bybit);
 
   static const intervals = {'4h': '240', '1h': '60', '15m': '15', '5m': '5'};
+  static const _intervalDurations = {
+    '4h': Duration(hours: 4),
+    '1h': Duration(hours: 1),
+    '15m': Duration(minutes: 15),
+    '5m': Duration(minutes: 5),
+  };
   // Per-interval limits for balanced coverage: 4h 50d, 1h 20d, 15m 4d, 5m 1.3d.
   static const _candleLimits = {'4h': 300, '1h': 500, '15m': 400, '5m': 400};
   static const _maximumCoreSkew = Duration(seconds: 15);
@@ -45,6 +52,15 @@ class MarketSnapshotService {
         'One or more timeframes have fewer than 50 candles',
       if (maxSkew > _maximumCoreSkew) 'Core source timestamps are skewed',
     ];
+    // Preserve per-timeframe data defects for the later approval decision.
+    for (final entry in candles.entries) {
+      final integrity = const CandleIntegrityValidator().validate(
+        candles: entry.value,
+        interval: _intervalDurations[entry.key]!,
+        snapshotCompletedAt: completedAt,
+      );
+      warnings.addAll(integrity.errors.map((error) => '${entry.key}: $error'));
+    }
     return MarketSnapshot(
       snapshotId: '${normalized}_${startedAt.microsecondsSinceEpoch}',
       symbol: normalized,

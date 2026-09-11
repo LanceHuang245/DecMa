@@ -29,7 +29,30 @@ void main() {
       expect(snapshot.symbol, 'BTCUSDT');
       expect(snapshot.candlesByInterval.keys, ['4h', '1h', '15m', '5m']);
       expect(snapshot.instrument.tickSize, 0.1);
+      expect(snapshot.instrument.minimumOrderQuantity, 0.001);
+      expect(snapshot.instrument.maximumOrderQuantity, 100);
+      expect(snapshot.instrument.minimumNotionalValue, 5);
+      expect(
+        snapshot.instrument.toJson(),
+        containsPair('min_order_qty', 0.001),
+      );
+      expect(snapshot.instrument.toJson(), containsPair('max_order_qty', 100));
+      expect(
+        snapshot.instrument.toJson(),
+        containsPair('min_notional_value', 5),
+      );
       expect(snapshot.warnings, isEmpty);
+    },
+  );
+
+  test(
+    'MarketSnapshotService scopes candle integrity warnings by timeframe',
+    () async {
+      final snapshot = await MarketSnapshotService(
+        _InvalidCandleBybit(),
+      ).build('btcusdt');
+
+      expect(snapshot.warnings, contains('15m: Duplicate candle timestamp'));
     },
   );
 }
@@ -47,6 +70,9 @@ class _FakeBybit extends BybitService {
     status: 'Trading',
     tickSize: 0.1,
     quantityStep: 0.001,
+    minimumOrderQuantity: 0.001,
+    maximumOrderQuantity: 100,
+    minimumNotionalValue: 5,
     fundingIntervalMinutes: 480,
     observedAt: DateTime.now().toUtc(),
   );
@@ -77,10 +103,12 @@ class _FakeBybit extends BybitService {
     CancelToken? cancelToken,
   }) async {
     intervals.add(interval);
+    final intervalMinutes = int.parse(interval);
+    final now = DateTime.now().toUtc();
     return List.generate(
       60,
       (index) => Candle(
-        time: DateTime.now().toUtc().subtract(Duration(minutes: 61 - index)),
+        time: now.subtract(Duration(minutes: intervalMinutes * (60 - index))),
         open: 100,
         high: 101,
         low: 99,
@@ -88,5 +116,28 @@ class _FakeBybit extends BybitService {
         volume: 10,
       ),
     );
+  }
+}
+
+class _InvalidCandleBybit extends _FakeBybit {
+  @override
+  Future<List<Candle>> fetchKlines({
+    required String symbol,
+    required String interval,
+    int limit = 160,
+    int? start,
+    int? end,
+    CancelToken? cancelToken,
+  }) async {
+    final candles = await super.fetchKlines(
+      symbol: symbol,
+      interval: interval,
+      limit: limit,
+      start: start,
+      end: end,
+      cancelToken: cancelToken,
+    );
+    if (interval == '15') return [...candles, candles.last];
+    return candles;
   }
 }
