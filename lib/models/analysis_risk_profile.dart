@@ -11,10 +11,10 @@ class MoneyOrPercent {
   factory MoneyOrPercent.fromJson(Map<String, dynamic> json) {
     final cash = _number(json['cash']);
     final rate = _number(json['rate']);
-    if (cash != null && cash > 0 && rate == null) {
+    if (cash != null && cash > 0 && _isNullOrAbsent(json, 'rate')) {
       return MoneyOrPercent.cash(cash);
     }
-    if (cash == null && rate != null && rate > 0) {
+    if (_isNullOrAbsent(json, 'cash') && rate != null && rate > 0) {
       return MoneyOrPercent.rate(rate);
     }
     throw FormatException('MoneyOrPercent requires one positive cash or rate.');
@@ -46,11 +46,11 @@ class PlannedPosition {
     final asset = json['asset']?.toString().trim();
     if (notional != null &&
         notional > 0 &&
-        quantity == null &&
-        (asset == null || asset.isEmpty)) {
+        _isNullOrAbsent(json, 'assetQuantity') &&
+        _isNullOrAbsent(json, 'asset')) {
       return PlannedPosition.notional(notional);
     }
-    if (json['notionalUsdt'] == null &&
+    if (_isNullOrAbsent(json, 'notionalUsdt') &&
         quantity != null &&
         quantity > 0 &&
         asset != null &&
@@ -65,7 +65,7 @@ class PlannedPosition {
 
 /// Normalizes confirmed account-risk inputs without inferring missing units.
 class AnalysisRiskProfile {
-  AnalysisRiskProfile({
+  const AnalysisRiskProfile._({
     required this.accountEquity,
     required this.riskCash,
     required this.holdingPeriod,
@@ -74,7 +74,7 @@ class AnalysisRiskProfile {
     required this.safetyBufferRate,
     required this.minimumNetRewardRisk,
     required this.maximumEffectiveLeverage,
-    required List<String> warnings,
+    required this.warnings,
     required this.rawAccountEquity,
     required this.rawMaximumLoss,
     required this.rawPlannedPosition,
@@ -83,7 +83,66 @@ class AnalysisRiskProfile {
     required this.rawSafetyBuffer,
     required this.rawMinimumNetRewardRisk,
     required this.rawMaximumEffectiveLeverage,
-  }) : warnings = List.unmodifiable(warnings);
+  });
+
+  /// Copies warnings so normal construction cannot retain mutable caller state.
+  factory AnalysisRiskProfile({
+    required double? accountEquity,
+    required double? riskCash,
+    required Duration? holdingPeriod,
+    required PlannedPosition? plannedPosition,
+    required double? expectedSlippageRate,
+    required double? safetyBufferRate,
+    required double? minimumNetRewardRisk,
+    required double? maximumEffectiveLeverage,
+    required List<String> warnings,
+    required String rawAccountEquity,
+    required String rawMaximumLoss,
+    required String rawPlannedPosition,
+    required String rawTradeWindow,
+    required String rawExpectedSlippage,
+    required String rawSafetyBuffer,
+    required String rawMinimumNetRewardRisk,
+    required String rawMaximumEffectiveLeverage,
+  }) => AnalysisRiskProfile._(
+    accountEquity: accountEquity,
+    riskCash: riskCash,
+    holdingPeriod: holdingPeriod,
+    plannedPosition: plannedPosition,
+    expectedSlippageRate: expectedSlippageRate,
+    safetyBufferRate: safetyBufferRate,
+    minimumNetRewardRisk: minimumNetRewardRisk,
+    maximumEffectiveLeverage: maximumEffectiveLeverage,
+    warnings: List.unmodifiable(warnings),
+    rawAccountEquity: rawAccountEquity,
+    rawMaximumLoss: rawMaximumLoss,
+    rawPlannedPosition: rawPlannedPosition,
+    rawTradeWindow: rawTradeWindow,
+    rawExpectedSlippage: rawExpectedSlippage,
+    rawSafetyBuffer: rawSafetyBuffer,
+    rawMinimumNetRewardRisk: rawMinimumNetRewardRisk,
+    rawMaximumEffectiveLeverage: rawMaximumEffectiveLeverage,
+  );
+
+  /// Provides a const-safe profile when every risk input is unavailable.
+  const AnalysisRiskProfile.unavailable()
+    : accountEquity = null,
+      riskCash = null,
+      holdingPeriod = null,
+      plannedPosition = null,
+      expectedSlippageRate = null,
+      safetyBufferRate = null,
+      minimumNetRewardRisk = null,
+      maximumEffectiveLeverage = null,
+      warnings = const [],
+      rawAccountEquity = '',
+      rawMaximumLoss = '',
+      rawPlannedPosition = '',
+      rawTradeWindow = '',
+      rawExpectedSlippage = '',
+      rawSafetyBuffer = '',
+      rawMinimumNetRewardRisk = '',
+      rawMaximumEffectiveLeverage = '';
 
   final double? accountEquity;
   final double? riskCash;
@@ -318,5 +377,10 @@ double? _number(Object? value) {
   if (value is num) return value.isFinite ? value.toDouble() : null;
   final text = value?.toString().trim();
   if (text == null || !_numericValue.hasMatch(text)) return null;
-  return double.tryParse(text.replaceAll(',', ''));
+  // Reject overflow instead of leaking an infinite value into risk arithmetic.
+  final number = double.tryParse(text.replaceAll(',', ''));
+  return number?.isFinite == true ? number : null;
 }
+
+bool _isNullOrAbsent(Map<String, dynamic> json, String key) =>
+    !json.containsKey(key) || json[key] == null;

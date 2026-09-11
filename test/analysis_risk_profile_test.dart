@@ -138,4 +138,72 @@ void main() {
     expect(() => MoneyOrPercent.fromJson({}), throwsA(isA<FormatException>()));
     expect(() => PlannedPosition.fromJson({}), throwsA(isA<FormatException>()));
   });
+
+  test('rejects invalid active and inactive MoneyOrPercent JSON fields', () {
+    final invalidValues = [
+      {'cash': 'bad', 'rate': 0.1},
+      {'cash': 10, 'rate': 'bad'},
+      {'cash': 10, 'rate': 0.1},
+      {'cash': 0},
+      {'cash': -1},
+      {'rate': 0},
+      {'rate': -0.1},
+    ];
+
+    for (final value in invalidValues) {
+      expect(
+        () => MoneyOrPercent.fromJson(value),
+        throwsA(isA<FormatException>()),
+        reason: '$value must not produce a risk variant',
+      );
+    }
+  });
+
+  test('rejects invalid active and inactive PlannedPosition JSON fields', () {
+    final invalidValues = [
+      {'notionalUsdt': 10, 'assetQuantity': 'bad'},
+      {'notionalUsdt': 10, 'asset': 'BTC'},
+      {'notionalUsdt': 10, 'assetQuantity': 1, 'asset': 'BTC'},
+      {'notionalUsdt': 'bad', 'assetQuantity': 1, 'asset': 'BTC'},
+      {'notionalUsdt': 0},
+      {'notionalUsdt': -1},
+      {'assetQuantity': 0, 'asset': 'BTC'},
+      {'assetQuantity': -1, 'asset': 'BTC'},
+    ];
+
+    for (final value in invalidValues) {
+      expect(
+        () => PlannedPosition.fromJson(value),
+        throwsA(isA<FormatException>()),
+        reason: '$value must not produce a position variant',
+      );
+    }
+  });
+
+  test('keeps a public const unavailable profile immutable', () {
+    const profile = AnalysisRiskProfile.unavailable();
+
+    expect(profile.accountEquity, isNull);
+    expect(profile.warnings, isEmpty);
+    expect(() => profile.warnings.add('mutate'), throwsUnsupportedError);
+  });
+
+  test('rejects non-finite numeric input', () {
+    final profile = AnalysisRiskProfile.parse(
+      accountEquity: '${'9' * 400} USDT',
+      maximumLoss: '',
+      plannedPosition: '',
+      tradeWindow: '',
+      expectedSlippage: '',
+      safetyBuffer: '',
+      minimumNetRewardRisk: '',
+      maximumEffectiveLeverage: '',
+    );
+
+    expect(profile.accountEquity, isNull);
+    expect(
+      profile.warnings,
+      contains('Account equity must be a positive USDT amount.'),
+    );
+  });
 }
