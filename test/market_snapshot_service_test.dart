@@ -19,6 +19,10 @@ void main() {
     );
   });
 
+  test('Bybit converts the 720-minute interval to milliseconds', () {
+    expect(BybitService.intervalMs('720'), 43200000);
+  });
+
   test(
     'MarketSnapshotService always requests fixed analysis timeframes',
     () async {
