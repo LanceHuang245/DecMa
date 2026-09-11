@@ -98,6 +98,43 @@ void main() {
     controller.dispose();
   });
 
+  test(
+    'quick analysis explicitly renders unavailable typed risk fields',
+    () async {
+      final controller = DashboardController(
+        nodeAvailable: true,
+        initialSymbol: 'ETHUSDT',
+      );
+
+      controller.quickAnalyze(
+        analysisPlan: '标准',
+        riskProfile: AnalysisRiskProfile.parse(
+          accountEquity: '1000',
+          maximumLoss: '20',
+          plannedPosition: '500',
+          tradeWindow: 'soon',
+          expectedSlippage: '',
+          safetyBuffer: '',
+          minimumNetRewardRisk: '',
+          maximumEffectiveLeverage: '',
+        ),
+        currentPosition: '无',
+        currentPositionSize: '',
+        currentPositionEntryPrice: '',
+      );
+      await _flushAsync();
+
+      expect(controller.promptController.text, contains('账户资金：不可用'));
+      expect(controller.promptController.text, contains('单笔最大可接受亏损：不可用'));
+      expect(controller.promptController.text, contains('计划开仓数量：不可用'));
+      expect(controller.promptController.text, contains('本次交易需持有不可用'));
+      expect(controller.promptController.text, contains('预期单边滑点：不可用'));
+      expect(controller.promptController.text, contains('最大有效杠杆：不可用'));
+
+      controller.dispose();
+    },
+  );
+
   test('Nansen remains enabled when Node.js is unavailable', () {
     final controller = DashboardController(
       nodeAvailable: false,

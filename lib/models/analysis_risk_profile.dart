@@ -1,7 +1,7 @@
 /// An explicit maximum loss expressed as either USDT cash or equity percentage.
 class MoneyOrPercent {
-  const MoneyOrPercent.cash(this.cash) : rate = null;
-  const MoneyOrPercent.rate(this.rate) : cash = null;
+  const MoneyOrPercent.cash(double this.cash) : rate = null;
+  const MoneyOrPercent.rate(double this.rate) : cash = null;
 
   final double? cash;
   final double? rate;
@@ -9,20 +9,25 @@ class MoneyOrPercent {
   Map<String, Object?> toJson() => {'cash': cash, 'rate': rate};
 
   factory MoneyOrPercent.fromJson(Map<String, dynamic> json) {
+    final cash = _number(json['cash']);
     final rate = _number(json['rate']);
-    return rate == null
-        ? MoneyOrPercent.cash(_number(json['cash']))
-        : MoneyOrPercent.rate(rate);
+    if (cash != null && cash > 0 && rate == null) {
+      return MoneyOrPercent.cash(cash);
+    }
+    if (cash == null && rate != null && rate > 0) {
+      return MoneyOrPercent.rate(rate);
+    }
+    throw FormatException('MoneyOrPercent requires one positive cash or rate.');
   }
 }
 
 /// A planned order size with a deliberately explicit unit.
 class PlannedPosition {
-  const PlannedPosition.notional(this.notionalUsdt)
+  const PlannedPosition.notional(double this.notionalUsdt)
     : assetQuantity = null,
       asset = null;
 
-  const PlannedPosition.quantity(this.assetQuantity, this.asset)
+  const PlannedPosition.quantity(double this.assetQuantity, String this.asset)
     : notionalUsdt = null;
 
   final double? notionalUsdt;
@@ -37,18 +42,30 @@ class PlannedPosition {
 
   factory PlannedPosition.fromJson(Map<String, dynamic> json) {
     final notional = _number(json['notionalUsdt']);
-    return notional == null
-        ? PlannedPosition.quantity(
-            _number(json['assetQuantity']),
-            json['asset']?.toString(),
-          )
-        : PlannedPosition.notional(notional);
+    final quantity = _number(json['assetQuantity']);
+    final asset = json['asset']?.toString().trim();
+    if (notional != null &&
+        notional > 0 &&
+        quantity == null &&
+        (asset == null || asset.isEmpty)) {
+      return PlannedPosition.notional(notional);
+    }
+    if (json['notionalUsdt'] == null &&
+        quantity != null &&
+        quantity > 0 &&
+        asset != null &&
+        asset.isNotEmpty) {
+      return PlannedPosition.quantity(quantity, asset);
+    }
+    throw FormatException(
+      'PlannedPosition requires one positive explicit unit.',
+    );
   }
 }
 
 /// Normalizes confirmed account-risk inputs without inferring missing units.
 class AnalysisRiskProfile {
-  const AnalysisRiskProfile({
+  AnalysisRiskProfile({
     required this.accountEquity,
     required this.riskCash,
     required this.holdingPeriod,
@@ -57,7 +74,7 @@ class AnalysisRiskProfile {
     required this.safetyBufferRate,
     required this.minimumNetRewardRisk,
     required this.maximumEffectiveLeverage,
-    required this.warnings,
+    required List<String> warnings,
     required this.rawAccountEquity,
     required this.rawMaximumLoss,
     required this.rawPlannedPosition,
@@ -66,7 +83,7 @@ class AnalysisRiskProfile {
     required this.rawSafetyBuffer,
     required this.rawMinimumNetRewardRisk,
     required this.rawMaximumEffectiveLeverage,
-  });
+  }) : warnings = List.unmodifiable(warnings);
 
   final double? accountEquity;
   final double? riskCash;
@@ -224,7 +241,7 @@ PlannedPosition? _plannedPosition(String value) {
   final notional = _positiveUsdt(value);
   if (notional != null) return PlannedPosition.notional(notional);
   final match = RegExp(
-    r'^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+([A-Za-z]{2,15})\s*$',
+    r'^\s*(' + _numericSource + r')\s+([A-Za-z]{2,15})\s*$',
   ).firstMatch(value);
   final quantity = _number(match?.group(1));
   return quantity == null || quantity <= 0
@@ -234,7 +251,9 @@ PlannedPosition? _plannedPosition(String value) {
 
 Duration? _holdingPeriod(String value) {
   final match = RegExp(
-    r'^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*(分钟|分鐘|分|minutes?|mins?|小时|小時|时|時|hours?|hrs?)\s*$',
+    r'^\s*(' +
+        _numericSource +
+        r')\s*(分钟|分鐘|分|minutes?|mins?|小时|小時|时|時|hours?|hrs?)\s*$',
     caseSensitive: false,
   ).firstMatch(value);
   final amount = _number(match?.group(1));
@@ -248,7 +267,8 @@ Duration? _holdingPeriod(String value) {
           unit == '時'
       ? amount * 60
       : amount;
-  return Duration(minutes: minutes.round());
+  final roundedMinutes = minutes.round();
+  return roundedMinutes > 0 ? Duration(minutes: roundedMinutes) : null;
 }
 
 double? _nonNegativePercent(String value) => _percent(value, minimum: 0);
@@ -258,7 +278,7 @@ double? _positivePercent(String value) =>
 
 double? _percent(String value, {required double minimum}) {
   final match = RegExp(
-    r'^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*%\s*$',
+    r'^\s*(' + _numericSource + r')\s*%\s*$',
   ).firstMatch(value);
   final percentage = _number(match?.group(1));
   return percentage == null || percentage < minimum ? null : percentage / 100;
@@ -266,7 +286,7 @@ double? _percent(String value, {required double minimum}) {
 
 double? _positiveMultiplier(String value) {
   final match = RegExp(
-    r'^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*x\s*$',
+    r'^\s*(' + _numericSource + r')\s*x\s*$',
     caseSensitive: false,
   ).firstMatch(value);
   final multiplier = _number(match?.group(1));
@@ -280,12 +300,23 @@ double? _positiveNumber(String value) {
 
 double? _positiveAmount(String value, String unit) {
   final match = RegExp(
-    r'^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*' + unit + r'\s*$',
+    r'^\s*(' + _numericSource + r')\s*' + unit + r'\s*$',
     caseSensitive: false,
   ).firstMatch(value);
   final amount = _number(match?.group(1));
   return amount == null || amount <= 0 ? null : amount;
 }
 
-double? _number(Object? value) =>
-    double.tryParse(value?.toString().replaceAll(',', '').trim() ?? '');
+// Validate grouping before removing separators so malformed amounts stay unavailable.
+const _numericSource = r'(?:0|[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d*)(?:\.\d+)?';
+final _numericValue = RegExp(
+  '^$_numericSource'
+  r'$',
+);
+
+double? _number(Object? value) {
+  if (value is num) return value.isFinite ? value.toDouble() : null;
+  final text = value?.toString().trim();
+  if (text == null || !_numericValue.hasMatch(text)) return null;
+  return double.tryParse(text.replaceAll(',', ''));
+}
