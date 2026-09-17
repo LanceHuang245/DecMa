@@ -158,6 +158,11 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                     onPressed: _createConnection,
                     child: const Text('新建配置'),
                   ),
+                  const SizedBox(width: 12),
+                  Button(
+                    onPressed: _saving ? null : _deleteConnection,
+                    child: const Text('删除配置'),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -397,6 +402,14 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
               ),
             ),
             const SizedBox(width: 12),
+            // Refresh models with the existing session after signing in.
+            if (_codexConnected) ...[
+              Button(
+                onPressed: _codexLoading ? null : _loadCodexModels,
+                child: const Text('重新获取模型列表'),
+              ),
+              const SizedBox(width: 12),
+            ],
             FilledButton(
               onPressed: _codexLoading ? null : _signInToCodex,
               child: Text(
@@ -519,6 +532,17 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     );
     _connections.add(connection);
     _selectConnection(connection.id);
+  }
+
+  void _deleteConnection() {
+    if (_saving) return;
+    _connections.removeWhere((item) => item.id == _selectedConnectionId);
+    // Reuse the new-connection flow when the last connection is deleted.
+    if (_connections.isEmpty) {
+      _createConnection();
+      return;
+    }
+    _selectConnection(_connections.first.id);
   }
 
   Future<void> _save() async {
