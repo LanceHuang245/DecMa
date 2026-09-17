@@ -72,13 +72,45 @@ class _QuickAnalysisDialogState extends State<QuickAnalysisDialog> {
               header: const Text('可选执行风险参数'),
               content: Column(
                 children: [
-                  _field('预期单边滑点', '例如：0.05%', _expectedSlippage),
-                  _field('安全缓冲', '例如：0.1%', _safetyBuffer),
-                  _field('最低净风险收益比', '例如：1.5', _minimumNetRewardRisk),
-                  _field('最大有效杠杆', '例如：3x', _maximumEffectiveLeverage),
+                  _field(
+                    '预期单边滑点',
+                    '例如：0.05%',
+                    _expectedSlippage,
+                    help:
+                        '实际成交价可能比预期价格更差，这部分差额叫滑点。'
+                        '这里填写一次买入或卖出的预估比例，例如 0.05%。'
+                        '开仓和平仓各算一次，不包含手续费。',
+                  ),
+                  _field(
+                    '安全缓冲',
+                    '例如：0.1%',
+                    _safetyBuffer,
+                    help:
+                        '在已估算的交易成本之外，再预留一点余量，应对成交偏差等不确定情况。'
+                        '例如填写 0.1%，表示按交易名义价值额外预留 0.1% 的成本空间。',
+                  ),
+                  _field(
+                    '最低净风险收益比',
+                    '例如：1.5',
+                    _minimumNetRewardRisk,
+                    help:
+                        '扣除手续费、滑点等成本后，预期收益与可能亏损的比值下限。'
+                        '例如 1.5，表示每承担 1 USDT 的风险，希望至少有 1.5 USDT 的潜在净收益。'
+                        '这不代表胜率或保证收益。',
+                  ),
+                  _field(
+                    '最大有效杠杆',
+                    '例如：3x',
+                    _maximumEffectiveLeverage,
+                    help:
+                        '计划仓位的名义价值除以账户资金，表示这笔仓位相对账户有多大。'
+                        '例如账户有 1,000 USDT，填写 3x，表示希望仓位名义价值不超过 3,000 USDT。'
+                        '它不等同于交易所设置的杠杆倍数。',
+                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 12),
             _positionField(),
             if (_currentPosition != '无') ...[
               _field('当前持仓数量', '例如：0.1', _currentPositionSize),
@@ -97,13 +129,42 @@ class _QuickAnalysisDialogState extends State<QuickAnalysisDialog> {
   Widget _field(
     String label,
     String placeholder,
-    TextEditingController controller,
-  ) => Padding(
+    TextEditingController controller, {
+    String? help,
+  }) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            if (help != null) ...[
+              const SizedBox(width: 2),
+              Tooltip(
+                message: '了解$label',
+                child: IconButton(
+                  icon: const Icon(FluentIcons.unknown),
+                  // Keep explanations available by click on both desktop and touch.
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (context) => ContentDialog(
+                      title: Text(label),
+                      content: Text(help),
+                      actions: [
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('知道了'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 4),
         TextBox(controller: controller, placeholder: placeholder),
       ],
