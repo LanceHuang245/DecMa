@@ -17,6 +17,7 @@ import '../../services/secure_key_store.dart';
 import '../../services/news/event_selector.dart';
 import '../../services/news/news_service.dart';
 import '../../utils/network.dart';
+import '../chart/candle_series.dart';
 
 enum DashboardMessageKind { user, agent, activity }
 
@@ -114,12 +115,13 @@ class DashboardController extends ChangeNotifier {
   Timer? _newsRefreshTimer;
   CancelToken? _symbolListCancelToken;
   CancelToken? _chartCancelToken;
+  CancelToken? _historyCancelToken;
   CancelToken? _macroNewsCancelToken;
   CancelToken? _tokenNewsCancelToken;
   var _newsRefreshesInFlight = 0;
   var _activeSymbol = 'BTCUSDT';
   var _interval = '15';
-  var _candles = <Candle>[];
+  final _candleSeries = CandleSeries();
   var _symbols = <String>[];
   var _newsEvents = <NewsEvent>[];
   TradePlan? _plan;
@@ -129,6 +131,7 @@ class DashboardController extends ChangeNotifier {
   DateTime? _lastAnalysisAt;
   String? _conversationContext;
   String? _chartError;
+  String? _historyError;
   var _chartVersion = 0;
   var _chartLoadGeneration = 0;
   int? _loadingChartGeneration;
@@ -163,7 +166,8 @@ class DashboardController extends ChangeNotifier {
       _conversationScrollController;
   String get activeSymbol => _activeSymbol;
   String get interval => _interval;
-  List<Candle> get candles => _candles;
+  List<Candle> get candles => _candleSeries.items;
+  int get totalPrependedCandles => _candleSeries.totalPrepended;
   List<String> get symbols => _symbols;
   List<NewsEvent> get newsEvents => _newsEvents;
   Map<String, NewsProviderStatus> get newsProviderStatuses =>
@@ -173,12 +177,13 @@ class DashboardController extends ChangeNotifier {
   bool get showWaitZone => _showWaitZone;
   List<DashboardMessage> get conversation => _conversation;
   String? get chartError => _chartError;
+  String? get historyError => _historyError;
   int get chartVersion => _chartVersion;
   bool get loadingChart => _loadingChartGeneration == _chartLoadGeneration;
   bool get showChartLoading => _showChartLoading;
   bool get loadingAgent => _loadingAgent;
   bool get loadingMore => _loadingOlder;
-  bool get hasMoreHistory => _candles.isNotEmpty && _hasMoreHistory;
+  bool get hasMoreHistory => _candleSeries.isNotEmpty && _hasMoreHistory;
   AgentMode get agentMode => _agentMode;
   bool get showScrollToBottom => _showScrollToBottom;
   ApiKeyStatus get apiKeyStatus => _apiKeyStatus;
@@ -308,12 +313,13 @@ class DashboardController extends ChangeNotifier {
     if (_loadingChartGeneration == generation) return;
     final symbol = _activeSymbol;
     final interval = _interval;
-    final hasCandles = _candles.isNotEmpty;
-    final fullLoad = !latestOnly || !hasCandles;
+    final fullLoad = !latestOnly || _candleSeries.isEmpty;
     final cancelToken = _chartCancelToken = CancelToken();
     _loadingChartGeneration = generation;
-    if (fullLoad) _showChartLoading = true;
-    _notify();
+    if (fullLoad) {
+      _showChartLoading = true;
+      _notify();
+    }
     try {
       final limit = _limitForInterval(interval);
       final candles = await _bybit.fetchKlines(
@@ -329,13 +335,15 @@ class DashboardController extends ChangeNotifier {
           interval != _interval) {
         return;
       }
-      _candles = fullLoad ? candles : _mergeLatestCandles(_candles, candles);
+      final changed = fullLoad
+          ? _candleSeries.replaceAll(candles)
+          : _candleSeries.applyLatest(candles);
       _chartError = null;
       if (fullLoad) {
         _showChartLoading = false;
         _chartVersion++;
       }
-      _notify();
+      if (changed || fullLoad) _notify();
     } catch (error) {
       if (isRequestCancelled(error)) return;
       if (_isDisposed ||
@@ -354,25 +362,11 @@ class DashboardController extends ChangeNotifier {
       }
       if (!_isDisposed && _loadingChartGeneration == generation) {
         _loadingChartGeneration = null;
-        _notify();
+        if (fullLoad) _notify();
       }
     }
   }
 
-  // Preserve the per-interval viewport while replacing the still-forming candle.
-  // Keeps the grown window after loadMoreHistory (unlimited) instead of snapping back to initial.
-  List<Candle> _mergeLatestCandles(List<Candle> history, List<Candle> latest) {
-    final byTime = <int, Candle>{
-      for (final candle in history) candle.time.millisecondsSinceEpoch: candle,
-      for (final candle in latest) candle.time.millisecondsSinceEpoch: candle,
-    };
-    final merged = byTime.values.toList()
-      ..sort((left, right) => left.time.compareTo(right.time));
-    final base = _limitForInterval(_interval);
-    final current = history.length > base ? history.length : base;
-    final limit = current;
-    return merged.length > limit ? merged.sublist(merged.length - limit) : merged;
-  }
 
   void retryChart() {
     if (loadingChart) return;
@@ -388,27 +382,33 @@ class DashboardController extends ChangeNotifier {
   Future<void> loadMoreHistory() async {
     if (_isDisposed ||
         _loadingOlder ||
-        _candles.isEmpty ||
+        _candleSeries.isEmpty ||
         loadingChart ||
         !_hasMoreHistory) {
       return;
     }
+    final generation = _chartLoadGeneration;
+    final interval = _interval;
+    final symbol = _activeSymbol;
+    final oldestMs = _candleSeries.first.time.millisecondsSinceEpoch;
+    final end = oldestMs - BybitService.intervalMs(interval);
+    const fetchLimit = 1000;
+    final cancelToken = _historyCancelToken = CancelToken();
     _loadingOlder = true;
+    _historyError = null;
     _notify();
     try {
-      final interval = _interval;
-      final symbol = _activeSymbol;
-      final oldestMs = _candles.first.time.millisecondsSinceEpoch;
-      final intervalMs = BybitService.intervalMs(interval);
-      final end = oldestMs - intervalMs;
-      const fetchLimit = 1000;
       final older = await _bybit.fetchKlines(
         symbol: symbol,
         interval: interval,
         limit: fetchLimit,
         end: end,
+        cancelToken: cancelToken,
       );
-      if (_isDisposed || symbol != _activeSymbol || interval != _interval) {
+      if (_isDisposed ||
+          generation != _chartLoadGeneration ||
+          symbol != _activeSymbol ||
+          interval != _interval) {
         return;
       }
       if (older.isEmpty) {
@@ -418,19 +418,17 @@ class DashboardController extends ChangeNotifier {
       if (older.length < fetchLimit) {
         _hasMoreHistory = false;
       }
-      final byTime = <int, Candle>{
-        for (final c in older) c.time.millisecondsSinceEpoch: c,
-        for (final c in _candles) c.time.millisecondsSinceEpoch: c,
-      };
-      final merged = byTime.values.toList()
-        ..sort((left, right) => left.time.compareTo(right.time));
-      _candles = merged;
-      _chartError = null;
-      _notify();
-    } catch (_) {
-      // Keep existing candles on failure.
-    } finally {
-      if (!_isDisposed) {
+      if (_candleSeries.prepend(older)) _notify();
+    } catch (error) {
+      if (isRequestCancelled(error)) return;
+      if (!_isDisposed && generation == _chartLoadGeneration) {
+        _historyError = '更早历史加载失败：$error';
+        _notify();
+      }
+      if (identical(_historyCancelToken, cancelToken)) {
+        _historyCancelToken = null;
+      }
+      if (!_isDisposed && generation == _chartLoadGeneration) {
         _loadingOlder = false;
         _notify();
       }
@@ -460,15 +458,18 @@ class DashboardController extends ChangeNotifier {
   // Invalidate in-flight requests and remove candles from the previous view.
   void _beginChartTransition() {
     _cancelRequest(_chartCancelToken);
+    _cancelRequest(_historyCancelToken);
+    _historyCancelToken = null;
     _chartCancelToken = null;
     _chartLoadGeneration++;
     _loadingOlder = false;
     _hasMoreHistory = true;
-    _candles = const [];
+    _candleSeries.clear();
     _plan = null;
     _chartPlan = null;
     _showWaitZone = false;
     _chartError = null;
+    _historyError = null;
     _showChartLoading = true;
   }
 
@@ -478,7 +479,9 @@ class DashboardController extends ChangeNotifier {
   }
 
   Future<List<Candle>> _prepareAnalysisChart(String symbol) async {
-    if (symbol == _activeSymbol && _candles.isNotEmpty) return _candles;
+    if (symbol == _activeSymbol && _candleSeries.isNotEmpty) {
+      return _candleSeries.items;
+    }
     _chartRefreshTimer?.cancel();
     _recordActivity('• Chart - 加载 $symbol');
     _activeSymbol = symbol;
@@ -499,7 +502,7 @@ class DashboardController extends ChangeNotifier {
           _activeSymbol != symbol) {
         return candles;
       }
-      _candles = candles;
+      _candleSeries.replaceAll(candles);
       _showChartLoading = false;
       _chartVersion++;
       _notify();
@@ -931,6 +934,7 @@ $aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限�
     _newsRefreshTimer?.cancel();
     _cancelRequest(_symbolListCancelToken);
     _cancelRequest(_chartCancelToken);
+    _cancelRequest(_historyCancelToken);
     _cancelRequest(_macroNewsCancelToken);
     _cancelRequest(_tokenNewsCancelToken);
     _bybit.dispose();

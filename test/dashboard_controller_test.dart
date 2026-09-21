@@ -190,9 +190,9 @@ void main() {
     final painter = tester
         .widgetList<CustomPaint>(find.byType(CustomPaint))
         .map((paint) => paint.painter)
-        .whereType<CandlePainter>()
+        .whereType<PlanCandlePainter>()
         .single;
-    expect(painter.plan, same(plan));
+    expect(painter.plan(), same(plan));
     expect(find.text('开仓区：-'), findsNothing);
     expect(find.text('止损：-'), findsOneWidget);
     expect(find.text('止盈：-'), findsOneWidget);

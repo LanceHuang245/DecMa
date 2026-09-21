@@ -11,10 +11,12 @@ class DashboardChartPanel extends StatelessWidget {
     required this.interval,
     required this.activeSymbol,
     required this.candles,
+    required this.totalPrepended,
     required this.plan,
     required this.showWaitZone,
     required this.chartVersion,
     required this.error,
+    required this.historyError,
     required this.loading,
     required this.loadingChart,
     required this.onSymbolSelected,
@@ -29,10 +31,12 @@ class DashboardChartPanel extends StatelessWidget {
   final String interval;
   final String activeSymbol;
   final List<Candle> candles;
+  final int totalPrepended;
   final TradePlan? plan;
   final bool showWaitZone;
   final int chartVersion;
   final String? error;
+  final String? historyError;
   final bool loading;
   final bool loadingChart;
   final ValueChanged<String> onSymbolSelected;
@@ -100,9 +104,11 @@ class DashboardChartPanel extends StatelessWidget {
               // Reset zoom only after a complete history load succeeds.
               key: ValueKey(chartVersion),
               candles: candles,
+              totalPrepended: totalPrepended,
               plan: plan,
               showWaitZone: showWaitZone,
               error: error,
+              historyError: historyError,
               loading: loading,
               onRetry: loadingChart ? null : onRetry,
               onLoadMore: onLoadMore,
