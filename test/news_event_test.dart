@@ -89,6 +89,32 @@ void main() {
     );
     expect(merged.sources, hasLength(2));
   });
+  test('concurrent news commits retain both provider results', () async {
+    final store = EventStore.memory();
+    final macro = event(
+      id: 'macro',
+      provider: 'BLS',
+      publishedAt: DateTime.now().toUtc(),
+    );
+    final token = event(
+      id: 'token',
+      provider: 'Marketaux',
+      headline: 'Token listing',
+      publishedAt: DateTime.now().toUtc(),
+      scope: NewsScope.assetSpecific,
+      directAssets: const ['BTC'],
+    );
+
+    await Future.wait([
+      store.upsert([macro]),
+      store.upsert([token]),
+    ]);
+
+    expect((await store.read()).map((item) => item.eventId).toSet(), {
+      'macro',
+      'token',
+    });
+  });
 
   test('EventSelector limits output to relevant current events', () {
     final selector = EventSelector();

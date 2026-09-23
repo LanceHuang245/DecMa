@@ -45,6 +45,7 @@ class NewsService {
   final Map<String, DateTime> _lastAttempt = {};
   final Map<String, DateTime> _retryAfter = {};
   final Map<String, NewsProviderStatus> _statuses = {};
+  final Map<String, ({Future<void> future, CancelToken? token})> _inFlight = {};
 
   Map<String, NewsProviderStatus> get statuses => Map.unmodifiable(_statuses);
 
@@ -55,65 +56,69 @@ class NewsService {
     required String? finnhubApiKey,
     void Function(bool refreshing)? onRefreshChanged,
     CancelToken? cancelToken,
+    void Function(List<NewsEvent>)? onEvents,
   }) async {
     await _assetResolver.all();
     final now = DateTime.now().toUtc();
-    final events = <NewsEvent>[];
-    await _refreshProvider(
-      id: 'Finnhub',
-      enabled: settings.useFinnhub,
-      interval: _finnhubInterval,
-      now: now,
-      task: () => _finnhub(finnhubApiKey, now, cancelToken),
-      output: events,
-      onRefreshChanged: onRefreshChanged,
-    );
-    await _refreshProvider(
-      id: 'BLS',
-      enabled: settings.useBls,
-      interval: _officialInterval,
-      now: now,
-      task: () => _rss(
-        provider: 'BLS',
-        originalSource: 'U.S. Bureau of Labor Statistics',
-        url: 'https://www.bls.gov/feed/bls_latest.rss',
-        category: NewsCategory.macro,
-        scope: NewsScope.macroGlobal,
+    await Future.wait<void>([
+      _refreshProvider(
+        id: 'Finnhub',
+        enabled: settings.useFinnhub,
+        interval: _finnhubInterval,
         now: now,
+        task: () => _finnhub(finnhubApiKey, now, cancelToken),
+        onEvents: onEvents,
+        onRefreshChanged: onRefreshChanged,
         cancelToken: cancelToken,
       ),
-      output: events,
-      onRefreshChanged: onRefreshChanged,
-    );
-    await _refreshProvider(
-      id: 'BEA',
-      enabled: settings.useBea,
-      interval: _officialInterval,
-      now: now,
-      task: () => _rss(
-        provider: 'BEA',
-        originalSource: 'U.S. Bureau of Economic Analysis',
-        url: 'https://apps.bea.gov/rss/rss.xml',
-        category: NewsCategory.macro,
-        scope: NewsScope.macroGlobal,
+      _refreshProvider(
+        id: 'BLS',
+        enabled: settings.useBls,
+        interval: _officialInterval,
         now: now,
+        task: () => _rss(
+          provider: 'BLS',
+          originalSource: 'U.S. Bureau of Labor Statistics',
+          url: 'https://www.bls.gov/feed/bls_latest.rss',
+          category: NewsCategory.macro,
+          scope: NewsScope.macroGlobal,
+          now: now,
+          cancelToken: cancelToken,
+        ),
+        onEvents: onEvents,
+        onRefreshChanged: onRefreshChanged,
         cancelToken: cancelToken,
       ),
-      output: events,
-      onRefreshChanged: onRefreshChanged,
-    );
-    await _refreshProvider(
-      id: 'Federal Reserve',
-      enabled: settings.useFederalReserve,
-      interval: _officialInterval,
-      now: now,
-      task: () => _federalReserve(now, cancelToken),
-      output: events,
-      onRefreshChanged: onRefreshChanged,
-    );
-    return events.isEmpty
-        ? _storedOrEmpty()
-        : _store.upsert(events.map(_normalize).toList());
+      _refreshProvider(
+        id: 'BEA',
+        enabled: settings.useBea,
+        interval: _officialInterval,
+        now: now,
+        task: () => _rss(
+          provider: 'BEA',
+          originalSource: 'U.S. Bureau of Economic Analysis',
+          url: 'https://apps.bea.gov/rss/rss.xml',
+          category: NewsCategory.macro,
+          scope: NewsScope.macroGlobal,
+          now: now,
+          cancelToken: cancelToken,
+        ),
+        onEvents: onEvents,
+        onRefreshChanged: onRefreshChanged,
+        cancelToken: cancelToken,
+      ),
+      _refreshProvider(
+        id: 'Federal Reserve',
+        enabled: settings.useFederalReserve,
+        interval: _officialInterval,
+        now: now,
+        task: () => _federalReserve(now, cancelToken),
+        onEvents: onEvents,
+        onRefreshChanged: onRefreshChanged,
+        cancelToken: cancelToken,
+      ),
+    ]);
+    return _storedOrEmpty();
   }
 
   // Token news is refreshed only for the active asset, never for every contract.
@@ -123,10 +128,10 @@ class NewsService {
     required String? marketauxApiKey,
     void Function(bool refreshing)? onRefreshChanged,
     CancelToken? cancelToken,
+    void Function(List<NewsEvent>)? onEvents,
   }) async {
     final now = DateTime.now().toUtc();
     final profile = await _assetResolver.resolve(symbol);
-    final events = <NewsEvent>[];
     await _refreshProvider(
       id: 'Marketaux',
       cacheKey: 'Marketaux:${profile.symbol}',
@@ -153,12 +158,11 @@ class NewsService {
           cancelToken: cancelToken,
         );
       },
-      output: events,
+      onEvents: onEvents,
       onRefreshChanged: onRefreshChanged,
+      cancelToken: cancelToken,
     );
-    return events.isEmpty
-        ? _storedOrEmpty()
-        : _store.upsert(events.map(_normalize).toList());
+    return _storedOrEmpty();
   }
 
   Future<List<String>> tokenNewsSearchQueries(String symbol) async =>
@@ -179,7 +183,8 @@ class NewsService {
     required Duration interval,
     required DateTime now,
     required Future<List<NewsEvent>> Function() task,
-    required List<NewsEvent> output,
+    CancelToken? cancelToken,
+    void Function(List<NewsEvent>)? onEvents,
     void Function(bool refreshing)? onRefreshChanged,
   }) async {
     final key = cacheKey ?? id;
@@ -190,6 +195,41 @@ class NewsService {
       );
       return;
     }
+    // Joining an already running request avoids treating it as a fresh cache hit
+    // or cancelling the request owned by another refresh batch.
+    final running = _inFlight[key];
+    if (running != null && !(running.token?.isCancelled ?? false)) {
+      await running.future;
+      return;
+    }
+    final request = _runProvider(
+      id: id,
+      key: key,
+      interval: interval,
+      now: now,
+      task: task,
+      cancelToken: cancelToken,
+      onEvents: onEvents,
+      onRefreshChanged: onRefreshChanged,
+    );
+    _inFlight[key] = (future: request, token: cancelToken);
+    try {
+      await request;
+    } finally {
+      if (identical(_inFlight[key]?.future, request)) _inFlight.remove(key);
+    }
+  }
+
+  Future<void> _runProvider({
+    required String id,
+    required String key,
+    required Duration interval,
+    required DateTime now,
+    required Future<List<NewsEvent>> Function() task,
+    CancelToken? cancelToken,
+    void Function(List<NewsEvent>)? onEvents,
+    void Function(bool refreshing)? onRefreshChanged,
+  }) async {
     if (_retryAfter[key]?.isAfter(now) ?? false) return;
     final lastAttempt = _lastAttempt[key] ?? await _store.readRefreshTime(key);
     if (lastAttempt?.add(interval).isAfter(now) ?? false) {
@@ -201,17 +241,23 @@ class NewsService {
       );
       return;
     }
-    _lastAttempt[key] = now;
-    await _store.writeRefreshTime(key, now);
-    // Only actual provider requests drive the UI refresh indicator.
+    if (cancelToken?.isCancelled ?? false) return;
     onRefreshChanged?.call(true);
     try {
-      output.addAll(await task());
+      final events = await task();
+      if (cancelToken?.isCancelled ?? false) return;
+      final snapshot = events.isEmpty
+          ? null
+          : await _store.upsert(events.map(_normalize).toList());
+      if (cancelToken?.isCancelled ?? false) return;
+      _lastAttempt[key] = now;
+      await _store.writeRefreshTime(key, now);
       _statuses[id] = NewsProviderStatus(
         id: id,
         state: NewsProviderState.active,
         updatedAt: now,
       );
+      if (snapshot != null) onEvents?.call(snapshot);
     } catch (error) {
       if (isRequestCancelled(error)) rethrow;
       if (error is AppFailure && error.kind == AppFailureKind.rateLimited) {

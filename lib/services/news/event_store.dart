@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:isolate';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/news_event.dart';
@@ -14,6 +17,7 @@ class EventStore {
   static const _retention = Duration(days: 14);
   final SharedPreferencesAsync? _preferences;
   List<NewsEvent> _memory = const [];
+  Future<void> _pendingUpsert = Future.value();
   final Map<String, DateTime> _memoryRefreshTimes = {};
 
   Future<List<NewsEvent>> read() async {
@@ -22,25 +26,47 @@ class EventStore {
     return value == null ? const [] : NewsEvent.decodeAll(value);
   }
 
-  Future<List<NewsEvent>> upsert(List<NewsEvent> incoming) async {
-    final events = mergeEvents(await read(), incoming);
-    final now = DateTime.now().toUtc();
+  Future<List<NewsEvent>> upsert(List<NewsEvent> incoming) {
+    final result = Completer<List<NewsEvent>>();
+    _pendingUpsert = _pendingUpsert.then((_) async {
+      try {
+        final existing = await read();
+        final merged = await _computeUpsert(existing, incoming);
+        if (_preferences == null) {
+          _memory = merged.events;
+        } else {
+          await _preferences.setString(_eventsKey, merged.encoded);
+        }
+        result.complete(merged.events);
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    });
+    return result.future;
+  }
+
+  static Future<({List<NewsEvent> events, String encoded})> _computeUpsert(
+    List<NewsEvent> existing,
+    List<NewsEvent> incoming,
+  ) => Isolate.run(() => _prepareUpsert(existing, incoming));
+
+  static ({List<NewsEvent> events, String encoded}) _prepareUpsert(
+    List<NewsEvent> existing,
+    List<NewsEvent> incoming,
+  ) {
+    final events = mergeEvents(existing, incoming);
+    final cutoff = DateTime.now().toUtc().subtract(_retention);
     events.removeWhere(
       (event) =>
-          event.publishedAt.toUtc().isBefore(now.subtract(_retention)) &&
+          event.publishedAt.toUtc().isBefore(cutoff) &&
           (event.scheduledAt == null ||
-              event.scheduledAt!.toUtc().isBefore(now.subtract(_retention))),
+              event.scheduledAt!.toUtc().isBefore(cutoff)),
     );
     events.sort((left, right) => right.publishedAt.compareTo(left.publishedAt));
     if (events.length > _maxEvents) {
       events.removeRange(_maxEvents, events.length);
     }
-    if (_preferences == null) {
-      _memory = events;
-    } else {
-      await _preferences.setString(_eventsKey, NewsEvent.encodeAll(events));
-    }
-    return events;
+    return (events: events, encoded: NewsEvent.encodeAll(events));
   }
 
   Future<DateTime?> readRefreshTime(String providerKey) async {
@@ -86,8 +112,8 @@ class EventStore {
         left.rawSourceId == right.rawSourceId) {
       return true;
     }
-    if (_canonicalUrl(left.url) == _canonicalUrl(right.url) &&
-        _canonicalUrl(left.url) != null) {
+    final leftUrl = _canonicalUrl(left.url);
+    if (leftUrl != null && leftUrl == _canonicalUrl(right.url)) {
       return true;
     }
     final sameTitle = _title(left.headline) == _title(right.headline);

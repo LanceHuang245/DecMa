@@ -119,6 +119,8 @@ class DashboardController extends ChangeNotifier {
   CancelToken? _macroNewsCancelToken;
   CancelToken? _tokenNewsCancelToken;
   var _newsRefreshesInFlight = 0;
+  final _newsNotifier = ChangeNotifier();
+  int _newsRevision = 0;
   var _activeSymbol = 'BTCUSDT';
   var _interval = '15';
   final _candleSeries = CandleSeries();
@@ -170,6 +172,7 @@ class DashboardController extends ChangeNotifier {
   int get totalPrependedCandles => _candleSeries.totalPrepended;
   List<String> get symbols => _symbols;
   List<NewsEvent> get newsEvents => _newsEvents;
+  Listenable get newsListenable => _newsNotifier;
   Map<String, NewsProviderStatus> get newsProviderStatuses =>
       _newsService.statuses;
   TradePlan? get plan => _plan;
@@ -222,36 +225,59 @@ class DashboardController extends ChangeNotifier {
     );
   }
 
-  // Check all sources every minute; each provider keeps its own cache interval.
+  // Check all sources every minute; let an existing request finish rather than
+  // joining provider work through a newly cancelled token.
   void _refreshAllNews() {
-    unawaited(_refreshNews());
-    unawaited(_refreshTokenNews(_activeSymbol));
+    if (_macroNewsCancelToken == null) unawaited(_refreshNews());
+    if (_tokenNewsCancelToken == null) {
+      unawaited(_refreshTokenNews(_activeSymbol));
+    }
   }
 
   Future<void> _loadCachedNews() async {
+    final revision = _newsRevision;
     final events = await _newsService.readCached();
+    if (_isDisposed || revision != _newsRevision) return;
+    _publishNews(events);
+  }
+
+  void _publishNews(List<NewsEvent> events) {
     if (_isDisposed) return;
     _newsEvents = events;
-    _notify();
+    _newsRevision++;
+    _newsNotifier.notifyListeners();
   }
 
   Future<void> _refreshNews() async {
     if (_isDisposed) return;
     _cancelRequest(_macroNewsCancelToken);
     final cancelToken = _macroNewsCancelToken = CancelToken();
+    final revision = _newsRevision;
+    var receivedEvents = false;
+    bool current() =>
+        !_isDisposed &&
+        identical(_macroNewsCancelToken, cancelToken) &&
+        !cancelToken.isCancelled;
     try {
       final events = await _newsService.refresh(
         settings: _news,
         finnhubApiKey: await _keyStore.readFinnhubKey(),
         onRefreshChanged: _handleNewsRefreshState,
+        onEvents: (events) {
+          if (!current()) return;
+          receivedEvents = true;
+          _publishNews(events);
+        },
         cancelToken: cancelToken,
       );
-      if (_isDisposed) return;
-      _newsEvents = events;
-      _notify();
+      if (current() && !receivedEvents && revision == _newsRevision) {
+        _publishNews(events);
+      }
+      if (current()) _newsNotifier.notifyListeners();
     } catch (error) {
       if (isRequestCancelled(error)) return;
       // Per-provider failures are represented by NewsService status entries.
+      if (current()) _newsNotifier.notifyListeners();
     } finally {
       if (identical(_macroNewsCancelToken, cancelToken)) {
         _macroNewsCancelToken = null;
@@ -263,20 +289,34 @@ class DashboardController extends ChangeNotifier {
     if (_isDisposed) return;
     _cancelRequest(_tokenNewsCancelToken);
     final cancelToken = _tokenNewsCancelToken = CancelToken();
+    final revision = _newsRevision;
+    var receivedEvents = false;
+    bool current() =>
+        !_isDisposed &&
+        identical(_tokenNewsCancelToken, cancelToken) &&
+        !cancelToken.isCancelled &&
+        symbol == _activeSymbol;
     try {
       final events = await _newsService.refreshTokenNews(
         symbol: symbol,
         settings: _news,
         marketauxApiKey: await _keyStore.readMarketauxKey(),
         onRefreshChanged: _handleNewsRefreshState,
+        onEvents: (events) {
+          if (!current()) return;
+          receivedEvents = true;
+          _publishNews(events);
+        },
         cancelToken: cancelToken,
       );
-      if (_isDisposed) return;
-      _newsEvents = events;
-      _notify();
+      if (current() && !receivedEvents && revision == _newsRevision) {
+        _publishNews(events);
+      }
+      if (current()) _newsNotifier.notifyListeners();
     } catch (error) {
       if (isRequestCancelled(error)) return;
       // Marketaux failures stay isolated from chart and Agent work.
+      if (current()) _newsNotifier.notifyListeners();
     } finally {
       if (identical(_tokenNewsCancelToken, cancelToken)) {
         _tokenNewsCancelToken = null;
@@ -287,7 +327,7 @@ class DashboardController extends ChangeNotifier {
   void _handleNewsRefreshState(bool refreshing) {
     if (_isDisposed) return;
     _newsRefreshesInFlight += refreshing ? 1 : -1;
-    _notify();
+    _newsNotifier.notifyListeners();
   }
 
   Future<void> _loadSymbols() async {
@@ -367,7 +407,6 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
-
   void retryChart() {
     if (loadingChart) return;
     _chartError = null;
@@ -442,6 +481,7 @@ class DashboardController extends ChangeNotifier {
     _symbol.text = _activeSymbol;
     _beginChartTransition();
     _notify();
+    _newsNotifier.notifyListeners();
     _startChartRefresh();
     unawaited(_llmSettingsStore.saveLastViewedSymbol(_activeSymbol));
     unawaited(_refreshTokenNews(_activeSymbol));
@@ -945,6 +985,7 @@ $aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限�
     _conversationScrollController
       ..removeListener(_handleConversationScroll)
       ..dispose();
+    _newsNotifier.dispose();
     super.dispose();
   }
 }

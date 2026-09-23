@@ -109,7 +109,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     ref.watch(dashboardControllerProvider);
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, child) {
+      child: AnimatedBuilder(
+        animation: _controller.newsListenable,
+        builder: (context, _) => NewsPanel(
+          events: _controller.newsEvents,
+          currentSymbol: _controller.activeSymbol,
+          providerStatuses: _controller.newsProviderStatuses,
+          isRefreshing: _controller.refreshingNews,
+          onOpenSettings: _openNewsSettings,
+        ),
+      ),
+      builder: (context, newsPanel) {
         final latest = _controller.candles.isEmpty
             ? null
             : _controller.candles.last;
@@ -151,17 +161,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                           children: [
                             Expanded(flex: 4, child: _chartPanel()),
                             const SizedBox(width: 12),
-                            Expanded(
-                              flex: 2,
-                              child: NewsPanel(
-                                events: _controller.newsEvents,
-                                currentSymbol: _controller.activeSymbol,
-                                providerStatuses:
-                                    _controller.newsProviderStatuses,
-                                isRefreshing: _controller.refreshingNews,
-                                onOpenSettings: _openNewsSettings,
-                              ),
-                            ),
+                            Expanded(flex: 2, child: newsPanel!),
                             const SizedBox(width: 12),
                             Expanded(flex: 3, child: _agentPanel()),
                           ],
