@@ -81,7 +81,7 @@ class OpenAiCodexAuthService {
       }
       final credentials = await _exchangeCode(code, verifier);
       await _keyStore.saveCodexOAuth(credentials);
-      return _fetchModels(credentials);
+      return await _fetchModels(credentials);
     } finally {
       await server.close(force: true);
     }
