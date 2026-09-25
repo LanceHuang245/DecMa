@@ -10,7 +10,6 @@ import '../../utils/network.dart';
 import 'asset_resolver.dart';
 import 'event_store.dart';
 import 'marketaux_news_provider.dart';
-import 'token_news_query_builder.dart';
 
 class NewsProviderStatus {
   const NewsProviderStatus({
@@ -165,8 +164,18 @@ class NewsService {
     return _storedOrEmpty();
   }
 
-  Future<List<String>> tokenNewsSearchQueries(String symbol) async =>
-      buildTokenNewsQueries(await _assetResolver.resolve(symbol));
+  // Build discovery queries from the resolved asset profile.
+  Future<List<String>> tokenNewsSearchQueries(String symbol) async {
+    final profile = await _assetResolver.resolve(symbol);
+    final name = profile.projectName ?? profile.baseAsset;
+    return [
+      '"$name" latest news',
+      '"${profile.baseAsset}" crypto news',
+      '"$name" governance security regulation',
+      if (profile.officialDomains.isNotEmpty)
+        'site:${profile.officialDomains.first} $name',
+    ];
+  }
 
   Future<List<NewsEvent>> _storedOrEmpty() async {
     try {

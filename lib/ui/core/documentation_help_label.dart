@@ -1,6 +1,5 @@
 import 'package:fluent_ui/fluent_ui.dart';
-
-import '../../utils/external_link.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Keeps settings labels and their documentation links visually consistent.
 class DocumentationHelpLabel extends StatelessWidget {
@@ -25,7 +24,10 @@ class DocumentationHelpLabel extends StatelessWidget {
         message: tooltip,
         child: IconButton(
           icon: const Icon(FluentIcons.unknown),
-          onPressed: () => openExternalLink(Uri.parse(documentationUrl)),
+          onPressed: () => launchUrl(
+            Uri.parse(documentationUrl),
+            mode: LaunchMode.externalApplication,
+          ),
         ),
       ),
     ],

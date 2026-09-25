@@ -1,8 +1,8 @@
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/news_event.dart';
 import '../../services/news/news_service.dart';
 import '../../utils/display_formatters.dart';
-import '../../utils/external_link.dart';
 import '../../utils/symbol_utils.dart';
 
 enum _NewsView { all, currentAsset, macro, crypto, regulation, exchange }
@@ -266,7 +266,9 @@ class _NewsItem extends StatelessWidget {
       ],
     );
     return Button(
-      onPressed: uri == null ? null : () => openExternalLink(uri),
+      onPressed: uri == null
+          ? null
+          : () => launchUrl(uri, mode: LaunchMode.externalApplication),
       style: const ButtonStyle(
         padding: WidgetStatePropertyAll(EdgeInsets.all(8)),
       ),

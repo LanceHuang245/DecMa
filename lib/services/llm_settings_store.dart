@@ -140,11 +140,13 @@ class LlmSettingsStore {
     );
   }
 
-  Future<void> saveNews(NewsSettings settings) => Future.wait([
-    _preferences.setBool(_finnhubNewsKey, settings.useFinnhub),
-    _preferences.setBool(_marketauxNewsKey, settings.useMarketaux),
-    _preferences.setBool(_blsNewsKey, settings.useBls),
-    _preferences.setBool(_beaNewsKey, settings.useBea),
-    _preferences.setBool(_federalReserveNewsKey, settings.useFederalReserve),
-  ]).then((_) {});
+  Future<void> saveNews(NewsSettings settings) async {
+    await Future.wait([
+      _preferences.setBool(_finnhubNewsKey, settings.useFinnhub),
+      _preferences.setBool(_marketauxNewsKey, settings.useMarketaux),
+      _preferences.setBool(_blsNewsKey, settings.useBls),
+      _preferences.setBool(_beaNewsKey, settings.useBea),
+      _preferences.setBool(_federalReserveNewsKey, settings.useFederalReserve),
+    ]);
+  }
 }

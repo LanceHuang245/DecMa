@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../app_constants.dart';
 import '../models/trading_models.dart';
 import 'bybit_mcp.dart';
+import 'mcp_connection.dart';
 import 'mcp_types.dart';
-import 'nansen_mcp.dart';
 import 'open_websearch_mcp.dart';
 
 class McpHub {
@@ -65,7 +65,11 @@ class McpHub {
       if (settings.useNansen &&
           _nansenApiKey != null &&
           _nansenApiKey!.isNotEmpty)
-        NansenMcp(_nansenApiKey!),
+        HttpMcpConnection(
+          name: 'Nansen MCP',
+          endpoint: 'https://mcp.nansen.ai/ra/mcp',
+          headers: {'NANSEN-API-KEY': _nansenApiKey!},
+        ),
       if (settings.useOpenWebSearch) OpenWebSearchMcp(),
     ];
     if (kDebugMode) {
