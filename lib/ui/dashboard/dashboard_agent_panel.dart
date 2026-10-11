@@ -20,6 +20,7 @@ class DashboardAgentPanel extends StatelessWidget {
     required this.onModeChanged,
     required this.onQuickAnalysis,
     required this.onSend,
+    required this.onStop,
     required this.onClear,
     required this.onScrollToBottom,
     required this.onOpenSettings,
@@ -36,6 +37,7 @@ class DashboardAgentPanel extends StatelessWidget {
   final ValueChanged<AgentMode> onModeChanged;
   final VoidCallback onQuickAnalysis;
   final VoidCallback onSend;
+  final VoidCallback onStop;
   final VoidCallback onClear;
   final VoidCallback onScrollToBottom;
   final VoidCallback onOpenSettings;
@@ -185,14 +187,9 @@ class DashboardAgentPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: FilledButton(
-                  onPressed: loading ? null : onSend,
-                  child: loading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: ProgressRing(),
-                        )
-                      : const Text('发送'),
+                  // Keep cancellation available throughout preparation and output.
+                  onPressed: loading ? onStop : onSend,
+                  child: Text(loading ? '停止生成' : '发送'),
                 ),
               ),
               const SizedBox(width: 8),

@@ -17,6 +17,7 @@ class OpenAiCodexAuthService {
     Future<void> Function(Uri uri)? openBrowser,
   }) : _keyStore = keyStore ?? SecureKeyStore(),
        _dio = dio ?? createDio(),
+       _ownsDio = dio == null,
        _openBrowser = openBrowser ?? _openSystemBrowser;
 
   static const _clientId = 'app_EMoamEEZ73f0CkXaXp7hrann';
@@ -25,9 +26,14 @@ class OpenAiCodexAuthService {
   static const _codexBase = 'https://chatgpt.com/backend-api/codex';
   final SecureKeyStore _keyStore;
   final Dio _dio;
+  final bool _ownsDio;
+  CancelToken? _login;
   final Future<void> Function(Uri uri) _openBrowser;
 
-  Future<CodexOAuthCredentials> currentCredentials() async {
+  // Let an Agent stop interrupt a refresh while preserving the sign-in flow.
+  Future<CodexOAuthCredentials> currentCredentials({
+    CancelToken? cancelToken,
+  }) async {
     final saved = await _keyStore.readCodexOAuth();
     if (saved == null) throw Exception('请先登录 ChatGPT。');
     if (saved.expiresAt.isAfter(
@@ -35,10 +41,15 @@ class OpenAiCodexAuthService {
     )) {
       return saved;
     }
-    return _refresh(saved);
+    return _refresh(saved, cancelToken: cancelToken);
   }
 
-  Future<List<String>> signIn() async {
+  // Tie browser callback waiting and token exchange to the dialog's lifetime.
+  Future<List<String>> signIn({CancelToken? cancelToken}) async {
+    final cancel = _login = cancelToken ?? CancelToken();
+    if (cancel.isCancelled) {
+      throw const AppFailure(kind: AppFailureKind.cancelled);
+    }
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 1455);
     final verifier = _randomUrlSafe(64);
     final challenge = base64UrlEncode(
@@ -64,7 +75,10 @@ class OpenAiCodexAuthService {
       );
       // OAuth uses the system browser so credentials are entered only on OpenAI.
       await _openBrowser(authorize);
-      final request = await server.first.timeout(const Duration(minutes: 3));
+      final request = await cancellable(
+        server.first.timeout(const Duration(minutes: 3)),
+        cancel.whenCancel.then<void>((_) {}),
+      );
       final values = request.uri.queryParameters;
       final matchesState = values['state'] == state;
       final code = values['code'];
@@ -79,45 +93,67 @@ class OpenAiCodexAuthService {
       if (!matchesState || code == null) {
         throw Exception(error ?? 'OAuth 回调无效，请重试。');
       }
-      final credentials = await _exchangeCode(code, verifier);
+      final credentials = await _exchangeCode(
+        code,
+        verifier,
+        cancelToken: cancel,
+      );
       await _keyStore.saveCodexOAuth(credentials);
-      return await _fetchModels(credentials);
+      return await _fetchModels(credentials, cancelToken: cancel);
     } finally {
       await server.close(force: true);
+      if (identical(_login, cancel)) _login = null;
     }
   }
 
-  Future<List<String>> fetchModels() async =>
-      _fetchModels(await currentCredentials());
+  Future<List<String>> fetchModels({CancelToken? cancelToken}) async =>
+      _fetchModels(
+        await currentCredentials(cancelToken: cancelToken),
+        cancelToken: cancelToken,
+      );
 
-  Future<CodexOAuthCredentials> _exchangeCode(String code, String verifier) =>
-      _requestTokens({
-        'grant_type': 'authorization_code',
+  Future<CodexOAuthCredentials> _exchangeCode(
+    String code,
+    String verifier, {
+    CancelToken? cancelToken,
+  }) => _requestTokens({
+    'grant_type': 'authorization_code',
+    'client_id': _clientId,
+    'code': code,
+    'redirect_uri': _redirectUri,
+    'code_verifier': verifier,
+  }, cancelToken: cancelToken);
+
+  // Refresh through the same cancellable Dio request used by the Agent run.
+  Future<CodexOAuthCredentials> _refresh(
+    CodexOAuthCredentials saved, {
+    CancelToken? cancelToken,
+  }) async {
+    final refreshed = await _requestTokens(
+      {
+        'grant_type': 'refresh_token',
         'client_id': _clientId,
-        'code': code,
-        'redirect_uri': _redirectUri,
-        'code_verifier': verifier,
-      });
-
-  Future<CodexOAuthCredentials> _refresh(CodexOAuthCredentials saved) async {
-    final refreshed = await _requestTokens({
-      'grant_type': 'refresh_token',
-      'client_id': _clientId,
-      'refresh_token': saved.refreshToken,
-    }, fallbackRefreshToken: saved.refreshToken);
+        'refresh_token': saved.refreshToken,
+      },
+      fallbackRefreshToken: saved.refreshToken,
+      cancelToken: cancelToken,
+    );
     await _keyStore.saveCodexOAuth(refreshed);
     return refreshed;
   }
 
+  // Share token decoding between browser sign-in and cancellable refresh.
   Future<CodexOAuthCredentials> _requestTokens(
     Map<String, String> body, {
     String? fallbackRefreshToken,
+    CancelToken? cancelToken,
   }) async {
     final response = await runNetworkRequest(
       'OpenAI Codex',
       () => _dio.postUri<String>(
         Uri.parse('$_issuer/oauth/token'),
         data: body,
+        cancelToken: cancelToken,
         options: networkOptions(
           headers: {'Content-Type': Headers.formUrlEncodedContentType},
           contentType: Headers.formUrlEncodedContentType,
@@ -148,13 +184,17 @@ class OpenAiCodexAuthService {
     );
   }
 
-  Future<List<String>> _fetchModels(CodexOAuthCredentials credentials) async {
+  Future<List<String>> _fetchModels(
+    CodexOAuthCredentials credentials, {
+    CancelToken? cancelToken,
+  }) async {
     final response = await runNetworkRequest(
       'OpenAI Codex',
       () => _dio.getUri<String>(
         Uri.parse('$_codexBase/models').replace(
           queryParameters: {'client_version': AppConstants.codexClientVersion},
         ),
+        cancelToken: cancelToken,
         options: networkOptions(headers: _headers(credentials)),
       ),
     );
@@ -239,5 +279,11 @@ class OpenAiCodexAuthService {
     await Process.start('xdg-open', [
       uri.toString(),
     ], mode: ProcessStartMode.detached);
+  }
+
+  // Release only owned networking and any callback listener still waiting.
+  void dispose() {
+    _login?.cancel();
+    if (_ownsDio) _dio.close(force: true);
   }
 }

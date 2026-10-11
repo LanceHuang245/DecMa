@@ -8,15 +8,17 @@ import '../models/trading_models.dart';
 import '../utils/network.dart';
 
 class BybitService {
-  BybitService({Dio? dio}) : _dio = dio ?? createDio();
+  BybitService({Dio? dio}) : _dio = dio ?? createDio(), _ownsDio = dio == null;
 
   final Dio _dio;
+  final bool _ownsDio;
 
   // Read the configured account's actual maker and taker rates without trading.
   Future<Map<String, double>> fetchAccountFeeRates({
     required String symbol,
     required String apiKey,
     required String apiSecret,
+    CancelToken? cancelToken,
   }) => _read(() async {
     final normalized = symbol.trim().toUpperCase();
     final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
@@ -36,6 +38,7 @@ class BybitService {
           'category': 'linear',
           'symbol': normalized,
         }),
+        cancelToken: cancelToken,
         options: networkOptions(
           headers: {
             'X-BAPI-API-KEY': apiKey,
@@ -349,5 +352,5 @@ class BybitService {
         isUtc: true,
       );
 
-  void dispose() => _dio.close(force: true);
+  void dispose() { if (_ownsDio) _dio.close(force: true); }
 }

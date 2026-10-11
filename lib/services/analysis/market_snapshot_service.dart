@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../../models/market_snapshot.dart';
 import '../../models/trading_models.dart';
 import '../bybit_service.dart';
@@ -18,17 +20,22 @@ class MarketSnapshotService {
   static const _maximumCoreSkew = Duration(seconds: 15);
   final BybitService _bybit;
 
-  Future<MarketSnapshot> build(String symbol) async {
+  // Share the Agent's data token across the fixed multi-timeframe snapshot.
+  Future<MarketSnapshot> build(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) async {
     final normalized = symbol.trim().toUpperCase();
     final startedAt = DateTime.now().toUtc();
     final results = await Future.wait<Object>([
-      _bybit.fetchInstrument(normalized),
-      _bybit.fetchTicker(normalized),
+      _bybit.fetchInstrument(normalized, cancelToken: cancelToken),
+      _bybit.fetchTicker(normalized, cancelToken: cancelToken),
       for (final entry in intervals.entries)
         _bybit.fetchKlines(
           symbol: normalized,
           interval: entry.value,
           limit: _candleLimits[entry.key]!,
+          cancelToken: cancelToken,
         ),
     ]);
     final completedAt = DateTime.now().toUtc();

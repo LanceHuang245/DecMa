@@ -1,14 +1,21 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:genkit/genkit.dart';
+import 'package:schemantic/schemantic.dart';
 
-import 'mcp_types.dart';
 import '../utils/network.dart';
 
+// Expose in-process API operations as native Genkit tools, not MCP descriptors.
 class CoinalyzeApiTools {
-  CoinalyzeApiTools({Dio? dio}) : _dio = dio ?? createDio();
-
-  static const _baseUrl = 'api.coinalyze.net';
+  CoinalyzeApiTools({Dio? dio})
+    : _dio = dio ?? createDio(),
+      _ownsDio = dio == null;
+  final Dio _dio;
+  final bool _ownsDio;
+  final List<String> warnings = [];
+  final List<DateTime> _quotaUnits = [];
+  String? _apiKey;
   static const _intervals = [
     '1min',
     '5min',
@@ -40,7 +47,7 @@ class CoinalyzeApiTools {
       'description': 'Inclusive Unix timestamp in seconds.',
     },
   };
-  static const _toolEndpoints = {
+  static const _endpoints = {
     'Coinalyze_API_getFutureMarkets': 'future-markets',
     'Coinalyze_API_getOpenInterest': 'open-interest',
     'Coinalyze_API_getOpenInterestHistory': 'open-interest-history',
@@ -51,11 +58,11 @@ class CoinalyzeApiTools {
     'Coinalyze_API_getLongShortRatioHistory': 'long-short-ratio-history',
     'Coinalyze_API_getOhlcvHistory': 'ohlcv-history',
   };
-  static const _tools = [
-    McpTool(
-      functionName: 'Coinalyze_API_getFutureMarkets',
-      serverName: 'Coinalyze API',
-      name: 'getFutureMarkets',
+
+  // Reuse common schema fields while retaining the existing names and descriptions.
+  static final _definitions = [
+    ToolDefinition(
+      name: 'Coinalyze_API_getFutureMarkets',
       description:
           'Get supported futures markets and their exact Coinalyze symbols. Use this to resolve a market before querying the data tools.',
       inputSchema: {
@@ -64,143 +71,99 @@ class CoinalyzeApiTools {
         'additionalProperties': false,
       },
     ),
-    McpTool(
-      functionName: 'Coinalyze_API_getOpenInterest',
-      serverName: 'Coinalyze API',
-      name: 'getOpenInterest',
-      description: 'Get current futures open interest from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': {
-          ..._symbolProperties,
-          'convert_to_usd': {'type': 'boolean'},
-        },
-        'required': ['symbols'],
-        'additionalProperties': false,
-      },
-    ),
-    McpTool(
-      functionName: 'Coinalyze_API_getOpenInterestHistory',
-      serverName: 'Coinalyze API',
-      name: 'getOpenInterestHistory',
-      description: 'Get historical futures open interest from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': {
-          ..._historyProperties,
-          'convert_to_usd': {'type': 'boolean'},
-        },
-        'required': ['symbols', 'interval', 'from', 'to'],
-        'additionalProperties': false,
-      },
-    ),
-    McpTool(
-      functionName: 'Coinalyze_API_getFunding',
-      serverName: 'Coinalyze API',
-      name: 'getFunding',
-      description: 'Get current futures funding rates from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': _symbolProperties,
-        'required': ['symbols'],
-        'additionalProperties': false,
-      },
-    ),
-    McpTool(
-      functionName: 'Coinalyze_API_getFundingHistory',
-      serverName: 'Coinalyze API',
-      name: 'getFundingHistory',
-      description: 'Get historical futures funding rates from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': _historyProperties,
-        'required': ['symbols', 'interval', 'from', 'to'],
-        'additionalProperties': false,
-      },
-    ),
-    McpTool(
-      functionName: 'Coinalyze_API_getPredictedFunding',
-      serverName: 'Coinalyze API',
-      name: 'getPredictedFunding',
-      description:
+    for (final entry in const {
+      'Coinalyze_API_getOpenInterest':
+          'Get current futures open interest from Coinalyze.',
+      'Coinalyze_API_getFunding':
+          'Get current futures funding rates from Coinalyze.',
+      'Coinalyze_API_getPredictedFunding':
           'Get current predicted futures funding rates from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': _symbolProperties,
-        'required': ['symbols'],
-        'additionalProperties': false,
-      },
-    ),
-    McpTool(
-      functionName: 'Coinalyze_API_getLiquidationHistory',
-      serverName: 'Coinalyze API',
-      name: 'getLiquidationHistory',
-      description: 'Get historical long and short liquidations from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': {
-          ..._historyProperties,
-          'convert_to_usd': {'type': 'boolean'},
+    }.entries)
+      ToolDefinition(
+        name: entry.key,
+        description: entry.value,
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            ..._symbolProperties,
+            if (entry.key.endsWith('Interest'))
+              'convert_to_usd': {'type': 'boolean'},
+          },
+          'required': ['symbols'],
+          'additionalProperties': false,
         },
-        'required': ['symbols', 'interval', 'from', 'to'],
-        'additionalProperties': false,
-      },
-    ),
-    McpTool(
-      functionName: 'Coinalyze_API_getLongShortRatioHistory',
-      serverName: 'Coinalyze API',
-      name: 'getLongShortRatioHistory',
-      description: 'Get historical long/short ratios from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': _historyProperties,
-        'required': ['symbols', 'interval', 'from', 'to'],
-        'additionalProperties': false,
-      },
-    ),
-    McpTool(
-      functionName: 'Coinalyze_API_getOhlcvHistory',
-      serverName: 'Coinalyze API',
-      name: 'getOhlcvHistory',
-      description: 'Get historical OHLCV data from Coinalyze.',
-      inputSchema: {
-        'type': 'object',
-        'properties': _historyProperties,
-        'required': ['symbols', 'interval', 'from', 'to'],
-        'additionalProperties': false,
-      },
-    ),
+      ),
+    for (final entry in const {
+      'Coinalyze_API_getOpenInterestHistory':
+          'Get historical futures open interest from Coinalyze.',
+      'Coinalyze_API_getFundingHistory':
+          'Get historical futures funding rates from Coinalyze.',
+      'Coinalyze_API_getLiquidationHistory':
+          'Get historical futures liquidations from Coinalyze.',
+      'Coinalyze_API_getLongShortRatioHistory':
+          'Get historical futures long/short ratios from Coinalyze.',
+      'Coinalyze_API_getOhlcvHistory':
+          'Get historical futures OHLCV data from Coinalyze.',
+    }.entries)
+      ToolDefinition(
+        name: entry.key,
+        description: entry.value,
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            ..._historyProperties,
+            if (entry.key.endsWith('InterestHistory'))
+              'convert_to_usd': {'type': 'boolean'},
+          },
+          'required': ['symbols', 'interval', 'from', 'to'],
+          'additionalProperties': false,
+        },
+      ),
   ];
 
-  final Dio _dio;
-  final List<String> warnings = [];
-  final List<DateTime> _quotaUnits = [];
-  String? _apiKey;
-
-  List<McpTool> configure({required bool enabled, String? apiKey}) {
+  // Bind cancellation from the actual Genkit tool invocation to its Dio request.
+  List<Tool> configure({required bool enabled, String? apiKey}) {
     warnings.clear();
-    _apiKey = enabled && apiKey != null && apiKey.isNotEmpty ? apiKey : null;
-    if (enabled && _apiKey == null) {
-      warnings.add('Coinalyze API: API Key 未配置。');
-    }
-    return _apiKey == null ? const [] : _tools;
+    _apiKey = enabled && apiKey?.isNotEmpty == true ? apiKey : null;
+    if (enabled && _apiKey == null) warnings.add('Coinalyze API: API Key 未配置。');
+    if (_apiKey == null) return const [];
+    return [
+      for (final definition in _definitions)
+        Tool<Map<String, dynamic>, Object?>(
+          name: definition.name,
+          description: '[Coinalyze API] ${definition.description}',
+          inputSchema: SchemanticType.from(
+            jsonSchema: definition.inputSchema!,
+            parse: (value) => Map<String, dynamic>.from(value as Map),
+          ),
+          fn: (arguments, ctx) async {
+            final cancel = CancelToken();
+            final unlink = ctx.cancel?.onCancel(() => cancel.cancel());
+            try {
+              return .response(
+                await call(definition.name, arguments, cancelToken: cancel),
+              );
+            } finally {
+              unlink?.call();
+            }
+          },
+        ),
+    ];
   }
 
-  bool supports(String functionName) =>
-      _toolEndpoints.containsKey(functionName);
-
-  Future<String> call(
-    String functionName,
-    Map<String, dynamic> arguments,
-  ) async {
-    final apiKey = _apiKey;
-    final endpoint = _toolEndpoints[functionName];
-    if (apiKey == null || endpoint == null) {
+  // Return raw structured results so evidence validation happens before truncation.
+  Future<Map<String, dynamic>> call(
+    String name,
+    Map<String, dynamic> arguments, {
+    CancelToken? cancelToken,
+  }) async {
+    final endpoint = _endpoints[name];
+    if (_apiKey == null || endpoint == null) {
       throw StateError('Coinalyze API tool is unavailable.');
     }
     final required = endpoint == 'future-markets'
         ? const <String>[]
-        : functionName.endsWith('History')
+        : name.endsWith('History')
         ? const ['symbols', 'interval', 'from', 'to']
         : const ['symbols'];
     for (final field in required) {
@@ -209,26 +172,26 @@ class CoinalyzeApiTools {
       }
     }
     _reserveQuota(arguments);
-    final query = <String, String>{
-      for (final entry in arguments.entries)
-        if (entry.value != null) entry.key: entry.value.toString(),
-    };
     final response = await runNetworkRequest(
       'Coinalyze API',
       () => _dio.getUri<String>(
-        Uri.https(_baseUrl, '/v1/$endpoint', query),
+        Uri.https('api.coinalyze.net', '/v1/$endpoint', {
+          for (final entry in arguments.entries)
+            if (entry.value != null) entry.key: entry.value.toString(),
+        }),
+        cancelToken: cancelToken,
         options: networkOptions(
-          headers: {'Accept': 'application/json', 'api_key': apiKey},
+          headers: {'Accept': 'application/json', 'api_key': _apiKey},
         ),
       ),
     );
     requireSuccessfulResponse(response, provider: 'Coinalyze API');
     try {
-      return jsonEncode({
+      return {
         'source': 'Coinalyze API',
         'endpoint': endpoint,
         'data': jsonDecode(response.data ?? ''),
-      });
+      };
     } on FormatException {
       throw const AppFailure(
         kind: AppFailureKind.invalidResponse,
@@ -237,16 +200,16 @@ class CoinalyzeApiTools {
     }
   }
 
-  // Enforce Coinalyze's rolling quota, where every requested symbol is one unit.
+  // Keep the existing rolling quota where each requested symbol consumes one unit.
   void _reserveQuota(Map<String, dynamic> arguments) {
     final now = DateTime.now().toUtc();
     _quotaUnits.removeWhere(
-      (timestamp) => now.difference(timestamp) >= const Duration(minutes: 1),
+      (time) => now.difference(time) >= const Duration(minutes: 1),
     );
     final symbols = arguments['symbols']
         ?.toString()
         .split(',')
-        .where((symbol) => symbol.trim().isNotEmpty)
+        .where((s) => s.trim().isNotEmpty)
         .length;
     final units = symbols == null || symbols == 0 ? 1 : symbols;
     if (_quotaUnits.length + units > 40) {
@@ -258,6 +221,7 @@ class CoinalyzeApiTools {
   }
 
   void clear() => _apiKey = null;
-
-  void dispose() => _dio.close(force: true);
+  void dispose() {
+    if (_ownsDio) _dio.close(force: true);
+  }
 }

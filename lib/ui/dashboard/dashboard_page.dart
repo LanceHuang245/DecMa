@@ -22,22 +22,16 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
-  late final DashboardController _controller;
+  DashboardController get _controller => ref.read(dashboardControllerProvider);
 
   @override
   void initState() {
     super.initState();
-    _controller = ref.read(dashboardControllerProvider)..initialize();
+    _controller.initialize();
     final nodeAvailable = ref.read(appInitialSettingsProvider).nodeAvailable;
     if (!nodeAvailable) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
   }
 
   void _showNodeMissing() {
@@ -106,6 +100,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the page-scoped controller alive only while this page watches it.
+    ref.watch(dashboardControllerProvider);
     ref.watch(dashboardControllerProvider);
     return AnimatedBuilder(
       animation: _controller,
@@ -211,6 +207,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     onModeChanged: _controller.selectAgentMode,
     onQuickAnalysis: _showQuickAnalysisDialog,
     onSend: _controller.runAgent,
+    onStop: _controller.stopAgent,
     onClear: _controller.clearAgentContext,
     onScrollToBottom: _controller.scrollConversationToBottom,
     onOpenSettings: _openSettings,

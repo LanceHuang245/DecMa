@@ -18,23 +18,16 @@ import '../../services/news/event_selector.dart';
 import '../../services/news/news_service.dart';
 import '../../utils/network.dart';
 import '../chart/candle_series.dart';
+import 'dashboard_agent.dart';
 
-enum DashboardMessageKind { user, agent, activity }
+export 'dashboard_agent.dart' show DashboardMessage, DashboardMessageKind;
 
-class DashboardMessage {
-  const DashboardMessage.user(this.text) : kind = DashboardMessageKind.user;
-  const DashboardMessage.agent(this.text) : kind = DashboardMessageKind.agent;
-  const DashboardMessage.activity(this.text)
-    : kind = DashboardMessageKind.activity;
+// Keep shared private state in one library, with behavior grouped by purpose.
+part 'dashboard_analysis.dart';
+part 'dashboard_chart.dart';
+part 'dashboard_news.dart';
 
-  final String text;
-  final DashboardMessageKind kind;
-
-  bool get isUser => kind == DashboardMessageKind.user;
-  bool get isActivity => kind == DashboardMessageKind.activity;
-}
-
-/// Owns Dashboard data, asynchronous work, and resources independently of layout.
+// Own dashboard state and resource lifetime independently of the page layout.
 class DashboardController extends ChangeNotifier {
   DashboardController({
     required bool nodeAvailable,
@@ -48,7 +41,10 @@ class DashboardController extends ChangeNotifier {
     ApiSettings? initialApi,
     NewsSettings? initialNews,
     String? initialSymbol,
-  }) : _bybit = bybit ?? BybitService() {
+  }) : _bybit = bybit ?? BybitService(),
+       _ownsBybit = bybit == null,
+       _ownsAgent = agent == null,
+       _ownsNews = newsService == null {
     _agent = agent ?? AgentService();
     _newsService = newsService ?? NewsService();
     _keyStore = keyStore ?? SecureKeyStore();
@@ -73,30 +69,21 @@ class DashboardController extends ChangeNotifier {
       _symbol.text = _activeSymbol;
     }
     if (!nodeAvailable) {
-      // Nansen uses HTTP and remains available when local Node.js is absent.
       _mcp = McpSettings(
         useBybit: false,
         useNansen: _mcp.useNansen,
         useOpenWebSearch: false,
       );
     }
-    _conversationScrollController.addListener(_handleConversationScroll);
+    _agentUi.addListener(_notify);
   }
 
-  // Per-interval history limits for balanced time coverage.
-  static const _historyLimits = {
-    '1': 1440, // 1m: 1 day (2 pages)
-    '5': 1440, // 5m: 5 days (2 pages)
-    '15': 1440, // 15m: 15 days (2 pages)
-    '60': 1000, // 1h: 41 days
-    '240': 1000, // 4h: 166 days
-    'D': 730, // 1D: 2 years
-  };
-  static int _limitForInterval(String interval) =>
-      _historyLimits[interval] ?? 1000;
-  static const _conversationBottomThreshold = 24.0;
-
+  // Store existing services, UI state, and independent request cancellation.
   final BybitService _bybit;
+  final bool _ownsBybit;
+  final bool _ownsAgent;
+  final bool _ownsNews;
+  final _agentUi = AgentConversationController();
   late final AgentService _agent;
   final _featureEngine = const FeatureEngine();
   final _tradePlanValidator = const TradePlanValidator();
@@ -105,9 +92,6 @@ class DashboardController extends ChangeNotifier {
   late final SecureKeyStore _keyStore;
   late final LlmSettingsStore _llmSettingsStore;
   final _symbol = TextEditingController(text: 'BTCUSDT');
-  final _prompt = TextEditingController();
-  final _conversationScrollController = ScrollController();
-  final _conversation = <DashboardMessage>[];
   late final MarketSnapshotService _marketSnapshots = MarketSnapshotService(
     _bybit,
   );
@@ -129,19 +113,12 @@ class DashboardController extends ChangeNotifier {
   TradePlan? _plan;
   TradePlan? _chartPlan;
   bool _showWaitZone = false;
-  String? _lastAnalysisContext;
-  DateTime? _lastAnalysisAt;
-  String? _conversationContext;
   String? _chartError;
   String? _historyError;
   var _chartVersion = 0;
   var _chartLoadGeneration = 0;
   int? _loadingChartGeneration;
   bool _showChartLoading = false;
-  bool _loadingAgent = false;
-  AgentMode _agentMode = AgentMode.analysis;
-  bool _conversationWasAtBottom = true;
-  bool _showScrollToBottom = false;
   bool _isDisposed = false;
   bool _loadingOlder = false;
   bool _hasMoreHistory = true;
@@ -162,10 +139,10 @@ class DashboardController extends ChangeNotifier {
     useFederalReserve: true,
   );
 
+  // Expose the same page-facing state as before the streaming migration.
   TextEditingController get symbolController => _symbol;
-  TextEditingController get promptController => _prompt;
-  ScrollController get conversationScrollController =>
-      _conversationScrollController;
+  TextEditingController get promptController => _agentUi.prompt;
+  ScrollController get conversationScrollController => _agentUi.scroll;
   String get activeSymbol => _activeSymbol;
   String get interval => _interval;
   List<Candle> get candles => _candleSeries.items;
@@ -178,17 +155,17 @@ class DashboardController extends ChangeNotifier {
   TradePlan? get plan => _plan;
   TradePlan? get chartPlan => _chartPlan;
   bool get showWaitZone => _showWaitZone;
-  List<DashboardMessage> get conversation => _conversation;
+  List<DashboardMessage> get conversation => _agentUi.messages;
   String? get chartError => _chartError;
   String? get historyError => _historyError;
   int get chartVersion => _chartVersion;
   bool get loadingChart => _loadingChartGeneration == _chartLoadGeneration;
   bool get showChartLoading => _showChartLoading;
-  bool get loadingAgent => _loadingAgent;
+  bool get loadingAgent => _agentUi.loading;
   bool get loadingMore => _loadingOlder;
   bool get hasMoreHistory => _candleSeries.isNotEmpty && _hasMoreHistory;
-  AgentMode get agentMode => _agentMode;
-  bool get showScrollToBottom => _showScrollToBottom;
+  AgentMode get agentMode => _agentUi.mode;
+  bool get showScrollToBottom => _agentUi.showScrollToBottom;
   ApiKeyStatus get apiKeyStatus => _apiKeyStatus;
   LlmSettings get llm => _llm;
   LlmConnectionSettings get llmConnections => _llmConnections;
@@ -197,6 +174,40 @@ class DashboardController extends ChangeNotifier {
   NewsSettings get news => _news;
   bool get refreshingNews => _newsRefreshesInFlight > 0;
 
+  // Delegate conversation controls to the object that owns their state.
+  void selectAgentMode(AgentMode mode) => _agentUi.selectMode(mode);
+  void stopAgent() => _agentUi.stop();
+  void scrollConversationToBottom() => _agentUi.scrollToBottom();
+  // Preserve instance-method APIs while private parts organize chart preparation.
+  Future<void> runAgent() => _runAgent();
+  Future<void> loadMoreHistory() => _loadMoreHistory();
+  void retryChart() => _retryChart();
+  void selectSymbol(String symbol) => _selectSymbol(symbol);
+  void selectInterval(String interval) => _selectInterval(interval);
+  void quickAnalyze({
+    required String analysisPlan,
+    required AnalysisRiskProfile riskProfile,
+    required String currentPosition,
+    required String currentPositionSize,
+    required String currentPositionEntryPrice,
+  }) => _quickAnalyze(
+    analysisPlan: analysisPlan,
+    riskProfile: riskProfile,
+    currentPosition: currentPosition,
+    currentPositionSize: currentPositionSize,
+    currentPositionEntryPrice: currentPositionEntryPrice,
+  );
+  void _recordActivity(String activity) => _agentUi.recordActivity(activity);
+  void clearAgentContext() {
+    if (loadingAgent) return;
+    _plan = null;
+    _chartPlan = null;
+    _showWaitZone = false;
+    _chartVersion++;
+    _agentUi.clear();
+  }
+
+  // Start independent background feeds without tying them to an Agent run.
   void initialize() {
     unawaited(_loadApiKeyStatus());
     unawaited(_loadSymbols());
@@ -205,707 +216,7 @@ class DashboardController extends ChangeNotifier {
     _startNewsRefresh();
   }
 
-  // Poll public Kline data once per second without allowing overlapping requests.
-  void _startChartRefresh({bool loadImmediately = true}) {
-    _chartRefreshTimer?.cancel();
-    if (loadImmediately) unawaited(_loadChart());
-    _chartRefreshTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => unawaited(_loadChart(latestOnly: true)),
-    );
-  }
-
-  // News polls independently, so a feed outage cannot interrupt chart polling.
-  void _startNewsRefresh() {
-    _newsRefreshTimer?.cancel();
-    _refreshAllNews();
-    _newsRefreshTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (_) => _refreshAllNews(),
-    );
-  }
-
-  // Check all sources every minute; let an existing request finish rather than
-  // joining provider work through a newly cancelled token.
-  void _refreshAllNews() {
-    if (_macroNewsCancelToken == null) unawaited(_refreshNews());
-    if (_tokenNewsCancelToken == null) {
-      unawaited(_refreshTokenNews(_activeSymbol));
-    }
-  }
-
-  Future<void> _loadCachedNews() async {
-    final revision = _newsRevision;
-    final events = await _newsService.readCached();
-    if (_isDisposed || revision != _newsRevision) return;
-    _publishNews(events);
-  }
-
-  void _publishNews(List<NewsEvent> events) {
-    if (_isDisposed) return;
-    _newsEvents = events;
-    _newsRevision++;
-    _newsNotifier.notifyListeners();
-  }
-
-  Future<void> _refreshNews() async {
-    if (_isDisposed) return;
-    _cancelRequest(_macroNewsCancelToken);
-    final cancelToken = _macroNewsCancelToken = CancelToken();
-    final revision = _newsRevision;
-    var receivedEvents = false;
-    bool current() =>
-        !_isDisposed &&
-        identical(_macroNewsCancelToken, cancelToken) &&
-        !cancelToken.isCancelled;
-    try {
-      final events = await _newsService.refresh(
-        settings: _news,
-        finnhubApiKey: await _keyStore.readFinnhubKey(),
-        onRefreshChanged: _handleNewsRefreshState,
-        onEvents: (events) {
-          if (!current()) return;
-          receivedEvents = true;
-          _publishNews(events);
-        },
-        cancelToken: cancelToken,
-      );
-      if (current() && !receivedEvents && revision == _newsRevision) {
-        _publishNews(events);
-      }
-      if (current()) _newsNotifier.notifyListeners();
-    } catch (error) {
-      if (isRequestCancelled(error)) return;
-      // Per-provider failures are represented by NewsService status entries.
-      if (current()) _newsNotifier.notifyListeners();
-    } finally {
-      if (identical(_macroNewsCancelToken, cancelToken)) {
-        _macroNewsCancelToken = null;
-      }
-    }
-  }
-
-  Future<void> _refreshTokenNews(String symbol) async {
-    if (_isDisposed) return;
-    _cancelRequest(_tokenNewsCancelToken);
-    final cancelToken = _tokenNewsCancelToken = CancelToken();
-    final revision = _newsRevision;
-    var receivedEvents = false;
-    bool current() =>
-        !_isDisposed &&
-        identical(_tokenNewsCancelToken, cancelToken) &&
-        !cancelToken.isCancelled &&
-        symbol == _activeSymbol;
-    try {
-      final events = await _newsService.refreshTokenNews(
-        symbol: symbol,
-        settings: _news,
-        marketauxApiKey: await _keyStore.readMarketauxKey(),
-        onRefreshChanged: _handleNewsRefreshState,
-        onEvents: (events) {
-          if (!current()) return;
-          receivedEvents = true;
-          _publishNews(events);
-        },
-        cancelToken: cancelToken,
-      );
-      if (current() && !receivedEvents && revision == _newsRevision) {
-        _publishNews(events);
-      }
-      if (current()) _newsNotifier.notifyListeners();
-    } catch (error) {
-      if (isRequestCancelled(error)) return;
-      // Marketaux failures stay isolated from chart and Agent work.
-      if (current()) _newsNotifier.notifyListeners();
-    } finally {
-      if (identical(_tokenNewsCancelToken, cancelToken)) {
-        _tokenNewsCancelToken = null;
-      }
-    }
-  }
-
-  void _handleNewsRefreshState(bool refreshing) {
-    if (_isDisposed) return;
-    _newsRefreshesInFlight += refreshing ? 1 : -1;
-    _newsNotifier.notifyListeners();
-  }
-
-  Future<void> _loadSymbols() async {
-    final cancelToken = _symbolListCancelToken = CancelToken();
-    try {
-      final symbols = await _bybit.fetchLinearSymbols(cancelToken: cancelToken);
-      if (_isDisposed) return;
-      _symbols = symbols;
-      _notify();
-    } catch (error) {
-      if (isRequestCancelled(error)) return;
-      // Kline polling still works when the optional symbol list cannot load.
-    } finally {
-      if (identical(_symbolListCancelToken, cancelToken)) {
-        _symbolListCancelToken = null;
-      }
-    }
-  }
-
-  Future<void> _loadChart({bool latestOnly = false}) async {
-    if (_isDisposed) return;
-    final generation = _chartLoadGeneration;
-    if (_loadingChartGeneration == generation) return;
-    final symbol = _activeSymbol;
-    final interval = _interval;
-    final fullLoad = !latestOnly || _candleSeries.isEmpty;
-    final cancelToken = _chartCancelToken = CancelToken();
-    _loadingChartGeneration = generation;
-    if (fullLoad) {
-      _showChartLoading = true;
-      _notify();
-    }
-    try {
-      final limit = _limitForInterval(interval);
-      final candles = await _bybit.fetchKlines(
-        symbol: symbol,
-        interval: interval,
-        limit: fullLoad ? limit : 2,
-        cancelToken: cancelToken,
-      );
-      // A stale request must never update a newer chart selection.
-      if (_isDisposed ||
-          generation != _chartLoadGeneration ||
-          symbol != _activeSymbol ||
-          interval != _interval) {
-        return;
-      }
-      final changed = fullLoad
-          ? _candleSeries.replaceAll(candles)
-          : _candleSeries.applyLatest(candles);
-      _chartError = null;
-      if (fullLoad) {
-        _showChartLoading = false;
-        _chartVersion++;
-      }
-      if (changed || fullLoad) _notify();
-    } catch (error) {
-      if (isRequestCancelled(error)) return;
-      if (_isDisposed ||
-          generation != _chartLoadGeneration ||
-          symbol != _activeSymbol ||
-          interval != _interval) {
-        return;
-      }
-      _chartRefreshTimer?.cancel();
-      _chartError = 'K 线加载失败：$error';
-      _showChartLoading = false;
-      _notify();
-    } finally {
-      if (identical(_chartCancelToken, cancelToken)) {
-        _chartCancelToken = null;
-      }
-      if (!_isDisposed && _loadingChartGeneration == generation) {
-        _loadingChartGeneration = null;
-        if (fullLoad) _notify();
-      }
-    }
-  }
-
-  void retryChart() {
-    if (loadingChart) return;
-    _chartError = null;
-    _showChartLoading = true;
-    _notify();
-    _startChartRefresh();
-  }
-
-  // Hyperliquid-like: load older candles when zooming out or panning to the left edge.
-  // No disk cache — only grows in memory and resets on restart / interval switch.
-  // Unlimited: keeps paging until the exchange returns no more candles.
-  Future<void> loadMoreHistory() async {
-    if (_isDisposed ||
-        _loadingOlder ||
-        _candleSeries.isEmpty ||
-        loadingChart ||
-        !_hasMoreHistory) {
-      return;
-    }
-    final generation = _chartLoadGeneration;
-    final interval = _interval;
-    final symbol = _activeSymbol;
-    final oldestMs = _candleSeries.first.time.millisecondsSinceEpoch;
-    final end = oldestMs - BybitService.intervalMs(interval);
-    const fetchLimit = 1000;
-    final cancelToken = _historyCancelToken = CancelToken();
-    _loadingOlder = true;
-    _historyError = null;
-    _notify();
-    try {
-      final older = await _bybit.fetchKlines(
-        symbol: symbol,
-        interval: interval,
-        limit: fetchLimit,
-        end: end,
-        cancelToken: cancelToken,
-      );
-      if (_isDisposed ||
-          generation != _chartLoadGeneration ||
-          symbol != _activeSymbol ||
-          interval != _interval) {
-        return;
-      }
-      if (older.isEmpty) {
-        _hasMoreHistory = false;
-        return;
-      }
-      if (older.length < fetchLimit) {
-        _hasMoreHistory = false;
-      }
-      if (_candleSeries.prepend(older)) _notify();
-    } catch (error) {
-      if (isRequestCancelled(error)) return;
-      if (!_isDisposed && generation == _chartLoadGeneration) {
-        _historyError = '更早历史加载失败：$error';
-        _notify();
-      }
-      if (identical(_historyCancelToken, cancelToken)) {
-        _historyCancelToken = null;
-      }
-      if (!_isDisposed && generation == _chartLoadGeneration) {
-        _loadingOlder = false;
-        _notify();
-      }
-    }
-  }
-
-  void selectSymbol(String symbol) {
-    final normalized = symbol.toUpperCase();
-    if (normalized == _activeSymbol) return;
-    _activeSymbol = normalized;
-    _symbol.text = _activeSymbol;
-    _beginChartTransition();
-    _notify();
-    _newsNotifier.notifyListeners();
-    _startChartRefresh();
-    unawaited(_llmSettingsStore.saveLastViewedSymbol(_activeSymbol));
-    unawaited(_refreshTokenNews(_activeSymbol));
-  }
-
-  void selectInterval(String interval) {
-    if (interval == _interval) return;
-    _interval = interval;
-    _beginChartTransition();
-    _notify();
-    _startChartRefresh();
-  }
-
-  // Invalidate in-flight requests and remove candles from the previous view.
-  void _beginChartTransition() {
-    _cancelRequest(_chartCancelToken);
-    _cancelRequest(_historyCancelToken);
-    _historyCancelToken = null;
-    _chartCancelToken = null;
-    _chartLoadGeneration++;
-    _loadingOlder = false;
-    _hasMoreHistory = true;
-    _candleSeries.clear();
-    _plan = null;
-    _chartPlan = null;
-    _showWaitZone = false;
-    _chartError = null;
-    _historyError = null;
-    _showChartLoading = true;
-  }
-
-  Future<String> _resolveAnalysisSymbol(String prompt) async {
-    if (_symbols.isEmpty) await _loadSymbols();
-    return _requestedSymbol(prompt) ?? _activeSymbol;
-  }
-
-  Future<List<Candle>> _prepareAnalysisChart(String symbol) async {
-    if (symbol == _activeSymbol && _candleSeries.isNotEmpty) {
-      return _candleSeries.items;
-    }
-    _chartRefreshTimer?.cancel();
-    _recordActivity('• Chart - 加载 $symbol');
-    _activeSymbol = symbol;
-    _symbol.text = symbol;
-    unawaited(_llmSettingsStore.saveLastViewedSymbol(symbol));
-    _beginChartTransition();
-    final generation = _chartLoadGeneration;
-    _loadingChartGeneration = generation;
-    _notify();
-    try {
-      final candles = await _bybit.fetchKlines(
-        symbol: symbol,
-        interval: _interval,
-        limit: _limitForInterval(_interval),
-      );
-      if (_isDisposed ||
-          generation != _chartLoadGeneration ||
-          _activeSymbol != symbol) {
-        return candles;
-      }
-      _candleSeries.replaceAll(candles);
-      _showChartLoading = false;
-      _chartVersion++;
-      _notify();
-      _startChartRefresh(loadImmediately: false);
-      return candles;
-    } catch (error) {
-      if (!_isDisposed &&
-          generation == _chartLoadGeneration &&
-          _activeSymbol == symbol) {
-        _chartError = 'K 线加载失败：$error';
-        _showChartLoading = false;
-        _notify();
-      }
-      throw Exception('无法加载 $symbol 的 K 线：$error');
-    } finally {
-      if (!_isDisposed && _loadingChartGeneration == generation) {
-        _loadingChartGeneration = null;
-        _notify();
-      }
-    }
-  }
-
-  String? _requestedSymbol(String prompt) {
-    if (_symbols.isEmpty) return null;
-    final candidates = <String>{};
-    final normalized = prompt.toUpperCase();
-    void addCandidate(String value) {
-      final symbol = value.endsWith('USDT') ? value : '${value}USDT';
-      if (_symbols.contains(symbol)) candidates.add(symbol);
-    }
-
-    for (final match in RegExp(
-      r'\b([A-Z0-9]{2,20})\s*(?:[/_-]\s*)?USDT\b',
-    ).allMatches(normalized)) {
-      addCandidate(match.group(1)!);
-    }
-    for (final match in RegExp(
-      r'\b([A-Z0-9]{2,20})\b',
-    ).allMatches(normalized)) {
-      addCandidate(match.group(1)!);
-    }
-    return candidates.length == 1 ? candidates.single : null;
-  }
-
-  Future<void> runAgent() async {
-    if (_loadingAgent || _isDisposed) return;
-    final hasLlmCredentials = _llm.provider == LlmProvider.openAiCodex
-        ? _apiKeyStatus.hasCodexOAuth
-        : _apiKeyStatus.hasLlmKeyFor(_llm.id);
-    if (!_llm.isComplete || !hasLlmCredentials) {
-      _conversation.add(
-        DashboardMessage.agent(
-          _llm.provider == LlmProvider.openAiCodex
-              ? '> 请先在设置中登录 OpenAI Codex 并选择模型。'
-              : '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
-        ),
-      );
-      _notify();
-      _scheduleConversationScroll();
-      return;
-    }
-    final prompt = _prompt.text.trim();
-    final mode = _agentMode;
-    final previousConversationContext = _conversationContext;
-    _loadingAgent = true;
-    _conversation.add(DashboardMessage.user(prompt));
-    _conversation.add(
-      DashboardMessage.activity(
-        mode == AgentMode.analysis ? '• Thinking - 分析中…' : '• Thinking - 回答中…',
-      ),
-    );
-    _prompt.clear();
-    _notify();
-    _scheduleConversationScroll();
-    try {
-      final analysisSymbol = mode == AgentMode.analysis
-          ? await _resolveAnalysisSymbol(prompt)
-          : _activeSymbol;
-      final analysisCandles = mode == AgentMode.analysis
-          ? await _prepareAnalysisChart(analysisSymbol)
-          : const <Candle>[];
-      if (_isDisposed) return;
-      if (mode == AgentMode.analysis && analysisCandles.isEmpty) {
-        throw Exception('$analysisSymbol 没有可分析的 K 线。');
-      }
-      final marketSnapshot = mode == AgentMode.analysis
-          ? await _buildMarketSnapshot(analysisSymbol)
-          : null;
-      final marketFeatures = marketSnapshot == null
-          ? null
-          : _featureEngine.calculate(marketSnapshot);
-      if (marketFeatures != null) {
-        _recordActivity('• Deterministic Engine - 指标计算完成');
-      }
-      if (mode == AgentMode.analysis) {
-        await _refreshTokenNews(analysisSymbol);
-      }
-      final eventSnapshot = mode == AgentMode.analysis
-          ? await _eventSnapshot(analysisSymbol, marketFeatures!)
-          : null;
-      final answer = await _agent.run(
-        prompt: prompt,
-        symbol: analysisSymbol,
-        candles: analysisCandles,
-        llm: _llm,
-        mcp: _mcp,
-        api: _api,
-        mode: mode,
-        marketSnapshot: marketSnapshot,
-        marketFeatures: marketFeatures,
-        eventSnapshot: eventSnapshot,
-        previousAnalysisContext: _lastAnalysisContext,
-        previousAnalysisAt: _lastAnalysisAt,
-        previousConversationContext: previousConversationContext,
-        onActivity: _recordActivity,
-      );
-      if (_isDisposed) return;
-      if (mode == AgentMode.analysis) {
-        final plan = TradePlan.fromResponse(answer.text);
-        final notices = [...answer.warnings];
-        final validation = plan == null
-            ? null
-            : _tradePlanValidator.validate(
-                plan,
-                tickSize: marketSnapshot?.instrument.tickSize,
-              );
-        final matchesResponse =
-            plan?.symbol == null || plan!.symbol == analysisSymbol;
-        final matchesChart = _activeSymbol == analysisSymbol;
-        if (plan == null) {
-          notices.add('结果中没有可解析的 TradePlan JSON，未添加图表标记。');
-        } else {
-          notices.addAll(validation!.warnings);
-          if (!validation.isValid) {
-            notices.add(
-              'TradePlan 校验失败：${validation.errors.join('；')}，未添加图表标记。',
-            );
-          } else if (!plan.isSetup) {
-            notices.add(
-              validation.canDrawWaitZone
-                  ? 'WAIT 不是交易 Setup，仅显示候选等待区。'
-                  : '${plan.decision} 不是交易 Setup，未添加图表标记。',
-            );
-          }
-        }
-        if (!matchesResponse) {
-          notices.add('结果 JSON 的币种与分析币种 $analysisSymbol 不一致，未添加图表标记。');
-        }
-        if (!matchesChart) {
-          notices.add('当前图表已切换为 $_activeSymbol，未添加 $analysisSymbol 的图表标记。');
-        }
-        final displayText = notices.isEmpty
-            ? answer.text
-            : '${answer.text}\n\n> 数据源提示：${notices.join(' | ')}';
-        _conversation.add(DashboardMessage.agent(displayText));
-        final canDisplayPlan =
-            plan != null &&
-            validation!.isValid &&
-            matchesResponse &&
-            matchesChart;
-        _chartPlan = canDisplayPlan ? plan : null;
-        _plan = canDisplayPlan && plan.isSetup ? plan : null;
-        _showWaitZone = canDisplayPlan && validation.canDrawWaitZone;
-        _lastAnalysisContext =
-            'User analysis request: $prompt\n\nAnalysis response:\n$displayText';
-        _lastAnalysisAt = DateTime.now();
-      } else {
-        _conversation.add(DashboardMessage.agent(answer.text));
-        final turn = 'User: $prompt\nAgent: ${answer.text}';
-        _conversationContext = _conversationContext == null
-            ? turn
-            : '$_conversationContext\n\n$turn';
-      }
-      _notify();
-      _scheduleConversationScroll();
-    } catch (error) {
-      if (_isDisposed) return;
-      _conversation.add(DashboardMessage.agent('> Agent 请求失败：$error'));
-      _notify();
-      _scheduleConversationScroll();
-    } finally {
-      if (!_isDisposed) {
-        _loadingAgent = false;
-        _notify();
-      }
-    }
-  }
-
-  Future<MarketSnapshot> _buildMarketSnapshot(String symbol) async {
-    _recordActivity('• Market Snapshot - 获取固定多周期行情');
-    final snapshot = await _marketSnapshots.build(symbol);
-    if (snapshot.instrument.status != 'Trading' ||
-        snapshot.instrument.contractType != 'LinearPerpetual') {
-      throw Exception('$symbol 合约状态或类型无效。');
-    }
-    return snapshot;
-  }
-
-  Future<EventSnapshot> _eventSnapshot(
-    String symbol,
-    MarketFeatures features,
-  ) async {
-    final snapshot = _eventSelector.select(events: _newsEvents, symbol: symbol);
-    final needsCoverageFallback =
-        snapshot.assetSpecificEvents.isEmpty || features.hasAbnormalShortTerm;
-    return EventSnapshot(
-      snapshotAsOf: snapshot.snapshotAsOf,
-      upcomingCriticalEvents: snapshot.upcomingCriticalEvents,
-      breakingEvents: snapshot.breakingEvents,
-      assetSpecificEvents: snapshot.assetSpecificEvents,
-      cryptoMarketEvents: snapshot.cryptoMarketEvents,
-      macroEvents: snapshot.macroEvents,
-      tokenNewsSearchQueries: needsCoverageFallback
-          ? await _newsService.tokenNewsSearchQueries(symbol)
-          : const [],
-    );
-  }
-
-  void quickAnalyze({
-    required String analysisPlan,
-    required AnalysisRiskProfile riskProfile,
-    required String currentPosition,
-    required String currentPositionSize,
-    required String currentPositionEntryPrice,
-  }) {
-    _agentMode = AgentMode.analysis;
-    final hasPosition = currentPosition.trim() != '无';
-    final aggressiveInstruction = analysisPlan == '激进'
-        ? '''激进方案要求：只要核心行情数据有效、存在方向性结构优势，并且能够定义入场触发、结构止损和候选目标，就必须在 LONG_SETUP 和 SHORT_SETUP 中选择更优的条件式方案。OI 历史、清算、多空比、CVD、完整订单流、广泛新闻覆盖或尚未到触发点的执行数据缺失时，只能降低置信度、缩小建议仓位并加入入场前复核，不得仅因此输出 WAIT、NO_TRADE 或 DATA_INSUFFICIENT。若核心行情无效、方向大致均衡、无法定义有效止损，或已验证的净风险收益比不合格，仍可输出相应的 WAIT、NO_TRADE 或 DATA_INSUFFICIENT。
-
-'''
-        : '';
-    // Build the readable request from typed inputs so unavailable values stay explicit.
-    _prompt.text =
-        '''请分析 $_activeSymbol 的开仓机会。本次交易需持有${_holdingPeriodText(riskProfile.holdingPeriod)}。
-
-账户资金：${_usdtText(riskProfile.accountEquity)}
-单笔最大可接受亏损：${_usdtText(riskProfile.riskCash)}
-计划开仓数量：${_plannedPositionText(riskProfile.plannedPosition)}
-预期单边滑点：${_percentText(riskProfile.expectedSlippageRate)}
-安全缓冲：${_percentText(riskProfile.safetyBufferRate)}
-最低净风险收益比：${_numberText(riskProfile.minimumNetRewardRisk)}
-最大有效杠杆：${_leverageText(riskProfile.maximumEffectiveLeverage)}
-当前持仓：${_currentPositionText(currentPosition)}
-当前持仓数量：${hasPosition ? _currentPositionText(currentPositionSize) : '0'}
-当前持仓均价：${hasPosition ? _currentPositionText(currentPositionEntryPrice) : '0'}
-
-请同时评估 LONG 和 SHORT，并给出当前更优的开仓方向、等待入场区、入场触发条件、最大追价位置、止损位置、分批止盈位置以及风险收益比。
-
-${AgentService.fullSourceEnrichmentMarker}在输出方向结论前，按顺序对已启用且适用于本合约的 Bybit MCP、Coinalyze API 和 Nansen MCP 分别完成有界的数据查询。Harness Market Snapshot 不能替代 Bybit MCP 的补充确认，MCP 工具发现也不算实际取数。若某来源未启用、不支持当前资产或调用失败，必须明确说明，并继续使用其余有效数据完成分析；不得仅因辅助来源缺失而输出 DATA_INSUFFICIENT。
-
-$aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限制，请根据止损距离给出更合理的最大仓位建议。
-''';
-    _notify();
-    unawaited(runAgent());
-  }
-
-  String _holdingPeriodText(Duration? value) {
-    if (value == null) return '不可用';
-    return value.inMinutes % 60 == 0
-        ? '${value.inHours} 小时'
-        : '${value.inMinutes} 分钟';
-  }
-
-  String _usdtText(double? value) =>
-      value == null ? '不可用' : '${_numberText(value)} USDT';
-
-  String _plannedPositionText(PlannedPosition? value) {
-    if (value == null) return '不可用';
-    if (value.notionalUsdt != null) return _usdtText(value.notionalUsdt);
-    return '${_numberText(value.assetQuantity)} ${value.asset}';
-  }
-
-  String _percentText(double? value) =>
-      value == null ? '不可用' : '${_numberText(value * 100)}%';
-
-  String _leverageText(double? value) =>
-      value == null ? '不可用' : '${_numberText(value)}x';
-
-  String _numberText(double? value) {
-    if (value == null) return '不可用';
-    return value.toStringAsFixed(8).replaceFirst(RegExp(r'\.?0+$'), '');
-  }
-
-  String _currentPositionText(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? '不可用' : trimmed;
-  }
-
-  void selectAgentMode(AgentMode mode) {
-    if (_loadingAgent) return;
-    _agentMode = mode;
-    _notify();
-  }
-
-  void _recordActivity(String activity) {
-    if (_isDisposed) return;
-    _conversation.add(DashboardMessage.activity(activity));
-    _notify();
-    _scheduleConversationScroll();
-  }
-
-  // Show a quick return control whenever the reader leaves the conversation end.
-  void _handleConversationScroll() {
-    if (_isDisposed || !_conversationScrollController.hasClients) return;
-    final position = _conversationScrollController.position;
-    final isAtBottom =
-        position.maxScrollExtent - position.pixels <=
-        _conversationBottomThreshold;
-    _conversationWasAtBottom = isAtBottom;
-    final shouldShowButton = !isAtBottom && _conversation.isNotEmpty;
-    if (shouldShowButton == _showScrollToBottom) return;
-    _showScrollToBottom = shouldShowButton;
-    _notify();
-  }
-
-  void _scheduleConversationScroll() {
-    final shouldFollow = _conversationWasAtBottom;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_isDisposed || !_conversationScrollController.hasClients) return;
-      if (shouldFollow) {
-        unawaited(
-          _conversationScrollController.animateTo(
-            _conversationScrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-          ),
-        );
-      } else if (!_showScrollToBottom && _conversation.isNotEmpty) {
-        _showScrollToBottom = true;
-        _notify();
-      }
-    });
-  }
-
-  void scrollConversationToBottom() {
-    if (!_conversationScrollController.hasClients) return;
-    unawaited(
-      _conversationScrollController.animateTo(
-        _conversationScrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      ),
-    );
-  }
-
-  void clearAgentContext() {
-    if (_loadingAgent) return;
-    _conversation.clear();
-    _plan = null;
-    _chartPlan = null;
-    _showWaitZone = false;
-    _lastAnalysisContext = null;
-    _lastAnalysisAt = null;
-    _conversationContext = null;
-    _prompt.clear();
-    _conversationWasAtBottom = true;
-    _showScrollToBottom = false;
-    // Rebuild the chart so its hover and floating plan widgets reset too.
-    _chartVersion++;
-    _notify();
-  }
-
+  // Persist existing connection settings without changing credential storage.
   Future<void> saveSettings(
     LlmConnectionSettings llmConnections,
     McpSettings mcp,
@@ -958,11 +269,16 @@ $aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限�
     _notify();
   }
 
+  // Never notify listeners or apply cancelled requests after page disposal.
   void _notify() {
     if (!_isDisposed) notifyListeners();
   }
 
-  // Cancel superseded Dio work before its result becomes stale or the page closes.
+  // Keep protected ChangeNotifier calls inside the owning controller class.
+  void _notifyNews() {
+    if (!_isDisposed) _newsNotifier.notifyListeners();
+  }
+
   void _cancelRequest(CancelToken? token) {
     if (token != null && !token.isCancelled) token.cancel();
   }
@@ -970,6 +286,8 @@ $aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限�
   @override
   void dispose() {
     _isDisposed = true;
+    _agentUi.removeListener(_notify);
+    _agentUi.dispose();
     _chartRefreshTimer?.cancel();
     _newsRefreshTimer?.cancel();
     _cancelRequest(_symbolListCancelToken);
@@ -977,14 +295,10 @@ $aggressiveInstruction如果我填写的计划仓位超过上述单笔风险限�
     _cancelRequest(_historyCancelToken);
     _cancelRequest(_macroNewsCancelToken);
     _cancelRequest(_tokenNewsCancelToken);
-    _bybit.dispose();
-    _agent.dispose();
-    _newsService.dispose();
+    if (_ownsBybit) _bybit.dispose();
+    if (_ownsAgent) _agent.dispose();
+    if (_ownsNews) _newsService.dispose();
     _symbol.dispose();
-    _prompt.dispose();
-    _conversationScrollController
-      ..removeListener(_handleConversationScroll)
-      ..dispose();
     _newsNotifier.dispose();
     super.dispose();
   }

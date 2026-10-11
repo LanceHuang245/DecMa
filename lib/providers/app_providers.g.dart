@@ -100,7 +100,7 @@ final class BybitServiceProvider
   }
 }
 
-String _$bybitServiceHash() => r'f452bedc708f79344f298960dc4e88436effad8a';
+String _$bybitServiceHash() => r'bcd51fd73262ccf1685c8c225897f3df621d743f';
 
 @ProviderFor(agentService)
 final agentServiceProvider = AgentServiceProvider._();
@@ -141,7 +141,7 @@ final class AgentServiceProvider
   }
 }
 
-String _$agentServiceHash() => r'19198415f4a2ee95c0e4cbfdbe5cb97573646a5f';
+String _$agentServiceHash() => r'898e91f042a409d5e891430144a4fc8707357538';
 
 @ProviderFor(newsService)
 final newsServiceProvider = NewsServiceProvider._();
@@ -182,7 +182,7 @@ final class NewsServiceProvider
   }
 }
 
-String _$newsServiceHash() => r'8d75652b47f87fdf9b19634a17970a5fde785cef';
+String _$newsServiceHash() => r'1fc570d9a0182ee0000746b100fc5e8fbdfb8a5c';
 
 @ProviderFor(secureKeyStore)
 final secureKeyStoreProvider = SecureKeyStoreProvider._();
@@ -293,7 +293,7 @@ final class DashboardControllerProvider
         argument: null,
         retry: null,
         name: r'dashboardControllerProvider',
-        isAutoDispose: false,
+        isAutoDispose: true,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -322,4 +322,4 @@ final class DashboardControllerProvider
 }
 
 String _$dashboardControllerHash() =>
-    r'aeebba43b15b14d4fdeef0597272ec0c6872942b';
+    r'66f7f449c55cbf9cce0209f81a89fafed9dafc69';

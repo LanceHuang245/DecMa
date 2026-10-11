@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -92,6 +94,15 @@ class AppFailure implements Exception {
 }
 
 const networkTimeout = Duration(seconds: 30);
+
+// Stop awaiting cooperative work promptly; callers still clean up its transport.
+Future<T> cancellable<T>(Future<T> work, Future<void>? stop) {
+  if (stop == null) return work;
+  return Future.any([
+    work,
+    stop.then<T>((_) => throw const AppFailure(kind: AppFailureKind.cancelled)),
+  ]);
+}
 
 // Create identical plain-text Dio clients without logging secrets or payloads.
 Dio createDio() {

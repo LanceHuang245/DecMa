@@ -36,13 +36,28 @@ AppInitialSettings appInitialSettings(Ref ref) {
 }
 
 @Riverpod(keepAlive: true)
-BybitService bybitService(Ref ref) => BybitService();
+BybitService bybitService(Ref ref) {
+  final service = BybitService();
+  ref.onDispose(service.dispose);
+  return service;
+}
 
 @Riverpod(keepAlive: true)
-AgentService agentService(Ref ref) => AgentService();
+AgentService agentService(Ref ref) {
+  final service = AgentService(
+    bybit: ref.watch(bybitServiceProvider),
+    keyStore: ref.watch(secureKeyStoreProvider),
+  );
+  ref.onDispose(service.dispose);
+  return service;
+}
 
 @Riverpod(keepAlive: true)
-NewsService newsService(Ref ref) => NewsService();
+NewsService newsService(Ref ref) {
+  final service = NewsService();
+  ref.onDispose(service.dispose);
+  return service;
+}
 
 @Riverpod(keepAlive: true)
 SecureKeyStore secureKeyStore(Ref ref) => SecureKeyStore();
@@ -51,7 +66,7 @@ SecureKeyStore secureKeyStore(Ref ref) => SecureKeyStore();
 LlmSettingsStore llmSettingsStore(Ref ref) => LlmSettingsStore();
 
 /// Owns the dashboard controller for the app lifetime and wires its services.
-@Riverpod(keepAlive: true)
+@riverpod
 DashboardController dashboardController(Ref ref) {
   final initial = ref.watch(appInitialSettingsProvider);
   final controller = DashboardController(
