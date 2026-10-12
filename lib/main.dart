@@ -12,8 +12,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
   const windowOptions = WindowOptions(
-    size: Size(1540, 900),
-    minimumSize: Size(1540, 900),
+    size: Size(1280, 700),
+    minimumSize: Size(1280, 700),
     center: true,
     titleBarStyle: TitleBarStyle.hidden,
   );
