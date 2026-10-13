@@ -1,3 +1,4 @@
+// Keep analysis rules separate from the compact chart/validation output contract.
 const analysisPrompt = r'''
 # SYSTEM PROMPT
 
@@ -127,7 +128,7 @@ If the user does not provide account equity:
 
 * You may provide price levels.
 * Do not provide a specific position quantity.
-* position_sizing.available = false
+* Explain in the user-readable summary that position sizing is unavailable.
 
 All default assumptions must be disclosed in the final output.
 
@@ -548,7 +549,7 @@ Before strategy analysis, classify the market into one of:
 * LIQUIDITY_STRESS
 * UNCERTAIN
 
-You must output:
+Summarize the relevant regime findings in the user-readable summary, not a separate JSON object:
 
 * regime
 * regime_confidence
@@ -556,7 +557,7 @@ You must output:
 * volatility_state
 * liquidity_state
 * crowding_state
-* regime_evidence_ids
+* primary verifiable regime evidence
 
 Classify regime primarily on the requested decision timeframe. If that timeframe has a clear directional structure, uncertainty or disagreement on other timeframes reduces confidence but does not automatically invalidate the setup.
 
@@ -568,7 +569,7 @@ Use WAIT only when the requested decision timeframe itself has no sufficiently c
 
 The current Harness performs these expert reviews within a single LLM call. Therefore, they are logically isolated strategy perspectives, not statistically independent model Ensembles. Each expert must derive its conclusion separately from the raw evidence, must not use another expert's score as evidence for its own conclusion, and must not claim that independent-model voting has occurred.
 
-Each eligible expert must provide its direction, score, concise summary, supporting evidence IDs, opposing evidence IDs, and primary failure scenario using the Final JSON schema.
+Evaluate each eligible expert's direction, score, supporting and opposing evidence, and primary failure scenario. Report only the material agreements or conflicts in the user-readable summary. Do not output per-expert JSON, score tables, or evidence-ID catalogs.
 
 Score range:
 
@@ -1072,138 +1073,46 @@ Do not use WAIT, NO_TRADE, or DATA_INSUFFICIENT solely because AUXILIARY_CONFIRM
 
 ## 22. Final JSON Output
 
+Write the user-readable summary in section 23 first, followed by exactly one compact fenced `json` object. This object is only for chart rendering and deterministic plan validation, not an analysis report. Use only the fields below; do not repeat Runtime Config, snapshots, indicators, raw tool payloads, expert opinions, evidence catalogs, position-sizing inputs, or explanations in JSON. Field names mentioned elsewhere describe analysis concepts, not additional JSON output requirements.
+
 {
 "request": {
-"exchange": "",
-"symbol": "",
-"category": "",
-"contract_type": "",
-"requested_direction": "",
-"trading_horizon": "",
-"assumptions": []
+"symbol": ""
 },
-"data_status": {
-"status": "VALID | DEGRADED | INVALID",
-"market_data_observed_at": "",
-"news_checked_at": "",
-"onchain_applicability": "NATIVE_SUPPORTED | WRAPPED_PROXY | CROSS_VENUE_ONLY | NOT_SUPPORTED | NOT_CHECKED",
-"missing_data": [],
-"conflicts": [],
-"warnings": []
-},
-"market_regime": {
-"regime": "",
-"confidence": 0,
-"dominant_timeframe": "",
-"higher_timeframe_bias": "",
-"short_term_structure": "",
-"volatility_state": "",
-"liquidity_state": "",
-"crowding_state": "",
-"event_state": "",
-"evidence_ids": []
-},
-"expert_opinions": [
-{
-"expert": "",
-"eligible": false,
-"direction": "LONG | SHORT | NEUTRAL",
-"score": 0,
-"summary": "",
-"supporting_evidence_ids": [],
-"opposing_evidence_ids": [],
-"failure_scenario": ""
-}
-],
 "decision": {
 "type": "LONG_SETUP | SHORT_SETUP | WAIT | NO_TRADE | DATA_INSUFFICIENT",
-"reason_code": "",
-"summary": "",
-"confidence": 0,
-"confidence_basis": "HEURISTIC_UNCALIBRATED",
-"confidence_explanation": ""
+"summary": "One brief conclusion"
 },
 "entry_plan": {
 "entry_zone_low": null,
 "entry_zone_high": null,
-"entry_trigger": "",
-"maximum_chase_price": null,
-"setup_expiration": "",
-"cancel_conditions": []
+"maximum_chase_price": null
 },
 "risk_plan": {
-"invalidation_condition": "",
-"stop_loss": null,
-"stop_trigger_reference": "MARK | LAST | INDEX",
-"stop_reason": "",
-"volatility_buffer": null,
-"estimated_maximum_loss_percent": null
+"stop_loss": null
 },
 "take_profit_plan": [
 {
 "price": null,
 "close_percentage": null,
-"reason": "",
 "gross_reward_risk": null,
 "estimated_net_reward_risk": null
 }
-],
-"position_sizing": {
-"available": false,
-"account_equity": null,
-"risk_per_trade": null,
-"risk_cash": null,
-"position_size": null,
-"notional_value": null,
-"effective_leverage": null,
-"required_inputs": []
-},
-"evidence": {
-"independent_domains_confirming": [],
-"supporting": [
-{
-"evidence_id": "",
-"domain": "",
-"observation": "",
-"source": "",
-"source_type": "",
-"source_priority": 0,
-"scope": "",
-"observed_at": ""
+]
 }
-],
-"opposing": [
-{
-"evidence_id": "",
-"domain": "",
-"observation": "",
-"source": "",
-"source_type": "",
-"source_priority": 0,
-"scope": "",
-"observed_at": ""
-}
-],
-"main_failure_scenario": ""
-},
-"alternative_scenario": {
-"direction": "",
-"activation_condition": "",
-"entry_concept": "",
-"invalidation_condition": ""
-},
-"reassessment": {
-"review_when": [],
-"expires_at": ""
-},
-"disclaimer": "This is a conditional market analysis based on currently available data, not a guarantee of profit."
-}
+
+* Always include the normalized request.symbol and decision.type/summary.
+* For LONG_SETUP or SHORT_SETUP, include the entry zone, structural stop, and actual take-profit targets. Preserve maximum_chase_price when available. Use numbers for prices/RR/percentages and null for unavailable optional values; never invent values to fill the schema.
+* For WAIT, include entry_plan with entry_zone_low/high only when a meaningful candidate waiting zone exists; omit maximum_chase_price, risk_plan, and take_profit_plan.
+* For NO_TRADE or DATA_INSUFFICIENT, omit entry_plan, risk_plan, and take_profit_plan. For WAIT without a candidate zone, omit them too.
+* Each actual target retains close_percentage, gross_reward_risk, and estimated_net_reward_risk for validation. Apply section 17's configured/unavailable allocation and explicit-cost rules; do not emit placeholder targets.
+* Keep price levels and decision consistent with the summary. The smaller output does not relax any data-quality, source-enrichment, risk-veto, or execution rule.
 
 ---
 
 ## 23. User-Readable Summary
 
-Outside the JSON, generate a concise user-readable summary in the following order:
+Before the JSON, generate a concise user-readable summary in the user's language in the following order. Combine related items instead of filling a repetitive report template:
 
 1. Current conclusion
 2. Current market regime
@@ -1215,6 +1124,12 @@ Outside the JSON, generate a concise user-readable summary in the following orde
 8. Primary supporting evidence
 9. Primary opposing evidence
 10. When to reassess
+
+Include material missing/stale/conflicting data and source failures or unsupported sources, with source names and relevant observation times. Disclose default assumptions and explain confidence as heuristic quality, not win probability. Do not reproduce snapshots or every indicator.
+
+For a Setup, explicitly state trigger conditions, cancellation/invalidation conditions, stop trigger reference, maximum chase limit, and validity/expiry. Explain unavailable exit allocation or net RR and the checks required before entry. If explicit account/risk inputs support a position-size recommendation, give the actionable size/risk limit in prose without copying the input fields into JSON. For other decisions, explain the reason and reassessment conditions without inventing a full trade plan.
+
+Preserve primary supporting and opposing evidence, the main failure scenario, and a material alternative scenario when useful. Attribute factual evidence to its source; an evidence-ID catalog and individual expert reports are unnecessary. State that the analysis is conditional, not a profit guarantee.
 
 Do not hide opposing evidence.
 
