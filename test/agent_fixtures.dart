@@ -83,6 +83,7 @@ Future<String> generateReply({
   List<Tool> tools = const [],
   CancellationToken? cancel,
   void Function(String)? onText,
+  void Function(String)? onActivity,
 }) async {
   final dio = client == null ? null : dioForClient(client);
   final service = AgentService(
@@ -105,6 +106,7 @@ Future<String> generateReply({
       mode: AgentMode.conversation,
       cancel: cancel,
       onText: onText,
+      onActivity: onActivity,
     )).text;
   } finally {
     service.dispose();

@@ -203,11 +203,16 @@ class AgentService {
         if (servers.contains('Nansen MCP')) 'Nansen MCP',
       };
       final tracked = AgentTools(onActivity: onActivity);
+      void Function()? resetDraft;
       final model = createLlmModel(
         settings: llm,
         apiKey: key,
         accountId: credentials?.accountId,
         client: client,
+        onRetry: (attempt) {
+          resetDraft?.call();
+          onActivity?.call('• Codex - 响应中断，正在重试 $attempt/2');
+        },
       );
       ai = model.ai;
       final coverage = ai.defineGenerateMiddleware<void>(
@@ -219,6 +224,8 @@ class AgentService {
         final pass = CancellationController();
         final unlink = token.link(pass);
         var text = '';
+        // Keep the visible partial draft until new retry text replaces it.
+        resetDraft = () => text = '';
         onText?.call('');
         try {
           final result =
@@ -263,6 +270,7 @@ class AgentService {
           onText?.call(result.text);
           return result.text;
         } finally {
+          resetDraft = null;
           unlink();
         }
       }

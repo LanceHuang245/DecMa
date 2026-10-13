@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:genkit/genkit.dart';
 import 'package:genkit_anthropic/genkit_anthropic.dart';
 import 'package:genkit_openai/genkit_openai.dart';
@@ -18,6 +21,7 @@ createLlmModel({
   required String apiKey,
   required DioClient client,
   String? accountId,
+  void Function(int)? onRetry,
 }) {
   final provider = settings.provider;
   final endpoint = settings.endpoint.trim().replaceFirst(RegExp(r'/+$'), '');
@@ -51,6 +55,7 @@ createLlmModel({
       apiKey: apiKey,
       httpClient: client,
       accountId: accountId,
+      onRetry: onRetry,
     );
     model = modelRef('decma/responses');
   }
@@ -111,13 +116,14 @@ void defineResponsesModel(
   required String apiKey,
   required DioClient httpClient,
   String? accountId,
+  void Function(int)? onRetry,
 }) {
   final codex = settings.provider == LlmProvider.openAiCodex;
   if (codex && (accountId == null || accountId.isEmpty)) {
     throw Exception('OpenAI Codex OAuth 缺少 ChatGPT account ID，请重新登录。');
   }
   final client = sdk.OpenAIClient(
-    httpClient: httpClient,
+    httpClient: codex ? _StrictResponsesClient(httpClient) : httpClient,
     config: sdk.OpenAIConfig(
       baseUrl: settings.endpoint
           .trim()
@@ -208,72 +214,182 @@ void defineResponsesModel(
         ],
       );
 
-      // The SDK parses SSE; keep done items for gateways with sparse terminals.
-      final accumulator = sdk.ResponseStreamAccumulator();
-      final doneItems = <int, sdk.OutputItem>{};
-      final doneText = <String>[];
-      // The supplied HTTP client already aborts requests with the run token.
-      await for (final event in client.responses.createStream(body)) {
-        ctx.cancel?.throwIfCancelled();
-        accumulator.add(event);
-        if (event is sdk.OutputItemDoneEvent) {
-          doneItems[event.outputIndex] = event.item;
-        }
-        if (event is sdk.OutputTextDoneEvent) doneText.add(event.text);
-        if (event is sdk.OutputTextDeltaEvent && ctx.streamingRequested) {
-          ctx.sendChunk(
-            ModelResponseChunk(content: [TextPart(text: event.delta)]),
+      // Retry only this model turn; Genkit retains all completed tool results.
+      for (var attempt = 0; ; attempt++) {
+        final accumulator = sdk.ResponseStreamAccumulator();
+        final doneItems = <int, sdk.OutputItem>{};
+        final doneText = <String>[];
+        var interrupted = false;
+        try {
+          // The SDK parses SSE; each attempt starts with fresh partial output.
+          ctx.cancel?.throwIfCancelled();
+          // The supplied HTTP client already aborts requests with the run token.
+          await for (final event in client.responses.createStream(body)) {
+            ctx.cancel?.throwIfCancelled();
+            accumulator.add(event);
+            if (event is sdk.ErrorEvent) {
+              throw _responseFailure(event.code, event.message);
+            }
+            if (event is sdk.ResponseFailedEvent) {
+              final error = event.response.error;
+              throw _responseFailure(
+                error?.code ?? error?.type ?? 'failed',
+                error?.message ?? 'Codex 返回失败状态。',
+              );
+            }
+            if (event is sdk.ResponseIncompleteEvent) {
+              throw AppFailure(
+                kind: AppFailureKind.invalidResponse,
+                provider: 'LLM',
+                detail:
+                    '响应未完成：${event.response.incompleteDetails?.reason ?? 'unknown'}',
+              );
+            }
+            if (event is sdk.OutputItemDoneEvent) {
+              doneItems[event.outputIndex] = event.item;
+            }
+            if (event is sdk.OutputTextDoneEvent) doneText.add(event.text);
+            if (event is sdk.OutputTextDeltaEvent && ctx.streamingRequested) {
+              ctx.sendChunk(
+                ModelResponseChunk(content: [TextPart(text: event.delta)]),
+              );
+            }
+          }
+          var response = accumulator.response;
+          if (!accumulator.isSuccessful || response == null) {
+            interrupted = !accumulator.isComplete;
+            throw const AppFailure(
+              kind: AppFailureKind.invalidResponse,
+              provider: 'LLM',
+              detail: '响应流提前结束，未收到成功完成信号。',
+            );
+          }
+          // Preserve complete items in their provider order, including reasoning.
+          if (response.output.isEmpty && doneItems.isNotEmpty) {
+            final indexes = doneItems.keys.toList()..sort();
+            response = sdk.Response.fromJson({
+              ...response.toJson(),
+              'output': indexes.map((i) => doneItems[i]!.toJson()).toList(),
+            });
+          }
+          final text = response.outputText.isNotEmpty
+              ? response.outputText
+              : doneText.isNotEmpty
+              ? doneText.join('\n')
+              : accumulator.text;
+          final parts = <Part>[
+            if (text.isNotEmpty) TextPart(text: text),
+            for (final call in response.functionCalls)
+              ToolRequestPart(
+                toolRequest: ToolRequest(
+                  ref: call.callId,
+                  name: call.name,
+                  input: jsonDecode(call.arguments),
+                ),
+              ),
+          ];
+          return ModelResponse(
+            finishReason: FinishReason.stop,
+            message: Message(
+              role: Role.model,
+              content: parts,
+              metadata: {
+                'responseId': response.id,
+                'outputItems': response.output
+                    .map((item) => item.toJson())
+                    .toList(),
+              },
+            ),
+            raw: response.toJson(),
+          );
+        } catch (error) {
+          ctx.cancel?.throwIfCancelled();
+          final failure = llmFailure(error, null);
+          // Log protocol state only, never credentials, prompts or response text.
+          if (kDebugMode) {
+            debugPrint(
+              '[LLM] attempt=${attempt + 1} '
+              'event=${accumulator.latestEvent?.type} status=${accumulator.status.name} '
+              'cause=${error.runtimeType} http=${failure.statusCode} '
+              'code=${accumulator.response?.error?.code} '
+              'reason=${accumulator.response?.incompleteDetails?.reason}',
+            );
+          }
+          final retryable =
+              interrupted ||
+              switch (failure.kind) {
+                AppFailureKind.networkUnavailable ||
+                AppFailureKind.timeout ||
+                AppFailureKind.rateLimited ||
+                AppFailureKind.upstream => true,
+                _ => false,
+              };
+          if (!codex || !retryable || attempt >= 2) throw failure;
+          onRetry?.call(attempt + 1);
+          await cancellable(
+            Future<void>.delayed(
+              failure.retryAfter ?? Duration(seconds: attempt + 1),
+            ),
+            ctx.cancel?.whenCancelled,
           );
         }
       }
-      var response = accumulator.response;
-      if (!accumulator.isSuccessful || response == null) {
-        throw const AppFailure(
-          kind: AppFailureKind.invalidResponse,
-          provider: 'LLM',
-        );
-      }
-      // Preserve complete items in their provider order, including reasoning.
-      if (response.output.isEmpty && doneItems.isNotEmpty) {
-        final indexes = doneItems.keys.toList()..sort();
-        response = sdk.Response.fromJson({
-          ...response.toJson(),
-          'output': indexes.map((i) => doneItems[i]!.toJson()).toList(),
-        });
-      }
-      final text = response.outputText.isNotEmpty
-          ? response.outputText
-          : doneText.isNotEmpty
-          ? doneText.join('\n')
-          : accumulator.text;
-      final parts = <Part>[
-        if (text.isNotEmpty) TextPart(text: text),
-        for (final call in response.functionCalls)
-          ToolRequestPart(
-            toolRequest: ToolRequest(
-              ref: call.callId,
-              name: call.name,
-              input: jsonDecode(call.arguments),
-            ),
-          ),
-      ];
-      return ModelResponse(
-        finishReason: FinishReason.stop,
-        message: Message(
-          role: Role.model,
-          content: parts,
-          metadata: {
-            'responseId': response.id,
-            'outputItems': response.output
-                .map((item) => item.toJson())
-                .toList(),
-          },
-        ),
-        raw: response.toJson(),
-      );
     },
   );
 }
+
+// Reuse the SDK's raw SSE decoder so invalid JSON cannot be silently dropped.
+class _StrictResponsesClient extends http.BaseClient {
+  _StrictResponsesClient(this.client);
+  final http.Client client;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await client.send(request);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return response;
+    }
+    Stream<List<int>> validate() async* {
+      await for (final event in const sdk.SseParser().parseRaw(
+        response.stream,
+      )) {
+        if (!event.isDone) {
+          final json = jsonDecode(event.data);
+          if (json is! Map<String, dynamic>) {
+            throw const FormatException('Expected an SSE JSON object');
+          }
+        }
+        yield utf8.encode(
+          '${event.event == null ? '' : 'event: ${event.event}\n'}'
+          '${event.data.split('\n').map((line) => 'data: $line').join('\n')}\n\n',
+        );
+      }
+    }
+
+    return http.StreamedResponse(
+      validate(),
+      response.statusCode,
+      headers: {...response.headers}..remove('content-length'),
+      request: response.request,
+      reasonPhrase: response.reasonPhrase,
+      isRedirect: response.isRedirect,
+    );
+  }
+
+  @override
+  void close() => client.close();
+}
+
+// Provider error events use codes rather than HTTP status codes.
+AppFailure _responseFailure(String code, String message) => AppFailure(
+  kind: switch (code) {
+    'server_error' => AppFailureKind.upstream,
+    'rate_limit_exceeded' => AppFailureKind.rateLimited,
+    _ => AppFailureKind.invalidResponse,
+  },
+  provider: 'LLM',
+  detail: '$code: $message',
+);
 
 // Keep localized application errors when Genkit returns an abnormal result.
 AppFailure llmFailure(Object? cause, String? status) {
@@ -283,7 +399,10 @@ AppFailure llmFailure(Object? cause, String? status) {
   }
   if (cause is AppFailure) return cause;
   if (cause is DioException) return AppFailure.fromDio(cause, provider: 'LLM');
-  if (cause is sdk.ConnectionException) {
+  if (cause is sdk.ConnectionException ||
+      cause is SocketException ||
+      cause is HttpException ||
+      cause is http.ClientException) {
     return const AppFailure(
       kind: AppFailureKind.networkUnavailable,
       provider: 'LLM',
@@ -306,5 +425,10 @@ AppFailure llmFailure(Object? cause, String? status) {
       _ => AppFailureKind.invalidResponse,
     },
   };
-  return AppFailure(kind: kind, provider: 'LLM', statusCode: code);
+  return AppFailure(
+    kind: kind,
+    provider: 'LLM',
+    statusCode: code,
+    detail: cause is FormatException || cause is TypeError ? '响应解析失败。' : null,
+  );
 }

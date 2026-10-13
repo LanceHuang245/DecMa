@@ -20,12 +20,14 @@ class AppFailure implements Exception {
     this.provider,
     this.statusCode,
     this.retryAfter,
+    this.detail,
   });
 
   final AppFailureKind kind;
   final String? provider;
   final int? statusCode;
   final Duration? retryAfter;
+  final String? detail;
 
   factory AppFailure.fromDio(DioException error, {required String provider}) {
     if (error.type == DioExceptionType.cancel) {
@@ -77,7 +79,7 @@ class AppFailure implements Exception {
 
   String get message {
     final prefix = provider == null ? '' : '$provider：';
-    return switch (kind) {
+    final summary = switch (kind) {
       AppFailureKind.cancelled => '$prefix请求已取消。',
       AppFailureKind.networkUnavailable => '$prefix网络不可用，请检查连接后重试。',
       AppFailureKind.timeout => '$prefix请求超时，请稍后重试。',
@@ -87,6 +89,7 @@ class AppFailure implements Exception {
       AppFailureKind.invalidResponse => '$prefix服务返回了无效响应。',
       AppFailureKind.configuration => '$prefix服务配置不完整。',
     };
+    return detail == null ? summary : '$summary $detail';
   }
 
   @override
