@@ -149,16 +149,10 @@ void defineResponsesModel(
     ),
     fn: (request, ctx) async {
       final messages = request.messages;
-      final previous = messages.lastIndexWhere(
-        (m) => m.role == Role.model && m.metadata?['responseId'] != null,
-      );
-      final replay = codex || previous < 0
-          ? messages
-          : messages.skip(previous + 1);
       final input = <Map<String, dynamic>>[];
 
-      // Codex must replay opaque reasoning and all prior output items intact.
-      for (final message in replay) {
+      // Replay complete history without depending on provider-side storage.
+      for (final message in messages) {
         if (message.role == Role.system) continue;
         if (message.role == Role.model &&
             message.metadata?['outputItems'] is List) {
@@ -199,10 +193,9 @@ void defineResponsesModel(
             .map((m) => m.text)
             .join('\n'),
         input: sdk.ResponseInput.fromOutputItems(input),
-        previousResponseId: !codex && previous >= 0
-            ? messages[previous].metadata!['responseId'] as String
-            : null,
-        store: codex ? false : null,
+        store: false,
+        // Encrypted reasoning allows OpenAI models to continue stateless turns.
+        include: const [sdk.Include.reasoningEncryptedContent],
         tools: [
           for (final tool in request.tools ?? <ToolDefinition>[])
             sdk.ResponseTool.function(
@@ -294,7 +287,6 @@ void defineResponsesModel(
               role: Role.model,
               content: parts,
               metadata: {
-                'responseId': response.id,
                 'outputItems': response.output
                     .map((item) => item.toJson())
                     .toList(),

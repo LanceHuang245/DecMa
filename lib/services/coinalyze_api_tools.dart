@@ -67,7 +67,8 @@ class CoinalyzeApiTools {
           'Get supported futures markets and their exact Coinalyze symbols. Use this to resolve a market before querying the data tools.',
       inputSchema: {
         'type': 'object',
-        'properties': {},
+        // Anthropic's SDK requires string-keyed maps even for no-argument tools.
+        'properties': <String, dynamic>{},
         'additionalProperties': false,
       },
     ),

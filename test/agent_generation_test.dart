@@ -63,7 +63,12 @@ void main() {
         );
         if (provider == LlmProvider.openAiCodex) {
           expect(request.headers['chatgpt-account-id'], 'account-1');
+        }
+        if (provider == LlmProvider.openAiResponses ||
+            provider == LlmProvider.openAiCodex) {
           expect(body['store'], false);
+          expect(body['include'], ['reasoning.encrypted_content']);
+          expect(body.containsKey('previous_response_id'), false);
         }
         return http.StreamedResponse(
           () async* {
@@ -129,16 +134,8 @@ void main() {
           );
           expect(bodies, hasLength(2));
           expect(bodies.last['tools'], isNotEmpty);
-          if (provider == LlmProvider.openAiResponses) {
-            expect(bodies.last['previous_response_id'], 'resp_1');
-            expect(bodies.last['input'], [
-              {
-                'type': 'function_call_output',
-                'call_id': 'call_1',
-                'output': '123',
-              },
-            ]);
-          } else if (provider == LlmProvider.openAiCodex) {
+          if (provider == LlmProvider.openAiResponses ||
+              provider == LlmProvider.openAiCodex) {
             expect(bodies.last.containsKey('previous_response_id'), false);
             expect(bodies.last['input'], contains(equals(reasoningOutput)));
             expect(bodies.last['input'], contains(equals(toolOutput)));

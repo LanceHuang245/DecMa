@@ -19,6 +19,87 @@ const _settings = LlmSettings(
 );
 
 void main() {
+  // Generic gateways use the same stateless replay as OpenAI and Codex.
+  test(
+    'Responses preserves every tool round without server-side state',
+    () async {
+      final bodies = <Map<String, dynamic>>[];
+      final plainReasoning = {
+        'type': 'reasoning',
+        'id': 'rs_2',
+        'summary': <Object>[],
+        'content': [
+          {'type': 'reasoning_text', 'text': 'Check the price again.'},
+        ],
+      };
+      final secondCall = {...toolOutput, 'id': 'fc_2', 'call_id': 'call_2'};
+      final client = MockClient.streaming((_, bytes) async {
+        bodies.add(
+          jsonDecode(utf8.decode(await bytes.toBytes()))
+              as Map<String, dynamic>,
+        );
+        final events = bodies.length <= 2
+            ? sse({
+                'type': 'response.completed',
+                'sequence_number': 1,
+                'response': responseFixture(
+                  bodies.length == 1
+                      ? [reasoningOutput, toolOutput]
+                      : [plainReasoning, secondCall],
+                ),
+              })
+            : firstTextEvent(LlmProvider.openAiResponses) +
+                  lastTextEvents(LlmProvider.openAiResponses);
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(events)),
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      });
+      try {
+        expect(
+          await generateReply(
+            settings: testSettings(LlmProvider.openAiResponses),
+            client: client,
+            input: 'Price?',
+            tools: [priceTool()],
+          ),
+          'Hello world',
+        );
+        expect(bodies, hasLength(3));
+        for (final body in bodies) {
+          expect(body['store'], false);
+          expect(body['include'], ['reasoning.encrypted_content']);
+          expect(body.containsKey('previous_response_id'), false);
+        }
+        final history = bodies.last['input'] as List;
+        expect(history.first['role'], 'user');
+        expect(
+          (history.first['content'] as List).first['text'],
+          contains('Price?'),
+        );
+        expect(history.skip(1).toList(), [
+          reasoningOutput,
+          toolOutput,
+          {
+            'type': 'function_call_output',
+            'call_id': 'call_1',
+            'output': '123',
+          },
+          plainReasoning,
+          secondCall,
+          {
+            'type': 'function_call_output',
+            'call_id': 'call_2',
+            'output': '123',
+          },
+        ]);
+      } finally {
+        client.close();
+      }
+    },
+  );
+
   // Some Codex gateways put items only in done events, not in the terminal body.
   test(
     'Codex replays ordered done items when completed output is omitted',
