@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  FLUTTER_VERSION: 3.47.5
+  FLUTTER_VERSION: 3.47.7
 
 jobs:
   build:
@@ -77,6 +77,9 @@ jobs:
 
       - name: Fetch dependencies
         run: flutter pub get
+
+      - name: Run tests
+        run: flutter test --concurrency=1
 
       - name: Build release bundle
         run: ${{ matrix.build_command }}
