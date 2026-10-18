@@ -46,7 +46,17 @@ Control official macro feeds and optional Finnhub and Marketaux news sources sep
 
 Select a token, click **分析当前合约**, and read the direction and immediate next action. There is no first-use risk setup. After analysis, reference prices are refreshed automatically. An unentered plan that already reached TP1 is marked as missed; a chase-limit violation waits for a new confirmation after a pullback.
 
-Machine-readable fields stay behind the chart and checks. Bybit reference data does not verify execution on other venues. `PlanConditions` serialization is generated with `dart run build_runner build`. Decision evidence is saved silently without adding a user workflow.
+Machine-readable fields stay behind the chart and checks. Bybit reference data does not verify execution on other venues. `PlanConditions` serialization is generated with `dart run build_runner build`. Only plans and assessment-state changes are saved, with at most 300 evidence records. Entry triggers use native 5m/15m/1h/4h candles; one-minute candles check whether the opportunity has already reached its target or invalidation price. Plans expire after three trigger periods or an earlier explicit expiry. Auxiliary allocation/precision warnings retain reference prices, and the chart displays up to three targets.
+
+## Code organization
+
+- `lib/data/services/`: external APIs, LLM/MCP adapters, and local storage.
+- `lib/data/repositories/`: news refresh/cache coordination and asset resolution.
+- `lib/domain/models/`: settings, market data, news, and trade-plan models.
+- `lib/domain/analysis/` and `lib/domain/news/`: deterministic calculations, validation, and event selection.
+- `lib/ui/`: Fluent UI features and their state owners. Market and news controllers own their polling and cancellation; the dashboard coordinates analysis.
+- `lib/providers/`: service construction and lifecycle management.
+- `test/`: tests grouped by layer/feature, with shared helpers in `test/fixtures/`.
 
 ## Requirements
 
