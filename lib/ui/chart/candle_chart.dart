@@ -1,7 +1,8 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
 
-import '../../models/trading_models.dart';
+import '../../domain/models/candle.dart';
+import '../../domain/models/trade_plan.dart';
 import '../../utils/display_formatters.dart';
 import 'candle_chart_frame.dart';
 import 'candle_chart_painter.dart';
@@ -265,7 +266,7 @@ class _PlanCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text('开仓区：${plan.isSetup || showWaitZone ? _entryRange(plan) : '-'}', style: const TextStyle(fontSize: 12)),
                   Text('止损：${plan.isSetup ? _price(plan.stopLoss) : '-'}', style: const TextStyle(fontSize: 12)),
-                  Text('止盈：${plan.isSetup ? (plan.takeProfits.isEmpty ? '未提供' : plan.takeProfits.map(_price).join(' / ')) : '-'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                  Text('止盈：${plan.isSetup ? (plan.takeProfits.isEmpty ? '未提供' : plan.takeProfits.take(3).map(_price).join(' / ')) : '-'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
                   const SizedBox(height: 4),
                   Text('点击查看完整 JSON 解析', style: TextStyle(fontSize: 11, color: FluentTheme.of(context).resources.textFillColorSecondary)),
                 ],

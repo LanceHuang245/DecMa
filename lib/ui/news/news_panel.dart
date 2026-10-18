@@ -1,7 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../models/news_event.dart';
-import '../../services/news/news_service.dart';
+import '../../domain/models/news_event.dart';
+import '../../data/repositories/news_repository.dart';
 import '../../utils/display_formatters.dart';
 import '../../utils/symbol_utils.dart';
 import 'news_source_status.dart';

@@ -1,6 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../models/trading_models.dart';
+import '../../domain/models/candle.dart';
+import '../../domain/models/trade_plan.dart';
 import '../chart/candle_chart.dart';
 import '../chart/candle_chart_colors.dart';
 

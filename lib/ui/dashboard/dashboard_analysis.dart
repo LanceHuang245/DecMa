@@ -23,7 +23,7 @@ extension DashboardAnalysis on DashboardController {
     _plan = null;
     _chartPlan = null;
     _showWaitZone = false;
-    var symbol = _activeSymbol;
+    var symbol = market.activeSymbol;
     MarketSnapshot? snapshot;
     await _agentUi.run((token, onText, onActivity) async {
       var resultAnnounced = false;
@@ -31,12 +31,12 @@ extension DashboardAnalysis on DashboardController {
       final unlink = token.onCancel(() => cancel.cancel());
       try {
         symbol = await cancellable(
-          _resolveAnalysisSymbol(prompt, cancel),
+          market.resolveSymbol(prompt, cancel),
           token.whenCancelled,
         );
         token.throwIfCancelled();
         final candles = await cancellable(
-          _prepareAnalysisChart(symbol, cancel),
+          market.prepare(symbol, cancel),
           token.whenCancelled,
         );
         token.throwIfCancelled();
@@ -51,16 +51,16 @@ extension DashboardAnalysis on DashboardController {
         final features = _featureEngine.calculate(snapshot!);
         onActivity('• Deterministic Engine - 指标计算完成');
         await cancellable(
-          _refreshTokenNews(symbol, requestCancel: cancel),
+          newsFeed.refreshToken(symbol, requestCancel: cancel),
           token.whenCancelled,
         );
         token.throwIfCancelled();
         final events = await cancellable(
-          _eventSnapshot(symbol, features),
+          newsFeed.snapshot(symbol, abnormal: features.hasAbnormalShortTerm),
           token.whenCancelled,
         );
         token.throwIfCancelled();
-        return await _agent.run(
+        return await agent.run(
           prompt: prompt,
           symbol: symbol,
           candles: candles,
@@ -104,33 +104,14 @@ extension DashboardAnalysis on DashboardController {
     return snapshot;
   }
 
-  Future<EventSnapshot> _eventSnapshot(
-    String symbol,
-    MarketFeatures features,
-  ) async {
-    final snapshot = _eventSelector.select(events: _newsEvents, symbol: symbol);
-    final fallback =
-        snapshot.assetSpecificEvents.isEmpty || features.hasAbnormalShortTerm;
-    return EventSnapshot(
-      snapshotAsOf: snapshot.snapshotAsOf,
-      upcomingCriticalEvents: snapshot.upcomingCriticalEvents,
-      breakingEvents: snapshot.breakingEvents,
-      assetSpecificEvents: snapshot.assetSpecificEvents,
-      cryptoMarketEvents: snapshot.cryptoMarketEvents,
-      macroEvents: snapshot.macroEvents,
-      tokenNewsSearchQueries: fallback
-          ? await _newsService.tokenNewsSearchQueries(symbol)
-          : const [],
-    );
-  }
-
   // Never validate partial streamed JSON or draw a plan for a different contract.
   Future<String> _applyAnalysisResult(
     AgentResult answer,
     String symbol,
     MarketSnapshot? snapshot,
   ) async {
-    final plan = TradePlan.fromResponse(answer.text);
+    final parsed = TradePlan.parseResponse(answer.text);
+    final plan = parsed.plan;
     final notices = [...answer.warnings];
     final validation = plan == null
         ? null
@@ -139,7 +120,7 @@ extension DashboardAnalysis on DashboardController {
             tickSize: snapshot?.instrument.tickSize,
           );
     final matchesResponse = plan?.symbol == null || plan!.symbol == symbol;
-    final matchesChart = _activeSymbol == symbol;
+    final matchesChart = market.activeSymbol == symbol;
     if (plan == null) {
       notices.add('暂未获得完整价格计划，请以文字说明为准。');
     } else {
@@ -150,7 +131,7 @@ extension DashboardAnalysis on DashboardController {
     }
     if (!matchesResponse) notices.add('分析对象与 $symbol 不一致，请重新分析。');
     if (!matchesChart) {
-      notices.add('当前图表已切换为 $_activeSymbol，未添加 $symbol 的图表标记。');
+      notices.add('当前图表已切换为 ${market.activeSymbol}，未添加 $symbol 的图表标记。');
     }
     final canDisplay =
         plan != null && validation!.isValid && matchesResponse && matchesChart;
@@ -161,7 +142,7 @@ extension DashboardAnalysis on DashboardController {
       await trading.accept(plan, snapshot);
       if (_isDisposed) return answer.text;
     }
-    final visibleText = TradePlan.displayText(answer.text);
+    final visibleText = parsed.text;
     return notices.isEmpty
         ? visibleText
         : '$visibleText\n\n> 数据源提示：${notices.join(' | ')}';
@@ -170,7 +151,7 @@ extension DashboardAnalysis on DashboardController {
   // One click asks the trading question; no account setup is needed.
   void _quickAnalyze() {
     promptController.text =
-        '分析 $_activeSymbol 现在更适合做多、做空还是等待。'
+        '分析 ${market.activeSymbol} 现在更适合做多、做空还是等待。'
         '请结合当前价格，直接说明现在能否入场；如果机会已经走完，说明应该等待什么条件。';
     _notify();
     unawaited(runAgent());

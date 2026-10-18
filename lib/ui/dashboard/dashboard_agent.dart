@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:genkit/genkit.dart';
 
-import '../../services/agent_service.dart';
+import '../../data/services/agent_service.dart';
 import '../../utils/network.dart';
 
 // Keep presentation messages independent of chart and exchange state.

@@ -1,11 +1,11 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../models/trading_models.dart';
-import '../services/agent_service.dart';
-import '../services/bybit_service.dart';
-import '../services/llm_settings_store.dart';
-import '../services/news/news_service.dart';
-import '../services/secure_key_store.dart';
+import '../domain/models/app_settings.dart';
+import '../data/services/agent_service.dart';
+import '../data/services/bybit_service.dart';
+import '../data/services/storage/llm_settings_store.dart';
+import '../data/repositories/news_repository.dart';
+import '../data/services/storage/secure_key_store.dart';
 import '../ui/dashboard/dashboard_controller.dart';
 
 part 'app_providers.g.dart';
@@ -53,8 +53,8 @@ AgentService agentService(Ref ref) {
 }
 
 @Riverpod(keepAlive: true)
-NewsService newsService(Ref ref) {
-  final service = NewsService();
+NewsRepository newsRepository(Ref ref) {
+  final service = NewsRepository();
   ref.onDispose(service.dispose);
   return service;
 }
@@ -73,9 +73,9 @@ DashboardController dashboardController(Ref ref) {
     nodeAvailable: initial.nodeAvailable,
     bybit: ref.watch(bybitServiceProvider),
     agent: ref.watch(agentServiceProvider),
-    newsService: ref.watch(newsServiceProvider),
+    newsRepository: ref.watch(newsRepositoryProvider),
     keyStore: ref.watch(secureKeyStoreProvider),
-    llmSettingsStore: ref.watch(llmSettingsStoreProvider),
+    settingsStore: ref.watch(llmSettingsStoreProvider),
     initialLlmConnections: initial.llmConnections,
     initialMcp: initial.mcp,
     initialApi: initial.api,

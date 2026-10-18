@@ -1,8 +1,8 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../models/trading_models.dart';
-import '../../services/openai_codex_oauth.dart';
-import '../../services/secure_key_store.dart';
+import '../../domain/models/app_settings.dart';
+import '../../data/services/openai_codex_oauth.dart';
+import '../../data/services/storage/secure_key_store.dart';
 import '../../utils/display_formatters.dart';
 import 'codex_settings.dart';
 

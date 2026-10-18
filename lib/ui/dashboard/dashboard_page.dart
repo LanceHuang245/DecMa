@@ -2,7 +2,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_providers.dart';
-import '../../services/node_runtime_service.dart';
+import '../../data/services/node_runtime_service.dart';
 import '../../utils/display_formatters.dart';
 import '../chart/candle_chart_colors.dart';
 import '../core/window_title_bar.dart';
@@ -107,7 +107,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   @override
   Widget build(BuildContext context) {
     // Keep the page-scoped controller alive only while this page watches it.
-    ref.watch(dashboardControllerProvider);
     ref.watch(dashboardControllerProvider);
     return AnimatedBuilder(
       animation: _controller,

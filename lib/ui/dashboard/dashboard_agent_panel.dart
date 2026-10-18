@@ -1,7 +1,8 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../models/trading_models.dart';
-import '../../services/analysis/trading_session.dart';
+import '../../domain/models/app_settings.dart';
+import '../../domain/models/trade_plan.dart';
+import 'trading_session.dart';
 import 'dashboard_messages.dart';
 import 'trade_status_card.dart';
 import 'dashboard_controller.dart';

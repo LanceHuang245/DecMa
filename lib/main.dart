@@ -4,8 +4,8 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app_constants.dart';
 import 'providers/app_providers.dart';
-import 'services/llm_settings_store.dart';
-import 'services/node_runtime_service.dart';
+import 'data/services/storage/llm_settings_store.dart';
+import 'data/services/node_runtime_service.dart';
 import 'ui/dashboard/dashboard_page.dart';
 
 Future<void> main() async {

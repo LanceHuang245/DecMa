@@ -1,4 +1,4 @@
-import '../../models/trading_models.dart';
+import '../../domain/models/candle.dart';
 
 /// Owns a chronological, validated candle sequence and applies localized updates.
 class CandleSeries {

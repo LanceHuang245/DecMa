@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../services/openai_codex_oauth.dart';
+import '../../data/services/openai_codex_oauth.dart';
 import '../../utils/network.dart';
 
 // Own OAuth/catalog requests separately from the connection being edited.

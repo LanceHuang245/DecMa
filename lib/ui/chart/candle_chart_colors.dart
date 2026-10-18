@@ -1,6 +1,6 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../models/trading_models.dart';
+import '../../domain/models/candle.dart';
 
 /// Shared colors for the price direction shown by the chart and dashboard.
 const candleUpColor = Color(0xFF27A376);

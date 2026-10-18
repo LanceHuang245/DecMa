@@ -1,7 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../services/analysis/trading_session.dart';
-import '../../services/analysis/entry_assessment.dart';
+import 'trading_session.dart';
+import '../../domain/analysis/entry_assessment.dart';
 import '../../utils/display_formatters.dart';
 
 // Show the answer and next action, without asking users to understand risk settings.

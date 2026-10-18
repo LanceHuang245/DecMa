@@ -2,7 +2,8 @@ import 'dart:math' as math;
 
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../models/trading_models.dart';
+import '../../domain/models/candle.dart';
+import '../../domain/models/trade_plan.dart';
 import '../../utils/display_formatters.dart';
 import 'candle_chart_colors.dart';
 import 'candle_chart_frame.dart';
@@ -176,7 +177,7 @@ class PlanCandlePainter extends CustomPainter {
     if (plan.stopLoss case final stop?) {
       _level(canvas, transform, stop, candleDownColor, 'SL ${_price(stop)}');
     }
-    for (var index = 0; index < plan.takeProfits.length; index++) {
+    for (var index = 0; index < math.min(3, plan.targets.length); index++) {
       final value = plan.takeProfits[index];
       _level(canvas, transform, value, candleUpColor, 'TP${index + 1} ${_price(value)}');
     }

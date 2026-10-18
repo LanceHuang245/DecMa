@@ -143,46 +143,46 @@ final class AgentServiceProvider
 
 String _$agentServiceHash() => r'898e91f042a409d5e891430144a4fc8707357538';
 
-@ProviderFor(newsService)
-final newsServiceProvider = NewsServiceProvider._();
+@ProviderFor(newsRepository)
+final newsRepositoryProvider = NewsRepositoryProvider._();
 
-final class NewsServiceProvider
-    extends $FunctionalProvider<NewsService, NewsService, NewsService>
-    with $Provider<NewsService> {
-  NewsServiceProvider._()
+final class NewsRepositoryProvider
+    extends $FunctionalProvider<NewsRepository, NewsRepository, NewsRepository>
+    with $Provider<NewsRepository> {
+  NewsRepositoryProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
-        name: r'newsServiceProvider',
+        name: r'newsRepositoryProvider',
         isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
 
   @override
-  String debugGetCreateSourceHash() => _$newsServiceHash();
+  String debugGetCreateSourceHash() => _$newsRepositoryHash();
 
   @$internal
   @override
-  $ProviderElement<NewsService> $createElement($ProviderPointer pointer) =>
+  $ProviderElement<NewsRepository> $createElement($ProviderPointer pointer) =>
       $ProviderElement(pointer);
 
   @override
-  NewsService create(Ref ref) {
-    return newsService(ref);
+  NewsRepository create(Ref ref) {
+    return newsRepository(ref);
   }
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(NewsService value) {
+  Override overrideWithValue(NewsRepository value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<NewsService>(value),
+      providerOverride: $SyncValueProvider<NewsRepository>(value),
     );
   }
 }
 
-String _$newsServiceHash() => r'1fc570d9a0182ee0000746b100fc5e8fbdfb8a5c';
+String _$newsRepositoryHash() => r'47f5cee62f7c07ce7711668852413f234b6e9c78';
 
 @ProviderFor(secureKeyStore)
 final secureKeyStoreProvider = SecureKeyStoreProvider._();
@@ -322,4 +322,4 @@ final class DashboardControllerProvider
 }
 
 String _$dashboardControllerHash() =>
-    r'66f7f449c55cbf9cce0209f81a89fafed9dafc69';
+    r'32873c49a42a63e81f5da8d71512d7198ade6c9e';

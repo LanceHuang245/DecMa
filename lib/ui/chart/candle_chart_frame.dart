@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
-import '../../models/trading_models.dart';
+import '../../domain/models/candle.dart';
+import '../../domain/models/trade_plan.dart';
 import 'candle_chart_viewport.dart';
 
 class DisplayCandle {
@@ -63,7 +64,7 @@ class ChartFrame {
     include(plan?.entryHigh);
     if (plan?.isSetup == true) {
       include(plan?.stopLoss);
-      for (final target in plan!.takeProfits) {
+      for (final target in plan!.takeProfits.take(3)) {
         include(target);
       }
     }

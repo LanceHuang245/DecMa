@@ -1,7 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../models/news_event.dart';
-import '../../services/news/news_service.dart';
+import '../../domain/models/news_event.dart';
+import '../../data/repositories/news_repository.dart';
 import '../../utils/display_formatters.dart';
 
 class NewsSourceStatus extends StatelessWidget {

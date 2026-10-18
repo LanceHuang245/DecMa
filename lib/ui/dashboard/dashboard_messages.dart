@@ -1,7 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
-import '../../models/trading_models.dart';
+import '../../domain/models/trade_plan.dart';
 import '../../utils/display_formatters.dart';
 import 'dashboard_controller.dart';
 
