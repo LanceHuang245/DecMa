@@ -51,7 +51,6 @@ class ToolHub extends McpHub {
     McpSettings settings, {
     String? nansenApiKey,
     CancellationToken? cancel,
-    bool eager = false,
   }) async => tools;
 }
 
@@ -103,7 +102,6 @@ Future<String> generateReply({
         useOpenWebSearch: false,
       ),
       api: const ApiSettings(useCoinalyze: false),
-      mode: AgentMode.conversation,
       cancel: cancel,
       onText: onText,
       onActivity: onActivity,

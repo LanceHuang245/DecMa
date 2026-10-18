@@ -28,12 +28,10 @@ class AgentConversationController extends ChangeNotifier {
   final prompt = TextEditingController();
   final scroll = ScrollController();
   final messages = <DashboardMessage>[];
-  AgentMode mode = AgentMode.analysis;
   bool loading = false;
   bool showScrollToBottom = false;
   String? lastAnalysis;
   DateTime? lastAnalysisAt;
-  String? conversationContext;
   CancellationController? _request;
   bool _atBottom = true;
   bool _scrollScheduled = false;
@@ -47,12 +45,11 @@ class AgentConversationController extends ChangeNotifier {
       void Function(String),
     )
     generate, {
-    String Function(AgentResult)? finish,
+    FutureOr<String> Function(AgentResult)? finish,
   }) async {
     if (loading || _disposed) return;
     final request = _request = CancellationController();
     final input = prompt.text.trim();
-    final selectedMode = mode;
     int? draft;
     bool current() => !_disposed && identical(_request, request);
     void publish(String text) {
@@ -70,13 +67,7 @@ class AgentConversationController extends ChangeNotifier {
 
     loading = true;
     messages.add(DashboardMessage.user(input));
-    messages.add(
-      DashboardMessage.activity(
-        selectedMode == AgentMode.analysis
-            ? '• Thinking - 分析中…'
-            : '• Thinking - 回答中…',
-      ),
-    );
+    messages.add(const DashboardMessage.activity('• Thinking - 分析中…'));
     prompt.clear();
     _notify();
     _queueScroll();
@@ -86,18 +77,13 @@ class AgentConversationController extends ChangeNotifier {
       });
       request.token.throwIfCancelled();
       if (!current()) return;
-      final text = finish?.call(answer) ?? answer.text;
+      final text = await (finish?.call(answer) ?? answer.text);
+      request.token.throwIfCancelled();
+      if (!current()) return;
       publish(text);
-      if (selectedMode == AgentMode.analysis) {
-        lastAnalysis =
-            'User analysis request: $input\n\nAnalysis response:\n$text';
-        lastAnalysisAt = DateTime.now();
-      } else {
-        final turn = 'User: $input\nAgent: $text';
-        conversationContext = conversationContext == null
-            ? turn
-            : '$conversationContext\n\n$turn';
-      }
+      lastAnalysis =
+          'User analysis request: $input\n\nAnalysis response:\n$text';
+      lastAnalysisAt = DateTime.now();
     } catch (error) {
       if (!current()) return;
       final stopped = request.token.isCancelled || isRequestCancelled(error);
@@ -123,14 +109,8 @@ class AgentConversationController extends ChangeNotifier {
     }
   }
 
-  // Preserve the existing mode, clear, stop and activity controls.
+  // Preserve the existing clear, stop and activity controls.
   void stop() => _request?.cancel('user stopped');
-  void selectMode(AgentMode value) {
-    if (!loading) {
-      mode = value;
-      _notify();
-    }
-  }
 
   void addMessage(DashboardMessage message) {
     if (_disposed) return;
@@ -146,7 +126,6 @@ class AgentConversationController extends ChangeNotifier {
     messages.clear();
     lastAnalysis = null;
     lastAnalysisAt = null;
-    conversationContext = null;
     prompt.clear();
     _atBottom = true;
     showScrollToBottom = false;

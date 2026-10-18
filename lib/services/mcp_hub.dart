@@ -90,12 +90,11 @@ class McpHub {
   Set<String> get availableServers =>
       _tools.values.map((tool) => tool['server'] as String).toSet();
 
-  // Analysis discovers eagerly; conversation keeps remote connections lazy.
+  // Discover enabled sources before analysis so availability is accurate.
   Future<List<Tool>> prepare(
     McpSettings settings, {
     String? nansenApiKey,
     CancellationToken? cancel,
-    bool eager = false,
   }) async {
     await close();
     _closing = null;
@@ -106,10 +105,8 @@ class McpHub {
     if (settings.useNansen && (nansenApiKey?.isEmpty ?? true)) {
       warnings.add('Nansen MCP: API Key 未配置。');
     }
-    if (eager) {
-      await _ensureConnected(cancel);
-      if (_tools.isEmpty) return const [];
-    }
+    await _ensureConnected(cancel);
+    if (_tools.isEmpty) return const [];
     return [
       _bridgeTool(
         'decma_discover_mcp_tools',

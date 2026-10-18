@@ -21,6 +21,7 @@ class StreamingAgent extends AgentService {
   final tokens = <CancellationToken?>[];
   final results = <Completer<AgentResult>>[];
   final previousAnalyses = <String?>[];
+  final snapshots = <MarketSnapshot?>[];
   @override
   Future<AgentResult> run({
     required String prompt,
@@ -29,13 +30,11 @@ class StreamingAgent extends AgentService {
     required LlmSettings llm,
     required McpSettings mcp,
     required ApiSettings api,
-    required AgentMode mode,
     MarketSnapshot? marketSnapshot,
     MarketFeatures? marketFeatures,
     EventSnapshot? eventSnapshot,
     String? previousAnalysisContext,
     DateTime? previousAnalysisAt,
-    String? previousConversationContext,
     void Function(String)? onActivity,
     void Function(String)? onText,
     CancellationToken? cancel,
@@ -44,6 +43,7 @@ class StreamingAgent extends AgentService {
     activities.add(onActivity!);
     tokens.add(cancel);
     previousAnalyses.add(previousAnalysisContext);
+    snapshots.add(marketSnapshot);
     final result = Completer<AgentResult>();
     results.add(result);
     if (!started.isCompleted) started.complete();
@@ -67,7 +67,8 @@ Future<DashboardController> testController(
   BybitService? bybit,
 }) async {
   addTearDown(agent.dispose);
-  if (bybit != null) addTearDown(bybit.dispose);
+  final exchange = bybit ?? AnalysisBybit();
+  addTearDown(exchange.dispose);
   final connections = LlmConnectionSettings(
     connections: const [
       LlmSettings(
@@ -87,12 +88,11 @@ Future<DashboardController> testController(
   final controller = DashboardController(
     nodeAvailable: false,
     agent: agent,
-    bybit: bybit,
+    bybit: exchange,
     keyStore: _Keys(),
     initialLlmConnections: connections,
   );
   await controller.saveSettings(connections, mcp, api, const ApiKeyUpdates());
-  controller.selectAgentMode(AgentMode.conversation);
   return controller;
 }
 

@@ -85,7 +85,7 @@ void main() {
         await request.response.close();
       });
       try {
-        await hub.prepare(_nansen, nansenApiKey: 'key', eager: true);
+        await hub.prepare(_nansen, nansenApiKey: 'key');
         expect(hub.warnings, isNotEmpty);
         expect(hub.availableServers, isEmpty);
         expect(
@@ -220,7 +220,7 @@ void main() {
       await request.response.close();
     });
     try {
-      await hub.prepare(_nansen, nansenApiKey: 'test-key', eager: true);
+      await hub.prepare(_nansen, nansenApiKey: 'test-key');
       final discovery = await hub.call('decma_discover_mcp_tools', {
         'query': '',
       });
@@ -264,12 +264,7 @@ void main() {
       final cancel = CancellationController();
       try {
         final assertion = expectLater(
-          hub.prepare(
-            _nansen,
-            nansenApiKey: 'key',
-            cancel: cancel.token,
-            eager: true,
-          ),
+          hub.prepare(_nansen, nansenApiKey: 'key', cancel: cancel.token),
           throwsA(isA<CancelledException>()),
         );
         await started.future;

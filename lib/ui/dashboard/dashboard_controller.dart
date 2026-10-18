@@ -5,10 +5,10 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/market_snapshot.dart';
 import '../../models/news_event.dart';
-import '../../models/analysis_risk_profile.dart';
 import '../../models/trading_models.dart';
 import '../../services/agent_service.dart';
 import '../../services/analysis/feature_engine.dart';
+import '../../services/analysis/trading_session.dart';
 import '../../services/analysis/market_snapshot_service.dart';
 import '../../services/analysis/trade_plan_validator.dart';
 import '../../services/bybit_service.dart';
@@ -26,6 +26,7 @@ export 'dashboard_agent.dart' show DashboardMessage, DashboardMessageKind;
 part 'dashboard_analysis.dart';
 part 'dashboard_chart.dart';
 part 'dashboard_news.dart';
+part 'dashboard_settings.dart';
 
 // Own dashboard state and resource lifetime independently of the page layout.
 class DashboardController extends ChangeNotifier {
@@ -76,7 +77,10 @@ class DashboardController extends ChangeNotifier {
       );
     }
     _agentUi.addListener(_notify);
+    trading.addListener(_notify);
   }
+
+  late final trading = TradingSession(_bybit);
 
   // Store existing services, UI state, and independent request cancellation.
   final BybitService _bybit;
@@ -153,7 +157,8 @@ class DashboardController extends ChangeNotifier {
   Map<String, NewsProviderStatus> get newsProviderStatuses =>
       _newsService.statuses;
   TradePlan? get plan => _plan;
-  TradePlan? get chartPlan => _chartPlan;
+  TradePlan? get chartPlan =>
+      trading.assessment?.terminal == true ? null : _chartPlan;
   bool get showWaitZone => _showWaitZone;
   List<DashboardMessage> get conversation => _agentUi.messages;
   String? get chartError => _chartError;
@@ -164,7 +169,6 @@ class DashboardController extends ChangeNotifier {
   bool get loadingAgent => _agentUi.loading;
   bool get loadingMore => _loadingOlder;
   bool get hasMoreHistory => _candleSeries.isNotEmpty && _hasMoreHistory;
-  AgentMode get agentMode => _agentUi.mode;
   bool get showScrollToBottom => _agentUi.showScrollToBottom;
   ApiKeyStatus get apiKeyStatus => _apiKeyStatus;
   LlmSettings get llm => _llm;
@@ -175,8 +179,14 @@ class DashboardController extends ChangeNotifier {
   bool get refreshingNews => _newsRefreshesInFlight > 0;
 
   // Delegate conversation controls to the object that owns their state.
-  void selectAgentMode(AgentMode mode) => _agentUi.selectMode(mode);
-  void stopAgent() => _agentUi.stop();
+  void stopAgent() {
+    _agentUi.stop();
+    trading.clear();
+    _plan = null;
+    _chartPlan = null;
+    _notify();
+  }
+
   void scrollConversationToBottom() => _agentUi.scrollToBottom();
   // Preserve instance-method APIs while private parts organize chart preparation.
   Future<void> runAgent() => _runAgent();
@@ -184,19 +194,7 @@ class DashboardController extends ChangeNotifier {
   void retryChart() => _retryChart();
   void selectSymbol(String symbol) => _selectSymbol(symbol);
   void selectInterval(String interval) => _selectInterval(interval);
-  void quickAnalyze({
-    required String analysisPlan,
-    required AnalysisRiskProfile riskProfile,
-    required String currentPosition,
-    required String currentPositionSize,
-    required String currentPositionEntryPrice,
-  }) => _quickAnalyze(
-    analysisPlan: analysisPlan,
-    riskProfile: riskProfile,
-    currentPosition: currentPosition,
-    currentPositionSize: currentPositionSize,
-    currentPositionEntryPrice: currentPositionEntryPrice,
-  );
+  void quickAnalyze() => _quickAnalyze();
   void _recordActivity(String activity) => _agentUi.recordActivity(activity);
   void clearAgentContext() {
     if (loadingAgent) return;
@@ -205,6 +203,7 @@ class DashboardController extends ChangeNotifier {
     _showWaitZone = false;
     _chartVersion++;
     _agentUi.clear();
+    trading.clear();
   }
 
   // Start independent background feeds without tying them to an Agent run.
@@ -216,58 +215,15 @@ class DashboardController extends ChangeNotifier {
     _startNewsRefresh();
   }
 
-  // Persist existing connection settings without changing credential storage.
   Future<void> saveSettings(
-    LlmConnectionSettings llmConnections,
+    LlmConnectionSettings connections,
     McpSettings mcp,
     ApiSettings api,
-    ApiKeyUpdates apiKeys,
-  ) async {
-    await Future.wait([
-      _llmSettingsStore.saveConnections(llmConnections),
-      _llmSettingsStore.saveMcp(mcp),
-      _llmSettingsStore.saveApi(api),
-    ]);
-    await _keyStore.update(apiKeys);
-    final status = await _keyStore.status(
-      llmConnectionIds: llmConnections.connections.map((item) => item.id),
-    );
-    if (_isDisposed) return;
-    _llmConnections = llmConnections;
-    _llm = llmConnections.active;
-    _mcp = mcp;
-    _api = api;
-    _apiKeyStatus = status;
-    _notify();
-  }
+    ApiKeyUpdates keys,
+  ) => _saveSettings(connections, mcp, api, keys);
 
-  Future<void> saveNewsSettings(
-    NewsSettings settings,
-    ApiKeyUpdates apiKeys,
-  ) async {
-    await Future.wait([
-      _llmSettingsStore.saveNews(settings),
-      _keyStore.update(apiKeys),
-    ]);
-    final status = await _keyStore.status(
-      llmConnectionIds: _llmConnections.connections.map((item) => item.id),
-    );
-    if (_isDisposed) return;
-    _news = settings;
-    _apiKeyStatus = status;
-    _notify();
-    unawaited(_refreshNews());
-    unawaited(_refreshTokenNews(_activeSymbol));
-  }
-
-  Future<void> _loadApiKeyStatus() async {
-    final status = await _keyStore.status(
-      llmConnectionIds: _llmConnections.connections.map((item) => item.id),
-    );
-    if (_isDisposed) return;
-    _apiKeyStatus = status;
-    _notify();
-  }
+  Future<void> saveNewsSettings(NewsSettings settings, ApiKeyUpdates keys) =>
+      _saveNewsSettings(settings, keys);
 
   // Never notify listeners or apply cancelled requests after page disposal.
   void _notify() {
@@ -288,6 +244,8 @@ class DashboardController extends ChangeNotifier {
     _isDisposed = true;
     _agentUi.removeListener(_notify);
     _agentUi.dispose();
+    trading.removeListener(_notify);
+    trading.dispose();
     _chartRefreshTimer?.cancel();
     _newsRefreshTimer?.cancel();
     _cancelRequest(_symbolListCancelToken);

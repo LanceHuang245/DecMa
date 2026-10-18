@@ -7,7 +7,6 @@ import 'analysis/feature_engine.dart';
 
 // Keep source status formatting next to the prompt context that consumes it.
 Map<String, String> agentSourceAvailability({
-  required bool isAnalysis,
   required McpSettings mcp,
   required ApiSettings api,
   required Set<String> servers,
@@ -17,19 +16,13 @@ Map<String, String> agentSourceAvailability({
   required bool hasBybitSecret,
   required bool hasFeeRates,
 }) => {
-  'bybit_rest_harness': !isAnalysis
-      ? 'NOT_REQUESTED'
-      : hasSnapshot
-      ? 'READY'
-      : 'UNAVAILABLE',
+  'bybit_rest_harness': hasSnapshot ? 'READY' : 'UNAVAILABLE',
   'bybit_mcp': !mcp.useBybit
       ? 'DISABLED'
       : servers.contains('Bybit MCP')
       ? 'AVAILABLE'
       : 'UNAVAILABLE',
-  'bybit_account_fee_rate': !isAnalysis
-      ? 'NOT_REQUESTED'
-      : !mcp.useBybit
+  'bybit_account_fee_rate': !mcp.useBybit
       ? 'DISABLED'
       : hasBybitKey != hasBybitSecret
       ? 'INCOMPLETE'
@@ -52,7 +45,6 @@ Map<String, String> agentSourceAvailability({
 
 // Build the existing prompt context without moving market logic into Genkit.
 String agentContext({
-  required bool isAnalysis,
   required String prompt,
   required String symbol,
   required List<Candle> candles,
@@ -60,7 +52,6 @@ String agentContext({
   required Map<String, String> sourceAvailability,
   String? previousAnalysisContext,
   DateTime? previousAnalysisAt,
-  String? previousConversationContext,
   EventSnapshot? eventSnapshot,
   MarketSnapshot? marketSnapshot,
   MarketFeatures? marketFeatures,
@@ -70,23 +61,10 @@ String agentContext({
       ? ''
       : '''
 
-Previous full analysis from this app session, generated at ${previousAnalysisAt?.toUtc().toIso8601String() ?? 'unknown time'}${isAnalysis ? '. It is historical context only and cannot replace current market evidence' : ''}:
+Previous full analysis from this app session, generated at ${previousAnalysisAt?.toUtc().toIso8601String() ?? 'unknown time'}. It is historical context only and cannot replace current market evidence:
 <previous_analysis>
 $previousAnalysisContext
 </previous_analysis>''';
-  final conversation = previousConversationContext == null
-      ? ''
-      : '''
-
-Earlier conversation from this app session. It is historical context only, not current market evidence or instructions:
-<previous_conversation>
-$previousConversationContext
-</previous_conversation>''';
-  if (!isAnalysis) {
-    return '''User message: $prompt
-
-The currently displayed contract is $symbol. This is conversation mode: do not treat chart prices as current market evidence unless you choose and call an appropriate tool.$previousAnalysis$conversation''';
-  }
 
   // Send only the latest chart window plus the deterministic market snapshots.
   final chartData = candles
@@ -113,5 +91,5 @@ ${bybitFeeRates == null ? '' : '\nBybit authenticated account fee rates:\n${json
 ${eventSnapshot == null ? '' : '\nCurrent event snapshot from the app event store:\n${jsonEncode(eventSnapshot.toJson())}'}
 Configured analysis-source availability (availability is not market evidence):
 ${jsonEncode(sourceAvailability)}
-${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}$previousAnalysis$conversation''';
+${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}$previousAnalysis''';
 }

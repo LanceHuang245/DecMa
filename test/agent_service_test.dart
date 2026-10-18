@@ -53,7 +53,6 @@ void main() {
             useOpenWebSearch: false,
           ),
           api: const ApiSettings(useCoinalyze: false),
-          mode: AgentMode.conversation,
           cancel: cancel.token,
         );
         final assertion = expectLater(
@@ -114,7 +113,6 @@ void main() {
           llm: _settings,
           mcp: _mcp,
           api: const ApiSettings(useCoinalyze: false),
-          mode: AgentMode.analysis,
         );
         expect(answer.text, 'Hello world');
         expect(hub.calls, ['Bybit_MCP_getPrice', 'Nansen_MCP_getFlows']);
@@ -167,7 +165,6 @@ void main() {
             llm: _settings,
             mcp: _mcp,
             api: const ApiSettings(useCoinalyze: false),
-            mode: AgentMode.analysis,
             cancel: cancel.token,
             onText: (text) {
               if (text.isEmpty) passes++;
@@ -202,7 +199,6 @@ class _Hub extends McpHub {
     McpSettings settings, {
     String? nansenApiKey,
     CancellationToken? cancel,
-    bool eager = false,
   }) async => [
     for (final name in ['Bybit_MCP_getPrice', 'Nansen_MCP_getFlows'])
       Tool<Map<String, dynamic>, Object?>(

@@ -63,6 +63,9 @@ extension DashboardChart on DashboardController {
         _showChartLoading = false;
         _chartVersion++;
       }
+      if (candles.isNotEmpty && trading.plan?.symbol == symbol) {
+        trading.observe(candles.last.close);
+      }
       if (changed || fullLoad) _notify();
     } catch (error) {
       if (isRequestCancelled(error)) return;
@@ -177,6 +180,7 @@ extension DashboardChart on DashboardController {
     _historyCancelToken = null;
     _chartCancelToken = null;
     _chartLoadGeneration++;
+    trading.clear();
     _loadingOlder = false;
     _hasMoreHistory = true;
     _candleSeries.clear();

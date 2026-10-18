@@ -29,6 +29,24 @@ extension DashboardNews on DashboardController {
   void _publishNews(List<NewsEvent> events) {
     if (_isDisposed) return;
     _newsEvents = events;
+    // Revoke only new, relevant and officially confirmed critical event risks.
+    final created = trading.createdAt;
+    if (created != null && trading.plan != null) {
+      final asset = trading.plan!.symbol?.replaceFirst(RegExp(r'USDT$'), '');
+      final event = events
+          .where(
+            (e) =>
+                e.importance == NewsImportance.critical &&
+                e.verificationStatus ==
+                    NewsVerificationStatus.primarySourceConfirmed &&
+                e.publishedAt.isAfter(created) &&
+                !e.publishedAt.isAfter(DateTime.now().toUtc()) &&
+                (e.scope != NewsScope.assetSpecific ||
+                    e.directAssets.contains(asset)),
+          )
+          .firstOrNull;
+      if (event != null) trading.cancel('出现已确认的重大事件，请重新分析：${event.headline}');
+    }
     _newsRevision++;
     _notifyNews();
   }

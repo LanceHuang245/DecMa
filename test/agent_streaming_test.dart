@@ -9,6 +9,8 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 
 import 'dashboard_agent_fixtures.dart';
 
+const _waitPlan = '{"decision":{"type":"WAIT","summary":"Wait"}}';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(
@@ -21,7 +23,6 @@ void main() {
     final agent = StreamingAgent();
     final bybit = SlowChartBybit();
     final controller = await testController(agent, bybit: bybit);
-    controller.selectAgentMode(AgentMode.analysis);
     controller.promptController.text = 'Analyze BTCUSDT';
     final run = controller.runAgent();
     await bybit.started.future;
@@ -60,7 +61,7 @@ void main() {
       agent.texts.single('');
       agent.texts.single('Revised draft');
       agent.results.single.complete(
-        const AgentResult(text: 'Final answer', warnings: []),
+        const AgentResult(text: 'Final answer\n$_waitPlan', warnings: []),
       );
       await run;
       expect(controller.loadingAgent, false);
@@ -98,11 +99,12 @@ void main() {
     controller.promptController.text = 'Second';
     final second = controller.runAgent();
     await flushAgentCallbacks();
+    expect(agent.previousAnalyses.last, isNull);
     agent.texts[0]('late old text');
     agent.activities[0]('late old activity');
     agent.texts[1]('New answer');
     agent.results[1].complete(
-      const AgentResult(text: 'New answer', warnings: []),
+      const AgentResult(text: 'New answer\n$_waitPlan', warnings: []),
     );
     await second;
     expect(
@@ -151,7 +153,6 @@ void main() {
             messages: const [],
             scrollController: scroll,
             showScrollToBottom: false,
-            mode: AgentMode.conversation,
             llm: const LlmSettings(
               provider: LlmProvider.openAiResponses,
               endpoint: 'https://llm.test/v1',
@@ -159,7 +160,6 @@ void main() {
             ),
             loading: true,
             promptController: prompt,
-            onModeChanged: (_) {},
             onQuickAnalysis: () {},
             onSend: () {},
             onStop: () => stops++,

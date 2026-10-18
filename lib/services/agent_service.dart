@@ -20,9 +20,6 @@ import 'mcp_hub.dart';
 import 'openai_codex_oauth.dart';
 import 'secure_key_store.dart';
 
-// Keep the app's analysis/conversation contract independent of model protocols.
-enum AgentMode { conversation, analysis }
-
 // Return finalized text and source warnings after all tool work has finished.
 class AgentResult {
   const AgentResult({required this.text, required this.warnings});
@@ -69,13 +66,11 @@ class AgentService {
     required LlmSettings llm,
     required McpSettings mcp,
     required ApiSettings api,
-    required AgentMode mode,
     MarketSnapshot? marketSnapshot,
     MarketFeatures? marketFeatures,
     EventSnapshot? eventSnapshot,
     String? previousAnalysisContext,
     DateTime? previousAnalysisAt,
-    String? previousConversationContext,
     void Function(String activity)? onActivity,
     void Function(String text)? onText,
     CancellationToken? cancel,
@@ -107,15 +102,12 @@ class AgentService {
       if (key == null || key.isEmpty) {
         throw Exception('请先在设置中保存 LLM API Key 或登录 OpenAI Codex。');
       }
-      final isAnalysis = mode == AgentMode.analysis;
       final nansenKey = mcp.useNansen ? await _keyStore.readNansenKey() : null;
       final coinalyzeKey = api.useCoinalyze
           ? await _keyStore.readCoinalyzeKey()
           : null;
-      final bybitKey = isAnalysis && mcp.useBybit
-          ? await _keyStore.readBybitApiKey()
-          : null;
-      final bybitSecret = isAnalysis && mcp.useBybit
+      final bybitKey = mcp.useBybit ? await _keyStore.readBybitApiKey() : null;
+      final bybitSecret = mcp.useBybit
           ? await _keyStore.readBybitApiSecret()
           : null;
       token.throwIfCancelled();
@@ -123,23 +115,20 @@ class AgentService {
         mcp,
         nansenApiKey: nansenKey,
         cancel: token,
-        eager: isAnalysis,
       );
       final coinalyzeTools = _coinalyze.configure(
         enabled: api.useCoinalyze,
         apiKey: coinalyzeKey,
       );
-      final warnings = isAnalysis
-          ? [..._mcpHub.warnings, ..._coinalyze.warnings]
-          : <String>[];
+      final warnings = [..._mcpHub.warnings, ..._coinalyze.warnings];
       final hasBybitKey = bybitKey?.trim().isNotEmpty ?? false;
       final hasBybitSecret = bybitSecret?.trim().isNotEmpty ?? false;
 
       // Account fee data stays an app-owned API call, not an LLM tool.
       Map<String, double>? feeRates;
-      if (isAnalysis && hasBybitKey != hasBybitSecret) {
+      if (hasBybitKey != hasBybitSecret) {
         warnings.add('Bybit 账户 API：API Key 和 API Secret 需同时配置。');
-      } else if (isAnalysis && hasBybitKey) {
+      } else if (hasBybitKey) {
         onActivity?.call('• Bybit Account - 获取实际手续费率');
         try {
           feeRates = await _bybit.fetchAccountFeeRates(
@@ -156,7 +145,6 @@ class AgentService {
       token.throwIfCancelled();
       final servers = _mcpHub.availableServers;
       final availability = agentSourceAvailability(
-        isAnalysis: isAnalysis,
         mcp: mcp,
         api: api,
         servers: servers,
@@ -166,8 +154,7 @@ class AgentService {
         hasBybitSecret: hasBybitSecret,
         hasFeeRates: feeRates != null,
       );
-      final fullCoverage =
-          isAnalysis && prompt.contains(fullSourceEnrichmentMarker);
+      final fullCoverage = prompt.contains(fullSourceEnrichmentMarker);
       if (fullCoverage) {
         for (final entry in const {
           'bybit_mcp': 'Bybit MCP',
@@ -183,7 +170,6 @@ class AgentService {
         }
       }
       final context = agentContext(
-        isAnalysis: isAnalysis,
         prompt: prompt,
         symbol: symbol,
         candles: candles,
@@ -191,7 +177,6 @@ class AgentService {
         sourceAvailability: availability,
         previousAnalysisContext: previousAnalysisContext,
         previousAnalysisAt: previousAnalysisAt,
-        previousConversationContext: previousConversationContext,
         eventSnapshot: eventSnapshot,
         marketSnapshot: marketSnapshot,
         marketFeatures: marketFeatures,
@@ -233,7 +218,7 @@ class AgentService {
                 ai!.generate(
                   model: model.model,
                   config: model.config,
-                  system: isAnalysis ? analysisPrompt : conversationPrompt,
+                  system: analysisPrompt,
                   prompt: input,
                   tools: [...mcpTools, ...coinalyzeTools],
                   use: [model.guard, coverage()],
