@@ -29,6 +29,7 @@ dependencies:
   url_launcher: 
   flutter_riverpod: 
   riverpod_annotation: 
+  json_annotation:
 
 dev_dependencies:
   flutter_test:
@@ -39,6 +40,7 @@ dev_dependencies:
 
 
   flutter_lints: ^6.0.0
+  json_serializable: ^6.14.1
 
 flutter:
   uses-material-design: true
