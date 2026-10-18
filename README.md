@@ -12,11 +12,10 @@ The three-column workspace keeps the chart, market-news feed, and agent response
 
 ![DecMa workspace with chart, market news, and Trading Agent](assets/img/Main.png)
 
-### Structured analysis request
+### One-click analysis
 
-Provide a risk style, intended trading window, account and loss limits, and optional position details before requesting an analysis.
+Select a token and click Analyze current contract. The connected LLM explains whether to favor long, short, or waiting at the current price; no account, leverage, or fee form is required.
 
-![Structured analysis dialog](assets/img/Analyze.png)
 
 ### Agent and data-source settings
 
@@ -34,7 +33,7 @@ Control official macro feeds and optional Finnhub and Marketaux news sources sep
 
 - Search Bybit Linear perpetual symbols and view 1m, 5m, 15m, 1h, 4h, or 1D candlestick charts. The application loads up to 1,000 candles and refreshes the latest candles every second.
 - View the chart, a filterable market-news feed, and the Trading Agent side by side in a Fluent UI desktop workspace.
-- Run structured market analysis or continue in conversation mode. Conversation and previous-analysis context are kept only for the current application session.
+- Run structured market analysis and ask follow-up questions in the same input. Previous-analysis context is kept only for the current application session.
 - Build each analysis from a current Bybit market snapshot and calculated 5m, 15m, 1h, and 4h features, including EMA, MACD, RSI, ATR, VWAP, realized volatility, volume, and range-expansion metrics.
 - Validate the model's structured plan before drawing its entry zone, stop loss, and take-profit levels on the active chart. Plans for another symbol or invalid price relationships are not drawn.
 - Choose from Anthropic Messages, OpenAI Responses, OpenAI Chat Completions-compatible endpoints, or OpenAI Codex. Multiple named LLM connections can be saved; the Codex option uses a browser sign-in flow.
@@ -42,6 +41,12 @@ Control official macro feeds and optional Finnhub and Marketaux news sources sep
 - Read macro and market-news feeds from BLS, BEA, and the Federal Reserve by default, with optional Finnhub and Marketaux sources. The feed can be filtered by current asset, category, and provider.
 - Store API keys and OAuth credentials with `flutter_secure_storage`; non-secret settings, cached events, saved asset profiles, and the last viewed symbol are stored separately.
 - Keep analysis conservative when data is missing, stale, or conflicting: the agent may return `WAIT`, `NO_TRADE`, or `DATA_INSUFFICIENT` and cannot execute trades.
+
+## Current opportunity checks
+
+Select a token, click **分析当前合约**, and read the direction and immediate next action. There is no first-use risk setup. After analysis, reference prices are refreshed automatically. An unentered plan that already reached TP1 is marked as missed; a chase-limit violation waits for a new confirmation after a pullback.
+
+Machine-readable fields stay behind the chart and checks. Bybit reference data does not verify execution on other venues. `PlanConditions` serialization is generated with `dart run build_runner build`. Decision evidence is saved silently without adding a user workflow.
 
 ## Requirements
 
@@ -111,9 +116,9 @@ The app checks feeds every minute, while each provider applies its own caching i
 
 1. Search for a Linear symbol such as `BTCUSDT` and select a chart interval.
 2. Review the chart and **Market News** panel. Use its category and source filters to narrow the event list.
-3. In **分析** (Analysis) mode, describe the market directly or select **分析当前合约** (Analyze current contract) to provide structured risk and position inputs.
+3. Describe the market directly or select **分析当前合约** (Analyze current contract) to get the current direction and entry conditions.
 4. Review the Agent's report, warnings, and plan card. A plan is overlaid on the chart only after its symbol and price levels pass validation.
-5. Switch to **对话** (Conversation) mode for follow-up questions. Select **清空** (Clear) to remove the current session's chat and analysis context.
+5. Continue asking follow-up questions in the same input. Select **清空** (Clear) to remove the current session's messages and analysis context.
 
 ## Data boundaries
 
