@@ -2,6 +2,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../models/trading_models.dart';
 import '../chart/candle_chart.dart';
+import '../chart/candle_chart_colors.dart';
 
 class DashboardChartPanel extends StatelessWidget {
   const DashboardChartPanel({
@@ -118,7 +119,7 @@ class DashboardChartPanel extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              _ChartLegend(color: Colors.blue, text: '开仓区'),
+              _ChartLegend(color: chartEntryColor, text: '开仓区'),
               const SizedBox(width: 14),
               _ChartLegend(color: Colors.red, text: '止损'),
               const SizedBox(width: 14),

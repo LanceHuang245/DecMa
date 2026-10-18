@@ -151,11 +151,7 @@ class PlanCandlePainter extends CustomPainter {
     final chart = transform.viewport.chart;
     final entryLow = plan.entryLow;
     final entryHigh = plan.entryHigh;
-    final entryColor = plan.decision == 'LONG_SETUP'
-        ? candleUpColor
-        : plan.decision == 'SHORT_SETUP'
-        ? candleDownColor
-        : Colors.blue;
+    final entryColor = chartEntryColor;
     final entryLabel = plan.decision == 'LONG_SETUP'
         ? '做多'
         : plan.decision == 'SHORT_SETUP'
