@@ -29,7 +29,7 @@ dependencies:
   url_launcher: 
   flutter_riverpod: 
   riverpod_annotation: 
-  json_annotation:
+  json_annotation: ^4.12.0
 
 dev_dependencies:
   flutter_test:
