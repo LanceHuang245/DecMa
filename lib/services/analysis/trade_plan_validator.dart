@@ -75,6 +75,7 @@ class TradePlanValidator {
     }
     if (low > high) errors.add('开仓区下限高于上限');
     if (plan.targets.isEmpty) errors.add('交易 Setup 缺少止盈目标');
+    if (plan.targets.length > 3) errors.add('止盈目标最多为三档');
 
     final direction = plan.decision == 'LONG_SETUP'
         ? TradeDirection.long
