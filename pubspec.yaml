@@ -16,20 +16,19 @@ dependencies:
   flutter_secure_storage: 
   crypto: 
   dio:
-  # Use Genkit for model orchestration and SDKs for provider/MCP protocols.
-  genkit: ^1.0.0
-  genkit_anthropic: ^1.0.0
-  genkit_openai: ^1.0.0
-  genkit_mcp: ^1.0.0
-  openai_dart: ^8.1.0
-  http: ^1.6.0
-  schemantic: ^1.0.0
+  genkit: 
+  genkit_anthropic: 
+  genkit_openai: 
+  genkit_mcp: 
+  openai_dart: 
+  http: 
+  schemantic: 
   shared_preferences: 
   window_manager: 
   url_launcher: 
   flutter_riverpod: 
   riverpod_annotation: 
-  json_annotation: ^4.12.0
+  json_annotation: 
 
 dev_dependencies:
   flutter_test:
