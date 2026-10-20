@@ -21,6 +21,7 @@ void main() {
         provider: LlmProvider.anthropic,
         endpoint: 'https://api.anthropic.com',
         model: 'claude-valid',
+        reasoningEffort: 'high',
       );
       await tester.pumpWidget(
         FluentApp(
@@ -36,6 +37,10 @@ void main() {
         ),
       );
       expect(key.currentState!.readSettings().apiKey, isNull);
+      expect(
+        key.currentState!.readSettings().connections.active.reasoningEffort,
+        'high',
+      );
       expect(
         key.currentState!.readSettings().connections.active.model,
         'claude-valid',
@@ -53,8 +58,8 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
-  // A response for a removed editor must not change the newly selected model.
-  testWidgets('late Codex models do not overwrite another connection', (
+  // A login response for a removed editor must not change the new connection.
+  testWidgets('late Codex login does not overwrite another connection', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
@@ -95,14 +100,32 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('重新登录'));
+    await tester.pump();
     await tester.tap(find.text('Codex config').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Anthropic config').last);
     await tester.pumpAndSettle();
-    expect(find.text('claude-valid'), findsOneWidget);
+    expect(
+      tester
+          .state<LlmConnectionEditorState>(find.byType(LlmConnectionEditor))
+          .readSettings()
+          .connections
+          .active
+          .model,
+      'claude-valid',
+    );
     auth.models.complete(['codex-new']);
     await tester.pumpAndSettle();
-    expect(find.text('claude-valid'), findsOneWidget);
+    expect(
+      tester
+          .state<LlmConnectionEditorState>(find.byType(LlmConnectionEditor))
+          .readSettings()
+          .connections
+          .active
+          .model,
+      'claude-valid',
+    );
     expect(find.text('codex-new'), findsNothing);
     await tester.pumpWidget(const SizedBox());
     auth.dispose();
@@ -114,5 +137,5 @@ void main() {
 class _Auth extends OpenAiCodexAuthService {
   final models = Completer<List<String>>();
   @override
-  Future<List<String>> fetchModels({CancelToken? cancelToken}) => models.future;
+  Future<List<String>> signIn({CancelToken? cancelToken}) => models.future;
 }

@@ -31,7 +31,8 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
   late LlmProvider _provider = widget.initial.provider;
   late final _name = TextEditingController(text: widget.initial.name);
   late final _endpoint = TextEditingController(text: widget.initial.endpoint);
-  late final _model = TextEditingController(text: widget.initial.model);
+  late String _model = widget.initial.model;
+  late String? _reasoningEffort = widget.initial.reasoningEffort;
   late String? _mask = createSecretMask(widget.keys.hasLlmKeyFor(_id));
   late final _key = TextEditingController(text: _mask);
   late bool _codexConnected = widget.keys.hasCodexOAuth;
@@ -48,7 +49,8 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
       name: name,
       provider: _provider,
       endpoint: _endpoint.text.trim(),
-      model: _model.text.trim(),
+      model: _model,
+      reasoningEffort: _reasoningEffort,
     );
     final key = _key.text.trim();
     return (
@@ -72,7 +74,8 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
       _provider = connection.provider;
       _name.text = connection.name;
       _endpoint.text = connection.endpoint;
-      _model.text = connection.model;
+      _model = connection.model;
+      _reasoningEffort = connection.reasoningEffort;
       _mask = createSecretMask(widget.keys.hasLlmKeyFor(id));
       _key.text = _mask ?? '';
     });
@@ -153,6 +156,7 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
                 _endpoint.text = provider.defaultEndpoint;
               }
               _provider = provider;
+              _reasoningEffort = null;
             });
           },
         ),
@@ -162,7 +166,6 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
         CodexSettings(
           key: ValueKey(_id),
           connected: _codexConnected,
-          model: _model,
           auth: widget.codexAuth,
           onConnected: () => setState(() {
             _codexConnected = true;
@@ -173,11 +176,6 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
         InfoLabel(
           label: 'Endpoint',
           child: TextBox(controller: _endpoint),
-        ),
-        const SizedBox(height: 8),
-        InfoLabel(
-          label: 'Model',
-          child: TextBox(controller: _model),
         ),
         const SizedBox(height: 8),
         InfoLabel(
@@ -205,7 +203,6 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
   void dispose() {
     _name.dispose();
     _endpoint.dispose();
-    _model.dispose();
     _key.dispose();
     super.dispose();
   }
