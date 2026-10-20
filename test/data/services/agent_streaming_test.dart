@@ -1,4 +1,5 @@
 import 'package:decma/domain/models/app_settings.dart';
+import 'package:decma/domain/models/llm_model_info.dart';
 import 'package:decma/data/services/agent_service.dart';
 import 'package:decma/ui/dashboard/dashboard_agent_panel.dart';
 import 'package:decma/ui/dashboard/dashboard_controller.dart';
@@ -158,6 +159,10 @@ void main() {
               endpoint: 'https://llm.test/v1',
               model: 'test-model',
             ),
+            modelCatalogKey: const ValueKey('models'),
+            loadModels: (_) async => [const LlmModelInfo('test-model')],
+            onModelChanged: (_) async {},
+            onReasoningChanged: (_) async {},
             loading: true,
             promptController: prompt,
             onQuickAnalysis: () {},

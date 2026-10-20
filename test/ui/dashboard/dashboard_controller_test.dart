@@ -4,6 +4,7 @@ import 'package:decma/domain/models/app_settings.dart';
 import 'package:decma/domain/models/candle.dart';
 import 'package:decma/domain/models/trade_plan.dart';
 import 'package:decma/data/services/bybit_service.dart';
+import 'package:decma/data/services/storage/llm_settings_store.dart';
 import 'package:decma/utils/network.dart';
 import 'package:dio/dio.dart';
 import 'package:decma/ui/chart/candle_chart.dart';
@@ -16,6 +17,56 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // Model changes must survive reload without altering another connection.
+  test('selecting a model persists only the active connection model', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    const active = LlmSettings(
+      id: 'active',
+      name: 'Active config',
+      provider: LlmProvider.openAiResponses,
+      endpoint: 'https://llm.test/v1',
+      model: 'old-model',
+    );
+    const other = LlmSettings(
+      id: 'other',
+      name: 'Other config',
+      provider: LlmProvider.anthropic,
+      endpoint: 'https://other.test',
+      model: 'other-model',
+    );
+    final controller = createDashboard(
+      nodeAvailable: false,
+      initialLlmConnections: LlmConnectionSettings(
+        connections: const [active, other],
+        activeConnectionId: active.id,
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.selectLlmReasoningEffort('high');
+    expect(
+      (await LlmSettingsStore().readConnections()).active.reasoningEffort,
+      'high',
+    );
+    await controller.selectLlmModel('new-model');
+    expect(controller.llm.model, 'new-model');
+    expect(controller.llm.reasoningEffort, isNull);
+    await controller.selectLlmReasoningEffort('low');
+    final saved = await LlmSettingsStore().readConnections();
+    expect(saved.active.reasoningEffort, 'low');
+    expect(saved.active.model, 'new-model');
+    expect(saved.active.id, active.id);
+    expect(saved.active.name, active.name);
+    expect(saved.active.provider, active.provider);
+    expect(saved.active.endpoint, active.endpoint);
+    expect(saved.connections.last.toJson(), other.toJson());
+    await controller.selectLlmReasoningEffort(null);
+    expect(
+      (await LlmSettingsStore().readConnections()).active.reasoningEffort,
+      isNull,
+    );
+  });
 
   test('a stale symbol response cannot replace the current chart', () async {
     SharedPreferencesAsyncPlatform.instance =

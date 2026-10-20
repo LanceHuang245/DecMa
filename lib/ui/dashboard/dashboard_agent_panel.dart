@@ -1,8 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/llm_model_info.dart';
 import '../../domain/models/trade_plan.dart';
 import 'trading_session.dart';
+import 'llm_model_selector.dart';
 import 'dashboard_messages.dart';
 import 'trade_status_card.dart';
 import 'dashboard_controller.dart';
@@ -16,6 +19,10 @@ class DashboardAgentPanel extends StatelessWidget {
     required this.scrollController,
     required this.showScrollToBottom,
     required this.llm,
+    required this.modelCatalogKey,
+    required this.loadModels,
+    required this.onModelChanged,
+    required this.onReasoningChanged,
     required this.loading,
     required this.promptController,
     required this.onQuickAnalysis,
@@ -32,6 +39,10 @@ class DashboardAgentPanel extends StatelessWidget {
   final ScrollController scrollController;
   final bool showScrollToBottom;
   final LlmSettings llm;
+  final Key modelCatalogKey;
+  final Future<List<LlmModelInfo>> Function(CancelToken) loadModels;
+  final Future<void> Function(String) onModelChanged;
+  final Future<void> Function(String?) onReasoningChanged;
   final bool loading;
   final TextEditingController promptController;
   final VoidCallback onQuickAnalysis;
@@ -121,21 +132,13 @@ class DashboardAgentPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Tooltip(
-              message: '${llm.provider.label} · ${llm.model}',
-              child: Text(
-                '${llm.provider.label} · ${llm.model}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: resources.textFillColorSecondary,
-                ),
-              ),
-            ),
+          LlmModelSelector(
+            key: modelCatalogKey,
+            llm: llm,
+            loadModels: loadModels,
+            onChanged: onModelChanged,
+            onReasoningChanged: onReasoningChanged,
+            enabled: !loading,
           ),
           const SizedBox(height: 8),
           Stack(

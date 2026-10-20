@@ -6,9 +6,11 @@ import 'package:fluent_ui/fluent_ui.dart';
 import '../../domain/models/market_snapshot.dart';
 import '../../domain/models/news_event.dart';
 import '../../domain/models/app_settings.dart';
+import '../../domain/models/llm_model_info.dart';
 import '../../domain/models/candle.dart';
 import '../../domain/models/trade_plan.dart';
 import '../../data/services/agent_service.dart';
+import '../../data/services/llm_model_catalog.dart';
 import '../../domain/analysis/feature_engine.dart';
 import 'trading_session.dart';
 import '../../data/services/market_snapshot_service.dart';
@@ -236,6 +238,40 @@ class DashboardController extends ChangeNotifier {
     newsFeed.removeListener(_onNewsChanged);
     newsFeed.dispose();
     super.dispose();
+  }
+
+  Future<List<LlmModelInfo>> loadLlmModels(CancelToken cancel) =>
+      fetchLlmModels(_llm, keys: _keyStore, cancelToken: cancel);
+
+  Future<void> selectLlmReasoningEffort(String? effort) =>
+      selectLlmModel(_llm.model, reasoningEffort: effort);
+
+  // Reset effort on model changes so unsupported levels never carry across.
+  Future<void> selectLlmModel(String model, {String? reasoningEffort}) async {
+    if (loadingAgent ||
+        (model == _llm.model && reasoningEffort == _llm.reasoningEffort)) {
+      return;
+    }
+    final selected = LlmSettings(
+      id: _llm.id,
+      name: _llm.name,
+      provider: _llm.provider,
+      endpoint: _llm.endpoint,
+      model: model,
+      reasoningEffort: reasoningEffort,
+    );
+    final connections = LlmConnectionSettings(
+      connections: [
+        for (final item in _llmConnections.connections)
+          item.id == selected.id ? selected : item,
+      ],
+      activeConnectionId: selected.id,
+    );
+    await settingsStore.saveConnections(connections);
+    if (_isDisposed) return;
+    _llmConnections = connections;
+    _llm = selected;
+    _notify();
   }
 
   // Persist existing connection settings without changing credential storage.
