@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 
 import '../../app_constants.dart';
+import '../../domain/models/llm_model_info.dart';
 import '../../utils/network.dart';
 import 'storage/secure_key_store.dart';
 
@@ -107,10 +108,16 @@ class OpenAiCodexAuthService {
   }
 
   Future<List<String>> fetchModels({CancelToken? cancelToken}) async =>
-      _fetchModels(
-        await currentCredentials(cancelToken: cancelToken),
+      (await fetchModelCatalog(
         cancelToken: cancelToken,
-      );
+      )).map((model) => model.id).toList();
+
+  Future<List<LlmModelInfo>> fetchModelCatalog({
+    CancelToken? cancelToken,
+  }) async => _fetchModelCatalog(
+    await currentCredentials(cancelToken: cancelToken),
+    cancelToken: cancelToken,
+  );
 
   Future<CodexOAuthCredentials> _exchangeCode(
     String code,
@@ -187,6 +194,15 @@ class OpenAiCodexAuthService {
   Future<List<String>> _fetchModels(
     CodexOAuthCredentials credentials, {
     CancelToken? cancelToken,
+  }) async => (await _fetchModelCatalog(
+    credentials,
+    cancelToken: cancelToken,
+  )).map((model) => model.id).toList();
+
+  // Preserve reasoning levels from the authenticated Codex model catalog.
+  Future<List<LlmModelInfo>> _fetchModelCatalog(
+    CodexOAuthCredentials credentials, {
+    CancelToken? cancelToken,
   }) async {
     final response = await runNetworkRequest(
       'OpenAI Codex',
@@ -200,15 +216,17 @@ class OpenAiCodexAuthService {
     );
     requireSuccessfulResponse(response, provider: 'OpenAI Codex');
     final values = _json(response.data ?? '');
-    final models = <String>{};
+    final models = <String, LlmModelInfo>{};
     for (final list in [values['models'], values['data']]) {
       if (list is! List) continue;
       for (final item in list.whereType<Map>()) {
         final model = item['slug'] ?? item['id'] ?? item['model'];
-        if (model is String && model.isNotEmpty) models.add(model);
+        if (model is String && model.isNotEmpty) {
+          models[model] = LlmModelInfo.fromJson(item);
+        }
       }
     }
-    return models.toList()..sort();
+    return models.values.toList()..sort((a, b) => a.id.compareTo(b.id));
   }
 
   Map<String, String> _headers(CodexOAuthCredentials credentials) => {

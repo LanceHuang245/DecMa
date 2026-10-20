@@ -1,6 +1,15 @@
 enum LlmProvider { anthropic, openAiResponses, openAiCompletions, openAiCodex }
 
 extension LlmProviderLabel on LlmProvider {
+  // Use protocol-level choices when a gateway omits per-model capabilities.
+  List<String> get standardReasoningEfforts => const [
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+  ];
+
   String get label => switch (this) {
     LlmProvider.anthropic => 'Anthropic Messages',
     LlmProvider.openAiResponses => 'OpenAI Responses',
@@ -23,6 +32,7 @@ class LlmSettings {
     required this.provider,
     required this.endpoint,
     required this.model,
+    this.reasoningEffort,
   });
 
   static const defaultId = 'default';
@@ -33,6 +43,7 @@ class LlmSettings {
   final LlmProvider provider;
   final String endpoint;
   final String model;
+  final String? reasoningEffort;
 
   bool get isComplete => endpoint.trim().isNotEmpty && model.trim().isNotEmpty;
 
@@ -43,6 +54,7 @@ class LlmSettings {
     'provider': provider.name,
     'endpoint': endpoint,
     'model': model,
+    'reasoningEffort': ?reasoningEffort,
   };
 
   static LlmSettings? fromJson(Object? value) {
@@ -71,6 +83,7 @@ class LlmSettings {
       provider: provider.single,
       endpoint: endpoint,
       model: model,
+      reasoningEffort: string('reasoningEffort'),
     );
   }
 }

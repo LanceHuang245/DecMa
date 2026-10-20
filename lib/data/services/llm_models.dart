@@ -67,9 +67,19 @@ createLlmModel({
     ai: ai,
     model: model,
     guard: guard(),
-    config: provider == LlmProvider.anthropic
-        ? AnthropicOptions(maxTokens: 16384)
-        : null,
+    // Leave provider defaults untouched unless the user selected an effort.
+    config: switch (provider) {
+      LlmProvider.anthropic => AnthropicOptions(
+        maxTokens: 16384,
+        outputConfig: settings.reasoningEffort == null
+            ? null
+            : AnthropicOutputConfig(effort: settings.reasoningEffort),
+      ),
+      LlmProvider.openAiCompletions => OpenAIChatOptions(
+        reasoningEffort: settings.reasoningEffort,
+      ),
+      _ => null,
+    },
   );
 }
 
@@ -188,6 +198,9 @@ void defineResponsesModel(
       }
       final body = sdk.CreateResponseRequest(
         model: settings.model.trim(),
+        reasoning: settings.reasoningEffort == null
+            ? null
+            : _CatalogReasoningConfig(settings.reasoningEffort!),
         instructions: messages
             .where((m) => m.role == Role.system)
             .map((m) => m.text)
@@ -328,6 +341,15 @@ void defineResponsesModel(
       }
     },
   );
+}
+
+// Preserve catalog levels newer than the SDK enum, such as Codex's ultra.
+class _CatalogReasoningConfig extends sdk.ReasoningConfig {
+  const _CatalogReasoningConfig(this.value);
+  final String value;
+
+  @override
+  Map<String, dynamic> toJson() => {'effort': value};
 }
 
 // Reuse the SDK's raw SSE decoder so invalid JSON cannot be silently dropped.
