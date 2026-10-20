@@ -27,6 +27,11 @@ class MarketSnapshotService {
   }) async {
     final normalized = symbol.trim().toUpperCase();
     final startedAt = DateTime.now().toUtc();
+    // Start optional history alongside core requests; failures do not reject price analysis.
+    final oi = _bybit
+        .fetchOpenInterestHistory(normalized, cancelToken: cancelToken)
+        .timeout(const Duration(seconds: 3))
+        .catchError((Object _) => <({DateTime at, double value})>[]);
     final results = await Future.wait<Object>([
       _bybit.fetchInstrument(normalized, cancelToken: cancelToken),
       _bybit.fetchTicker(normalized, cancelToken: cancelToken),
@@ -78,6 +83,7 @@ class MarketSnapshotService {
       candlesByInterval: candles,
       maxSourceSkewMs: maxSkew.inMilliseconds,
       warnings: warnings,
+      openInterestHistory: await oi,
     );
   }
 }

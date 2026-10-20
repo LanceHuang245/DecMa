@@ -2,6 +2,7 @@ import 'package:decma/domain/models/market_snapshot.dart';
 import 'package:decma/domain/models/candle.dart';
 import 'package:decma/domain/analysis/feature_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:decma/data/services/agent_context.dart';
 
 void main() {
   test('FeatureEngine calculates stable flat-market features', () {
@@ -63,30 +64,146 @@ void main() {
     expect(features.timeframes['15m']!.ema20, lessThan(200));
   });
 
-  test('short-term anomaly only uses fixed 5m and 15m features', () {
-    final completedAt = DateTime.utc(2026, 8, 10, 12);
-    List<Candle> candles(double latestVolume) => List.generate(
-      40,
-      (index) => Candle(
-        time: completedAt.subtract(Duration(minutes: (40 - index) * 5)),
+  test('new indicators reach the actual model context as numeric features', () {
+    final at = DateTime.utc(2026, 10, 20, 12);
+    final bars = List.generate(
+      160,
+      (i) => Candle(
+        time: at.subtract(Duration(minutes: (160 - i) * 15)),
+        open: 100,
+        high: 100,
+        low: 100,
+        close: 100,
+        volume: 0,
+      ),
+    );
+    final snapshot = _snapshot(at, {'15m': bars});
+    final features = const FeatureEngine().calculate(snapshot);
+    final details = features.timeframes['15m']!.details;
+    expect(details['adx14'], 0);
+    expect(details['kdj_k9'], closeTo(50, 1e-9));
+    expect(details['kdj_d3'], closeTo(50, 1e-9));
+    expect(details['kdj_j3'], closeTo(50, 1e-9));
+    expect(details['bollinger_upper20'], 100);
+    expect(details['bollinger_bandwidth_percentile120'], 100);
+    expect(details['rsi14_change_3'], 0);
+    final context = agentContext(
+      prompt: '分析',
+      symbol: 'BTCUSDT',
+      candles: bars,
+      warnings: [],
+      sourceAvailability: {},
+      marketSnapshot: snapshot,
+      marketFeatures: features,
+    );
+    for (final key in [
+      'kdj_k9',
+      'kdj_d3',
+      'kdj_j3',
+      'adx14',
+      'bollinger_bandwidth_percentile120',
+      'rsi14_change_3',
+      'prior_high20',
+    ]) {
+      expect(context, contains('"$key":${details[key]}'));
+    }
+  });
+  test(
+    'rising-market KDJ and ADX follow their fixed smoothing definitions',
+    () {
+      final at = DateTime.utc(2026, 10, 20, 12);
+      final bars = List.generate(
+        60,
+        (i) => Candle(
+          time: at.subtract(Duration(minutes: (60 - i) * 15)),
+          open: 100 + i.toDouble(),
+          high: 101 + i.toDouble(),
+          low: 99 + i.toDouble(),
+          close: 100 + i.toDouble(),
+          volume: 10,
+        ),
+      );
+      final details = const FeatureEngine()
+          .calculate(_snapshot(at, {'15m': bars}))
+          .timeframes['15m']!
+          .details;
+      expect(details['adx14'], closeTo(100, 1e-9));
+      expect(details['minus_di14'], 0);
+      final expectedK =
+          90 - 40 * (List.filled(52, 2 / 3).fold<double>(1, (a, b) => a * b));
+      expect(details['kdj_k9'], closeTo(expectedK, 1e-9));
+      expect(details['prior_high20'], 159); // Excludes the newest high of 160.
+    },
+  );
+  test('gapped history produces unavailable indicators', () {
+    final at = DateTime.utc(2026, 10, 20, 12);
+    final bars = List.generate(
+      60,
+      (i) => Candle(
+        time: at.subtract(Duration(minutes: (60 - i) * 15)),
         open: 100,
         high: 101,
         low: 99,
         close: 100,
-        volume: index == 39 ? latestVolume : 10,
+        volume: 10,
       ),
-    );
-
-    final fourHourOnly = const FeatureEngine().calculate(
-      _snapshot(completedAt, {'4h': candles(100)}),
-    );
-    final fiveMinute = const FeatureEngine().calculate(
-      _snapshot(completedAt, {'5m': candles(100)}),
-    );
-
-    expect(fourHourOnly.hasAbnormalShortTerm, isFalse);
-    expect(fiveMinute.hasAbnormalShortTerm, isTrue);
+    )..removeAt(20);
+    final tf = const FeatureEngine()
+        .calculate(_snapshot(at, {'15m': bars}))
+        .timeframes['15m']!;
+    expect(tf.rsi14, isNull);
+    expect(tf.details['kdj_k9'], isNull);
+    expect(tf.details['adx14'], isNull);
   });
+
+  test(
+    'model-facing OI changes require complete fresh observation windows',
+    () {
+      final at = DateTime.utc(2026, 10, 20, 12);
+      final base = _snapshot(at, {});
+      MarketSnapshot withHistory(List<({DateTime at, double value})> history) =>
+          MarketSnapshot(
+            snapshotId: base.snapshotId,
+            symbol: base.symbol,
+            buildStartedAt: base.buildStartedAt,
+            buildCompletedAt: at,
+            instrument: base.instrument,
+            ticker: base.ticker,
+            candlesByInterval: {},
+            maxSourceSkewMs: 0,
+            warnings: [],
+            openInterestHistory: history,
+          );
+      final history = List.generate(
+        13,
+        (i) => (
+          at: at.subtract(Duration(minutes: (12 - i) * 5)),
+          value: 100 + i.toDouble(),
+        ),
+      );
+      final json = withHistory(history).toJson();
+      expect(json['oi_change_1h_percent'], closeTo(12, 1e-9));
+      expect(
+        json['oi_change_15m_percent'],
+        closeTo((112 / 109 - 1) * 100, 1e-9),
+      );
+      final gap = [...history]..removeAt(10);
+      expect(withHistory(gap).toJson()['oi_change_15m_percent'], isNull);
+      expect(
+        withHistory(
+          history
+              .map(
+                (p) => (
+                  at: p.at.subtract(const Duration(minutes: 15)),
+                  value: p.value,
+                ),
+              )
+              .toList(),
+        ).toJson()['oi_change_1h_percent'],
+        isNull,
+      );
+    },
+  );
 }
 
 MarketSnapshot _snapshot(

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../models/market_snapshot.dart';
 import '../models/candle.dart';
+import 'candle_integrity_validator.dart';
 
 class TimeframeFeatures {
   const TimeframeFeatures({
@@ -19,8 +20,10 @@ class TimeframeFeatures {
     required this.volumeZScore,
     required this.rangeExpansionRatio,
     required this.volumeExpansionRatio,
+    this.details = const {},
   });
 
+  final Map<String, double?> details;
   final int closedCandleCount;
   final DateTime? asOf;
   final double? ema20;
@@ -52,6 +55,7 @@ class TimeframeFeatures {
     'range_expansion_ratio_20': rangeExpansionRatio,
     'volume_expansion_ratio_20': volumeExpansionRatio,
     'ema_alignment': _emaAlignment(),
+    ...details,
   };
 
   String _emaAlignment() {
@@ -123,7 +127,14 @@ class FeatureEngine {
                 .isAfter(calculatedAt),
           )
           .toList();
-      timeframes[entry.key] = _timeframe(closed, minutes);
+      final valid = const CandleIntegrityValidator()
+          .validate(
+            candles: closed,
+            interval: Duration(minutes: minutes),
+            snapshotCompletedAt: calculatedAt,
+          )
+          .isValid;
+      timeframes[entry.key] = _timeframe(valid ? closed : const [], minutes);
     }
     final ticker = snapshot.ticker;
     final midpoint = (ticker.bestBid + ticker.bestAsk) / 2;
@@ -144,8 +155,8 @@ class FeatureEngine {
           : funding *
                 (525600 / snapshot.instrument.fundingIntervalMinutes) *
                 100,
-      unavailable: const [
-        'oi_change',
+      unavailable: [
+        if (snapshot.openInterestHistory.isEmpty) 'oi_change',
         'order_book_imbalance',
         'trade_delta',
         'continuous_cvd',
@@ -178,11 +189,122 @@ class FeatureEngine {
         candles.map((candle) => candle.high - candle.low).toList(),
         _volatilityWindow,
       ),
+      details: _details(candles),
       volumeExpansionRatio: _expansionRatio(
         candles.map((candle) => candle.volume).toList(),
         _volatilityWindow,
       ),
     );
+  }
+
+  // Keep additional price-derived indicators in one serializable feature group.
+  Map<String, double?> _details(List<Candle> bars) {
+    final closes = bars.map((c) => c.close).toList();
+    final rsi = _rsi(closes, 14);
+    final previous = closes.isEmpty
+        ? null
+        : _rsi(closes.sublist(0, closes.length - 1), 14);
+    final earlier = closes.length < 4
+        ? null
+        : _rsi(closes.sublist(0, closes.length - 3), 14);
+    final history = bars.length < 21
+        ? <Candle>[]
+        : bars.sublist(bars.length - 21, bars.length - 1);
+    final atr = _atr(bars, 14), ema = _ema(closes, 20);
+    final widths = <double>[];
+    double? upper, lower, middle;
+    for (var end = 20; end <= closes.length; end++) {
+      final window = closes.sublist(end - 20, end);
+      final mean = window.reduce((a, b) => a + b) / 20;
+      final sd = math.sqrt(
+        window.fold<double>(0, (sum, v) => sum + math.pow(v - mean, 2)) / 20,
+      );
+      middle = mean;
+      upper = mean + 2 * sd;
+      lower = mean - 2 * sd;
+      if (mean > 0) widths.add(4 * sd / mean);
+    }
+    double? k, d;
+    if (bars.length >= 9) {
+      k = 50;
+      d = 50;
+      for (var end = 9; end <= bars.length; end++) {
+        final window = bars.sublist(end - 9, end);
+        final high = window.map((c) => c.high).reduce(math.max);
+        final low = window.map((c) => c.low).reduce(math.min);
+        final rsv = high == low
+            ? 50.0
+            : (bars[end - 1].close - low) / (high - low) * 100;
+        k = k! * 2 / 3 + rsv / 3;
+        d = d! * 2 / 3 + k / 3;
+      }
+    }
+    final trend = _directional(bars);
+    final sample = widths.skip(math.max(0, widths.length - 120)).toList();
+    return {
+      'rsi14_previous': previous,
+      'rsi14_change_3': rsi == null || earlier == null ? null : rsi - earlier,
+      'adx14': trend?.$1,
+      'plus_di14': trend?.$2,
+      'minus_di14': trend?.$3,
+      'bollinger_middle20': middle,
+      'bollinger_upper20': upper,
+      'bollinger_lower20': lower,
+      'bollinger_bandwidth': widths.lastOrNull,
+      'bollinger_bandwidth_percentile120': sample.length < 120
+          ? null
+          : sample.where((v) => v <= sample.last).length / sample.length * 100,
+      'prior_high20': history.isEmpty
+          ? null
+          : history.map((c) => c.high).reduce(math.max),
+      'prior_low20': history.isEmpty
+          ? null
+          : history.map((c) => c.low).reduce(math.min),
+      'distance_ema20_atr': atr == null || atr <= 0 || ema == null
+          ? null
+          : (closes.last - ema) / atr,
+      'kdj_k9': k,
+      'kdj_d3': d,
+      'kdj_j3': k == null || d == null ? null : 3 * k - 2 * d,
+    };
+  }
+
+  // Wilder smoothing seeds ADX from the first fourteen directional observations.
+  (double, double, double)? _directional(List<Candle> bars) {
+    if (bars.length < 28) return null;
+    var tr = 0.0, plus = 0.0, minus = 0.0, dxSum = 0.0;
+    double? adx;
+    var pdi = 0.0, mdi = 0.0;
+    for (var i = 1; i < bars.length; i++) {
+      final c = bars[i], p = bars[i - 1];
+      final range = math.max(
+        c.high - c.low,
+        math.max((c.high - p.close).abs(), (c.low - p.close).abs()),
+      );
+      final up = c.high - p.high, down = p.low - c.low;
+      final pdm = up > down && up > 0 ? up : 0.0;
+      final mdm = down > up && down > 0 ? down : 0.0;
+      if (i <= 14) {
+        tr += range;
+        plus += pdm;
+        minus += mdm;
+      } else {
+        tr = tr - tr / 14 + range;
+        plus = plus - plus / 14 + pdm;
+        minus = minus - minus / 14 + mdm;
+      }
+      if (i < 14) continue;
+      pdi = tr == 0 ? 0 : 100 * plus / tr;
+      mdi = tr == 0 ? 0 : 100 * minus / tr;
+      final dx = pdi + mdi == 0 ? 0.0 : 100 * (pdi - mdi).abs() / (pdi + mdi);
+      if (i <= 27) {
+        dxSum += dx;
+        if (i == 27) adx = dxSum / 14;
+      } else {
+        adx = (adx! * 13 + dx) / 14;
+      }
+    }
+    return (adx!, pdi, mdi);
   }
 
   double? _ema(List<double> values, int period) {

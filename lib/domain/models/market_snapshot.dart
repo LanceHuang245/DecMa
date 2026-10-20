@@ -50,8 +50,10 @@ class TickerSnapshot {
     required this.openInterest,
     required this.fundingRate,
     required this.observedAt,
+    this.nextFundingAt,
   });
 
+  final DateTime? nextFundingAt;
   final String symbol;
   final double lastPrice;
   final double markPrice;
@@ -71,6 +73,7 @@ class TickerSnapshot {
     'best_ask': bestAsk,
     'open_interest': openInterest,
     'funding_rate': fundingRate,
+    'next_funding_at': nextFundingAt?.toUtc().toIso8601String(),
     'observed_at': observedAt.toUtc().toIso8601String(),
   };
 }
@@ -86,8 +89,10 @@ class MarketSnapshot {
     required this.candlesByInterval,
     required this.maxSourceSkewMs,
     required this.warnings,
+    this.openInterestHistory = const [],
   });
 
+  final List<({DateTime at, double value})> openInterestHistory;
   final String snapshotId;
   final String symbol;
   final DateTime buildStartedAt;
@@ -98,12 +103,44 @@ class MarketSnapshot {
   final int maxSourceSkewMs;
   final List<String> warnings;
 
+  // Compare exact five-minute samples; stale or missing intervals stay unavailable.
+  double? _oiChange(Duration window) {
+    if (openInterestHistory.isEmpty) return null;
+    final last = openInterestHistory.last;
+    if (buildCompletedAt.difference(last.at) > const Duration(minutes: 10) ||
+        last.at.isAfter(buildCompletedAt)) {
+      return null;
+    }
+    final first = openInterestHistory
+        .where((p) => p.at == last.at.subtract(window))
+        .firstOrNull;
+    if (first == null || first.value <= 0) return null;
+    final samples = openInterestHistory
+        .where((p) => !p.at.isBefore(first.at) && !p.at.isAfter(last.at))
+        .toList();
+    if (samples.length != window.inMinutes ~/ 5 + 1) return null;
+    for (var i = 0; i < samples.length; i++) {
+      if (samples[i].at != first.at.add(Duration(minutes: i * 5)) ||
+          !samples[i].value.isFinite ||
+          samples[i].value < 0) {
+        return null;
+      }
+    }
+    return (last.value / first.value - 1) * 100;
+  }
+
   Map<String, Object?> toJson() => {
     'snapshot_id': snapshotId,
     'symbol': symbol,
     'build_started_at': buildStartedAt.toUtc().toIso8601String(),
     'build_completed_at': buildCompletedAt.toUtc().toIso8601String(),
     'max_source_skew_ms': maxSourceSkewMs,
+    'oi_history': [
+      for (final point in openInterestHistory)
+        {'at': point.at.toUtc().toIso8601String(), 'value': point.value},
+    ],
+    'oi_change_15m_percent': _oiChange(const Duration(minutes: 15)),
+    'oi_change_1h_percent': _oiChange(const Duration(hours: 1)),
     'quality': warnings.isEmpty ? 'VALID' : 'DEGRADED',
     'warnings': warnings,
     'instrument': instrument.toJson(),

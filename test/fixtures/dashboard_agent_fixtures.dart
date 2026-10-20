@@ -137,6 +137,12 @@ class SlowChartBybit extends BybitService {
 // Supply valid bounded exchange data for the real deterministic analysis pipeline.
 class AnalysisBybit extends BybitService {
   @override
+  Future<List<({DateTime at, double value})>> fetchOpenInterestHistory(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) async => [];
+
+  @override
   Future<List<String>> fetchLinearSymbols({CancelToken? cancelToken}) async => [
     'BTCUSDT',
   ];

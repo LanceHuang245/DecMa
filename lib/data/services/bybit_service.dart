@@ -144,6 +144,7 @@ class BybitService {
       );
     }
     final item = Map<String, dynamic>.from(list.single);
+    final nextFunding = int.tryParse(item['nextFundingTime']?.toString() ?? '');
     return TickerSnapshot(
       symbol: item['symbol'].toString(),
       lastPrice: double.parse(item['lastPrice'].toString()),
@@ -153,9 +154,64 @@ class BybitService {
       bestAsk: double.parse(item['ask1Price'].toString()),
       openInterest: double.tryParse(item['openInterest']?.toString() ?? ''),
       fundingRate: double.tryParse(item['fundingRate']?.toString() ?? ''),
+      nextFundingAt: nextFunding != null && nextFunding > 0
+          ? DateTime.fromMillisecondsSinceEpoch(nextFunding, isUtc: true)
+          : null,
       observedAt: _responseTime(body),
     );
   });
+
+  final _oiCache =
+      <String, ({DateTime at, List<({DateTime at, double value})> points})>{};
+
+  // Public positioning history is auxiliary, bounded, and never requires credentials.
+  Future<List<({DateTime at, double value})>> fetchOpenInterestHistory(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) async {
+    final key = symbol.toUpperCase();
+    final cached = _oiCache[key];
+    if (cached != null &&
+        DateTime.now().toUtc().difference(cached.at) <
+            const Duration(seconds: 60)) {
+      return cached.points;
+    }
+    final points = await _read(() async {
+      final body = _marketBody(
+        await runNetworkRequest(
+          'Bybit',
+          () => _dio.getUri<String>(
+            Uri.https('api.bybit.com', '/v5/market/open-interest', {
+              'category': 'linear',
+              'symbol': key,
+              'intervalTime': '5min',
+              'limit': '14',
+            }),
+            options: networkOptions(timeout: const Duration(seconds: 3)),
+            cancelToken: cancelToken,
+          ),
+        ),
+      );
+      final points =
+          (_map(body['result'])['list'] as List)
+              .cast<Map>()
+              .map(
+                (p) => (
+                  at: DateTime.fromMillisecondsSinceEpoch(
+                    int.parse(p['timestamp'].toString()),
+                    isUtc: true,
+                  ),
+                  value: double.parse(p['openInterest'].toString()),
+                ),
+              )
+              .where((p) => p.value.isFinite && p.value >= 0)
+              .toList()
+            ..sort((a, b) => a.at.compareTo(b.at));
+      return points;
+    });
+    _oiCache[key] = (at: DateTime.now().toUtc(), points: points);
+    return points;
+  }
 
   // Fetch all active linear contracts once; the search box filters this list locally.
   Future<List<String>> fetchLinearSymbols({CancelToken? cancelToken}) =>

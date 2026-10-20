@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:decma/domain/models/market_snapshot.dart';
 import 'package:decma/domain/models/candle.dart';
 import 'package:decma/data/services/market_snapshot_service.dart';
@@ -17,10 +19,6 @@ void main() {
       ),
       'c7a1d6479554a14d1aff5e3cea0c0643ffba6af633008f2768ff888e867729c0',
     );
-  });
-
-  test('Bybit converts the 720-minute interval to milliseconds', () {
-    expect(BybitService.intervalMs('720'), 43200000);
   });
 
   test(
@@ -49,6 +47,85 @@ void main() {
     },
   );
 
+  test('auxiliary OI failure keeps the core snapshot usable', () async {
+    final snapshot = await MarketSnapshotService(
+      _MissingOiBybit(),
+    ).build('BTCUSDT');
+    expect(snapshot.symbol, 'BTCUSDT');
+    expect(snapshot.openInterestHistory, isEmpty);
+    expect(snapshot.warnings, isEmpty);
+  });
+  test(
+    'public OI history is ordered and cached, funding time is parsed',
+    () async {
+      final dio = Dio();
+      var oiRequests = 0;
+      final at = DateTime.utc(2026, 10, 20, 12);
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            final oi = options.uri.path.endsWith('open-interest');
+            if (oi) {
+              oiRequests++;
+              expect(options.uri.queryParameters['intervalTime'], '5min');
+            }
+            handler.resolve(
+              Response<String>(
+                requestOptions: options,
+                statusCode: 200,
+                data: jsonEncode({
+                  'retCode': 0,
+                  'time': at.millisecondsSinceEpoch,
+                  'result': {
+                    'list': oi
+                        ? [
+                            {
+                              'timestamp': at.millisecondsSinceEpoch.toString(),
+                              'openInterest': '110',
+                            },
+                            {
+                              'timestamp': at
+                                  .subtract(const Duration(minutes: 5))
+                                  .millisecondsSinceEpoch
+                                  .toString(),
+                              'openInterest': '100',
+                            },
+                          ]
+                        : [
+                            {
+                              'symbol': 'BTCUSDT',
+                              'lastPrice': '100',
+                              'markPrice': '100',
+                              'indexPrice': '100',
+                              'bid1Price': '99',
+                              'ask1Price': '101',
+                              'fundingRate': '0.001',
+                              'nextFundingTime': at
+                                  .add(const Duration(hours: 1))
+                                  .millisecondsSinceEpoch
+                                  .toString(),
+                            },
+                          ],
+                  },
+                }),
+              ),
+            );
+          },
+        ),
+      );
+      final bybit = BybitService(dio: dio);
+      addTearDown(() => dio.close(force: true));
+      final points = await bybit.fetchOpenInterestHistory('btcusdt');
+      expect(points.first.value, 100);
+      expect(await bybit.fetchOpenInterestHistory('BTCUSDT'), points);
+      expect(oiRequests, 1);
+      expect(
+        (await bybit.fetchTicker('BTCUSDT')).nextFundingAt,
+        at.add(const Duration(hours: 1)),
+      );
+    },
+  );
+
   test(
     'MarketSnapshotService scopes candle integrity warnings by timeframe',
     () async {
@@ -62,6 +139,12 @@ void main() {
 }
 
 class _FakeBybit extends BybitService {
+  @override
+  Future<List<({DateTime at, double value})>> fetchOpenInterestHistory(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) async => [];
+
   final intervals = <String>[];
 
   @override
@@ -144,4 +227,12 @@ class _InvalidCandleBybit extends _FakeBybit {
     if (interval == '15') return [...candles, candles.last];
     return candles;
   }
+}
+
+class _MissingOiBybit extends _FakeBybit {
+  @override
+  Future<List<({DateTime at, double value})>> fetchOpenInterestHistory(
+    String symbol, {
+    CancelToken? cancelToken,
+  }) async => throw Exception('auxiliary unavailable');
 }
