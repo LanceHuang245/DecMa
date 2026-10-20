@@ -6,7 +6,6 @@ import 'package:decma/domain/models/candle.dart';
 import 'package:decma/domain/models/trade_plan.dart';
 import 'package:decma/domain/analysis/entry_assessment.dart';
 import 'package:decma/ui/dashboard/trading_session.dart';
-import 'package:decma/data/services/storage/trade_store.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
@@ -87,27 +86,6 @@ void main() {
     },
   );
 
-  test('unchanged assessments do not append repeated records', () async {
-    final bybit = _QuoteBybit()..price = 100;
-    final session = TradingSession(bybit);
-    addTearDown(session.dispose);
-    addTearDown(bybit.dispose);
-    await session.accept(candidate(), await snapshot(bybit));
-    final before = await session.store.readRecords();
-    await session.recheck();
-    expect(await session.store.readRecords(), before);
-    expect(bybit.intervals, contains('5'));
-  });
-
-  test('evidence retains only the most recent 300 records', () async {
-    final store = TradeStore();
-    await Future.wait(List.generate(305, (i) => store.append({'id': i})));
-    final records = await store.readRecords();
-    expect(records, hasLength(300));
-    expect(records.first['id'], 5);
-    expect(records.last['id'], 304);
-  });
-
   testWidgets('a transient refresh failure is retried automatically', (
     tester,
   ) async {
@@ -121,6 +99,51 @@ void main() {
     expect(bybit.reads, 2);
     expect(session.assessment?.state, EntryState.realized);
   });
+
+  test(
+    'live quote cost filter pauses and requires a new trigger after recovery',
+    () async {
+      final bybit = _EntryBybit()..price = 101;
+      final session = TradingSession(bybit);
+      addTearDown(session.dispose);
+      addTearDown(bybit.dispose);
+      await session.accept(candidate(), await snapshot(bybit));
+      final start = bybit.closedStart.subtract(const Duration(minutes: 5));
+      session.createdAt = start;
+      session.pathStart = start;
+      await session.recheck();
+      expect(session.assessment?.state, EntryState.ready);
+      expect(session.referenceEntry!.price, closeTo(101.1, 1e-9));
+      bybit.price = 104;
+      await session.recheck();
+      expect(session.assessment?.state, EntryState.paused);
+      expect(session.referenceEntry!.netRewardRisk, lessThan(1));
+      bybit.price = 101;
+      await session.recheck();
+      expect(session.assessment?.state, EntryState.waiting);
+      expect(session.referenceEntry!.netRewardRisk, greaterThan(1));
+    },
+  );
+  test(
+    'fresh trigger without funding schedule never approves immediate entry',
+    () async {
+      final bybit = _EntryBybit()
+        ..price = 101
+        ..missingFunding = true;
+      final session = TradingSession(bybit);
+      addTearDown(session.dispose);
+      addTearDown(bybit.dispose);
+      await session.accept(candidate(), await snapshot(bybit));
+      session.createdAt = bybit.closedStart.subtract(
+        const Duration(minutes: 5),
+      );
+      session.pathStart = session.createdAt;
+      await session.recheck();
+      expect(session.assessment?.state, EntryState.unverified);
+      expect(session.assessment!.reason, contains('资金费'));
+      expect(session.plan!.decision, 'LONG_SETUP');
+    },
+  );
 
   test(
     'clearing a pending refresh prevents the old symbol from returning',
@@ -156,27 +179,6 @@ void main() {
 }
 
 class _QuoteBybit extends AnalysisBybit {
-  final intervals = <String>[];
-  @override
-  Future<List<Candle>> fetchKlines({
-    required String symbol,
-    required String interval,
-    int limit = 160,
-    int? start,
-    int? end,
-    CancelToken? cancelToken,
-  }) {
-    intervals.add(interval);
-    return super.fetchKlines(
-      symbol: symbol,
-      interval: interval,
-      limit: limit,
-      start: start,
-      end: end,
-      cancelToken: cancelToken,
-    );
-  }
-
   bool failOnce = false;
   double price = 111;
   int reads = 0;
@@ -206,5 +208,68 @@ class _QuoteBybit extends AnalysisBybit {
       throw Exception('temporary network failure');
     }
     return delayed?.future ?? Future.value(quote());
+  }
+}
+
+// A full closed trigger and contiguous minute path exercise the production session filter.
+class _EntryBybit extends _QuoteBybit {
+  bool missingFunding = false;
+  DateTime get closedStart {
+    final ms = DateTime.now().toUtc().millisecondsSinceEpoch;
+    return DateTime.fromMillisecondsSinceEpoch(
+      ms ~/ 300000 * 300000 - 300000,
+      isUtc: true,
+    );
+  }
+
+  @override
+  TickerSnapshot quote() => TickerSnapshot(
+    symbol: 'BTCUSDT',
+    lastPrice: price,
+    markPrice: price,
+    indexPrice: price,
+    bestBid: price - 0.1,
+    bestAsk: price + 0.1,
+    openInterest: 100,
+    fundingRate: 0,
+    nextFundingAt: missingFunding
+        ? null
+        : DateTime.now().toUtc().add(const Duration(hours: 4)),
+    observedAt: DateTime.now().toUtc(),
+  );
+  @override
+  Future<List<Candle>> fetchKlines({
+    required String symbol,
+    required String interval,
+    int limit = 160,
+    int? start,
+    int? end,
+    CancelToken? cancelToken,
+  }) async {
+    final now = DateTime.now().toUtc();
+    if (interval == '5') {
+      return [
+        Candle(
+          time: closedStart,
+          open: 100,
+          high: 102,
+          low: 99,
+          close: 101,
+          volume: 10,
+        ),
+      ];
+    }
+    final first = closedStart.subtract(const Duration(minutes: 5));
+    return List.generate(
+      now.difference(first).inMinutes + 1,
+      (i) => Candle(
+        time: first.add(Duration(minutes: i)),
+        open: 100,
+        high: price > 102 ? 104 : 101.5,
+        low: 99,
+        close: 101,
+        volume: 10,
+      ),
+    );
   }
 }

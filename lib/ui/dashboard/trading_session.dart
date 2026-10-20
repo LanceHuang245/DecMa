@@ -10,6 +10,8 @@ import '../../domain/models/trade_plan.dart';
 import '../../data/services/bybit_service.dart';
 import '../../data/services/storage/trade_store.dart';
 import '../../domain/analysis/entry_assessment.dart';
+import '../../domain/analysis/reference_entry.dart';
+import '../../domain/analysis/feature_engine.dart';
 
 // Check opportunity freshness in the background; never require account configuration.
 class TradingSession extends ChangeNotifier {
@@ -21,6 +23,10 @@ class TradingSession extends ChangeNotifier {
   DateTime? createdAt, pathStart;
   String? recordId;
   double? currentPrice;
+  ReferenceEntry? referenceEntry;
+  InstrumentSnapshot? _instrument;
+  MarketFeatures? features;
+  DateTime? _triggerAfter;
   EntryAssessment? assessment;
   bool checking = false;
   EntryState? _recordedState;
@@ -32,6 +38,8 @@ class TradingSession extends ChangeNotifier {
   Future<void> accept(TradePlan candidate, MarketSnapshot snapshot) async {
     clear();
     plan = candidate;
+    _instrument = snapshot.instrument;
+    features = const FeatureEngine().calculate(snapshot);
     createdAt = DateTime.now().toUtc();
     pathStart = snapshot.buildStartedAt;
     recordId = '${snapshot.symbol}_${createdAt!.microsecondsSinceEpoch}';
@@ -41,6 +49,7 @@ class TradingSession extends ChangeNotifier {
       'reference_venue': 'Bybit',
       'plan': candidate.parsedJson,
       'snapshot_id': snapshot.snapshotId,
+      'reference_policy_version': ReferenceEntry.policyVersion,
       'path_start': pathStart!.toIso8601String(),
     });
     if (!_disposed && identical(plan, candidate) && candidate.isSetup) {
@@ -60,6 +69,7 @@ class TradingSession extends ChangeNotifier {
     final generation = _generation;
     final token = _cancel = CancelToken();
     checking = true;
+    referenceEntry = null;
     _expiry?.cancel();
     assessment = EntryAssessment(
       EntryState.unverified,
@@ -142,7 +152,36 @@ class TradingSession extends ChangeNotifier {
                   : const [],
               price: ticker.lastPrice,
               fresh: pathComplete,
+              triggerAfter: _triggerAfter,
+              entryPrice: candidate.decision == 'LONG_SETUP'
+                  ? ticker.bestAsk
+                  : ticker.bestBid,
             );
+      referenceEntry =
+          quoteFresh && assessment?.terminal == false && _instrument != null
+          ? ReferenceEntry.calculate(candidate, ticker, _instrument!, now)
+          : null;
+      // Preserve terminal decisions; a cost pause requires a new post-pause trigger.
+      if (assessment?.terminal == false && quoteFresh && pathComplete) {
+        if (referenceEntry == null && assessment?.state == EntryState.ready) {
+          assessment = EntryAssessment(
+            EntryState.unverified,
+            '等待买卖报价和资金费结算信息确认',
+            now,
+          );
+        } else if (referenceEntry != null &&
+            (referenceEntry!.netRewardRisk < 1 ||
+                (candidate.decision == 'LONG_SETUP'
+                    ? referenceEntry!.price > referenceEntry!.maximumPrice
+                    : referenceEntry!.price < referenceEntry!.maximumPrice))) {
+          _triggerAfter = now;
+          assessment = EntryAssessment(
+            EntryState.paused,
+            '当前参考净盈亏比不足 1:1，等待更优价格和新的触发',
+            now,
+          );
+        }
+      }
       final result = assessment!;
       await _recordAssessment(result, ticker.lastPrice);
       if (_disposed || generation != _generation) return;
@@ -175,7 +214,18 @@ class TradingSession extends ChangeNotifier {
   void observe(double price) {
     final candidate = plan;
     if (candidate == null) return;
+    final changed = currentPrice != price;
     currentPrice = price;
+    if (changed && assessment?.state == EntryState.ready) {
+      referenceEntry = null;
+      assessment = EntryAssessment(
+        EntryState.unverified,
+        '价格变化，正在重新确认入场条件',
+        DateTime.now().toUtc(),
+      );
+      _notify();
+      unawaited(recheck());
+    }
     if (!candidate.isSetup || assessment?.terminal == true) return;
     final result = const EntryEvaluator().evaluate(
       plan: candidate,
@@ -187,18 +237,9 @@ class TradingSession extends ChangeNotifier {
 
       previous: assessment,
     );
-    final long = candidate.decision == 'LONG_SETUP';
-    final outside =
-        candidate.maximumChasePrice != null &&
-        (long
-            ? price < candidate.entryLow! ||
-                  price > candidate.maximumChasePrice!
-            : price > candidate.entryHigh! ||
-                  price < candidate.maximumChasePrice!);
     if (result.terminal ||
         result.state == EntryState.paused &&
-            assessment?.state != EntryState.paused ||
-        assessment?.state == EntryState.ready && outside) {
+            assessment?.state != EntryState.paused) {
       if (result.terminal) {
         _generation++;
         _cancel?.cancel();
@@ -239,6 +280,9 @@ class TradingSession extends ChangeNotifier {
         'state': result.state.name,
         'reason': result.reason,
         'price': price,
+        'reference_entry_price': referenceEntry?.price,
+        'reference_net_rr': referenceEntry?.netRewardRisk,
+        'effective_chase_price': referenceEntry?.maximumPrice,
       });
 
   // Evidence is saved silently; storage availability does not change market direction.
@@ -264,6 +308,10 @@ class TradingSession extends ChangeNotifier {
     plan = null;
     assessment = null;
     currentPrice = null;
+    referenceEntry = null;
+    _instrument = null;
+    features = null;
+    _triggerAfter = null;
     recordId = null;
     _recordedState = null;
   }
