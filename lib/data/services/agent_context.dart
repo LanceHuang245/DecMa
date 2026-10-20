@@ -5,6 +5,7 @@ import '../../domain/models/news_event.dart';
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/candle.dart';
 import '../../domain/analysis/feature_engine.dart';
+import '../../domain/analysis/reference_entry.dart';
 
 // Keep source status formatting next to the prompt context that consumes it.
 Map<String, String> agentSourceAvailability({
@@ -90,6 +91,8 @@ ${marketSnapshot == null ? '' : '\nHarness core market snapshot:\n${jsonEncode(m
 ${marketFeatures == null ? '' : '\nDeterministic calculated features:\n${jsonEncode(marketFeatures.toJson())}'}
 ${bybitFeeRates == null ? '' : '\nBybit authenticated account fee rates:\n${jsonEncode(bybitFeeRates)}'}
 ${eventSnapshot == null ? '' : '\nCurrent event snapshot from the app event store:\n${jsonEncode(eventSnapshot.toJson())}'}
+Reference entry policy (public scenario, not personal costs):
+${jsonEncode({'version': ReferenceEntry.policyVersion, 'taker_fee_per_leg': ReferenceEntry.feeRate, 'funding_window_hours': 3, 'minimum_tp1_reference_net_rr': 1, 'entry_quote': 'LONG Ask / SHORT Bid', 'exit_spread': 'adverse half current spread', 'funding_receipts_improve_eligibility': false, 'size_impact': 'UNAVAILABLE'})}
 Configured analysis-source availability (availability is not market evidence):
 ${jsonEncode(sourceAvailability)}
 ${warnings.isEmpty ? '' : 'Unavailable data sources: ${warnings.join(' | ')}'}$previousAnalysis''';
