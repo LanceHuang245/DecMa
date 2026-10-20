@@ -58,6 +58,13 @@ Machine-readable fields stay behind the chart and checks. Bybit reference data d
 - `lib/providers/`: service construction and lifecycle management.
 - `test/`: tests grouped by layer/feature, with shared helpers in `test/fixtures/`.
 
+## Reference entry assessment
+
+- Closed-bar features include KDJ (9/3/3), ADX/DMI, Bollinger bandwidth and percentile, RSI changes, and prior structure levels. All values are serialized into the analysis context; correlated price indicators are not independent votes.
+- Optional public Bybit OI history supplies 15-minute and one-hour changes without blocking core price analysis on failure.
+- Entry checks use Ask for longs and Bid for shorts, with a minimum reference net reward/risk of 1:1 to TP1 and a cost-adjusted chase boundary. The public scenario uses 0.055% taker fees per leg, adverse half-spread at exit, and payable funding over three hours. It excludes size-dependent market impact and is not a personal cost estimate.
+- Breakout/retest requires separate closed candles. Range reentry must touch its directional boundary. Volume alone cannot approve entry; a cost pause requires a new trigger after recovery.
+
 ## Requirements
 
 - Flutter SDK with Dart `^3.12.2`.
