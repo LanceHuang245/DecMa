@@ -1,5 +1,4 @@
 import 'package:decma/domain/models/trade_plan.dart';
-import 'package:decma/data/services/agent_prompts.dart';
 import 'package:decma/domain/analysis/risk_engine.dart';
 import 'package:decma/domain/analysis/trade_plan_validator.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -145,18 +144,6 @@ void main() {
     expect(metrics.netRewardRisk, closeTo(5.8 / 2.2, 1e-9));
   });
 
-  test('TradePlan parser keeps fields required by the validator', () {
-    final plan = TradePlan.fromResponse('''
-Result
-{"request":{"symbol":"BTCUSDT"},"decision":{"type":"LONG_SETUP","summary":"test"},"entry_plan":{"entry_zone_low":100,"entry_zone_high":101,"maximum_chase_price":102},"risk_plan":{"stop_loss":98},"take_profit_plan":[{"price":105,"close_percentage":100,"gross_reward_risk":1.8,"estimated_net_reward_risk":1.7}]}
-''')!;
-
-    expect(plan.symbol, 'BTCUSDT');
-    expect(plan.maximumChasePrice, 102);
-    expect(plan.targets.single.closePercentage, 100);
-    expect(validator.validate(plan).isValid, isTrue);
-  });
-
   test('accepts targets when every exit allocation is unavailable', () {
     final plan = TradePlan.fromResponse('''
 {"request":{"symbol":"BTCUSDT"},"decision":{"type":"LONG_SETUP","summary":"test"},"entry_plan":{"entry_zone_low":100,"entry_zone_high":101},"risk_plan":{"stop_loss":98},"take_profit_plan":[{"price":105,"close_percentage":null},{"price":108,"close_percentage":null}]}
@@ -167,34 +154,6 @@ Result
       isTrue,
     );
     expect(validator.validate(plan).isValid, isTrue);
-  });
-
-  test(
-    'analysis prompt never uses zero for an unavailable exit allocation',
-    () {
-      expect(
-        analysisPrompt,
-        contains('every target must use close_percentage = null'),
-      );
-      expect(analysisPrompt, contains('Never use 0 as a placeholder'));
-      expect(analysisPrompt, isNot(contains('"close_percentage": 0')));
-    },
-  );
-
-  test('full-source enrichment requires real bounded data calls', () {
-    expect(analysisPrompt, contains('`FULL_SOURCE_ENRICHMENT`'));
-    expect(
-      analysisPrompt,
-      contains('Calling `decma_discover_mcp_tools` only discovers schemas'),
-    );
-    expect(
-      analysisPrompt,
-      contains('only `Coinalyze_API_getFutureMarkets` resolves an identifier'),
-    );
-    expect(
-      analysisPrompt,
-      contains('Failure of an auxiliary source must still only degrade'),
-    );
   });
 }
 

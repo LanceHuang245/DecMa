@@ -1,5 +1,6 @@
 import '../models/candle.dart';
 import '../models/trade_plan.dart';
+import 'candle_integrity_validator.dart';
 
 enum EntryState { waiting, ready, paused, realized, invalid, unverified }
 
@@ -12,7 +13,7 @@ class EntryAssessment {
       state == EntryState.realized || state == EntryState.invalid;
   String get label => switch (state) {
     EntryState.waiting => '等待触发',
-    EntryState.ready => '触发已确认',
+    EntryState.ready => '当前可参考入场',
     EntryState.paused => '等待回踩',
     EntryState.realized => '机会已兑现',
     EntryState.invalid => '已失效',
@@ -33,6 +34,8 @@ class EntryEvaluator {
     required bool fresh,
     EntryAssessment? previous,
     DateTime? pathStart,
+    DateTime? triggerAfter,
+    double? entryPrice,
     List<Candle> triggerCandles = const [],
   }) {
     EntryAssessment result(EntryState state, String reason) =>
@@ -93,15 +96,18 @@ class EntryEvaluator {
     if (!rule.supported || rule.stopReference != 'LastPrice') {
       return result(EntryState.unverified, '仍需确认入场条件，以最新行情为准');
     }
+    final executable = entryPrice ?? price;
     final chase = plan.maximumChasePrice;
     if (chase == null) return result(EntryState.unverified, '最大追价未定义');
-    if (long ? price > chase : price < chase) {
+    if (long ? executable > chase : executable < chase) {
       return result(EntryState.paused, '超过最大追价，等待回踩并重新核验');
     }
-    if (long ? price < low : price > high) {
+    if (long ? executable < low : executable > high) {
       return result(EntryState.waiting, '尚未进入允许开仓区域');
     }
-    var triggerStart = createdAt;
+    var triggerStart = triggerAfter != null && triggerAfter.isAfter(createdAt)
+        ? triggerAfter
+        : createdAt;
     for (final candle in relevant) {
       if (long ? candle.high > chase : candle.low < chase) {
         final end = candle.time.add(const Duration(minutes: 1));
@@ -127,47 +133,83 @@ class EntryEvaluator {
     final closed =
         candles.where((c) => !c.time.add(width).isAfter(now)).toList()
           ..sort((a, b) => a.time.compareTo(b.time));
-    if (closed.isEmpty) return false;
+    if (closed.isEmpty ||
+        !const CandleIntegrityValidator()
+            .validate(
+              candles: closed,
+              interval: width,
+              snapshotCompletedAt: now,
+            )
+            .isValid) {
+      return false;
+    }
+    if (rule.version >= 2 &&
+        (rule.strategy == 'BREAKOUT_RETEST' &&
+                rule.triggerType != 'BREAKOUT_RETEST' ||
+            rule.strategy == 'MEAN_REVERSION' &&
+                rule.triggerType != 'TOUCH_ZONE_AND_CLOSE_INSIDE')) {
+      return false;
+    }
     final bar = closed.last;
     // Only a fresh, fully post-trigger bar can confirm entry.
     if (bar.time.isBefore(created) ||
-        now.difference(bar.time.add(width)) >= width ||
-        ![
-          bar.open,
-          bar.high,
-          bar.low,
-          bar.close,
-        ].every((p) => p.isFinite && p > 0) ||
-        bar.low > bar.open ||
-        bar.low > bar.close ||
-        bar.high < bar.open ||
-        bar.high < bar.close) {
+        now.difference(bar.time.add(width)) >= width) {
       return false;
     }
     switch (rule.triggerType) {
       case 'CLOSE_ABOVE':
-        return bar.close > rule.triggerPrice!;
+        return bar.close > rule.triggerPrice! &&
+            _volumeConfirmed(rule.volumeMultiple, closed);
       case 'CLOSE_BELOW':
-        return bar.close < rule.triggerPrice!;
+        return bar.close < rule.triggerPrice! &&
+            _volumeConfirmed(rule.volumeMultiple, closed);
+      case 'BREAKOUT_RETEST':
+        if (rule.version < 2 || rule.triggerPrice == null) return false;
+        final level = rule.triggerPrice!;
+        final long = plan.decision == 'LONG_SETUP';
+        var broke = false;
+        for (final c in closed.where((c) => !c.time.isBefore(created))) {
+          final holds = long ? c.close > level : c.close < level;
+          final touches = long ? c.low <= level : c.high >= level;
+          if (identical(c, bar) && broke && holds && touches) return true;
+          if (!holds) {
+            broke = false;
+            continue;
+          }
+          if (long ? c.open <= level : c.open >= level) broke = true;
+        }
+        return false;
       case 'TOUCH_ZONE_AND_CLOSE_INSIDE':
-        return bar.close >= plan.entryLow! && bar.close <= plan.entryHigh!;
-      case 'VOLUME_ABOVE_MULTIPLE':
-        if (closed.length < 21 || !bar.volume.isFinite || bar.volume < 0) {
+        if (rule.version < 2 ||
+            plan.entryLow == null ||
+            plan.entryHigh == null) {
           return false;
         }
-        final history = closed.sublist(closed.length - 21, closed.length - 1);
-        for (var i = 0; i < history.length; i++) {
-          final c = history[i];
-          if (c.time != bar.time.subtract(width * (20 - i)) ||
-              !c.volume.isFinite ||
-              c.volume < 0) {
-            return false;
-          }
-        }
-        final mean = history.fold<double>(0, (sum, c) => sum + c.volume) / 20;
-        return mean > 0 && bar.volume >= mean * rule.volumeMultiple!;
+        final touch = plan.decision == 'LONG_SETUP'
+            ? bar.low <= plan.entryLow!
+            : bar.high >= plan.entryHigh!;
+        return touch &&
+            bar.close >= plan.entryLow! &&
+            bar.close <= plan.entryHigh!;
+      case 'VOLUME_ABOVE_MULTIPLE':
+        // Legacy volume-only plans need a directional price condition before approval.
+        if (rule.triggerPrice == null) return false;
+        final direction = plan.decision == 'LONG_SETUP'
+            ? bar.close > rule.triggerPrice!
+            : bar.close < rule.triggerPrice!;
+        return direction && _volumeConfirmed(rule.volumeMultiple, closed);
       default:
         return false;
     }
+  }
+
+  // Volume supplements a directional trigger and requires a contiguous baseline.
+  bool _volumeConfirmed(double? multiple, List<Candle> closed) {
+    if (multiple == null) return true;
+    if (closed.length < 21) return false;
+    final bar = closed.last;
+    final history = closed.sublist(closed.length - 21, closed.length - 1);
+    final mean = history.fold<double>(0, (sum, c) => sum + c.volume) / 20;
+    return mean > 0 && bar.volume >= mean * multiple;
   }
 }

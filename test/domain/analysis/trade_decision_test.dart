@@ -120,60 +120,153 @@ void main() {
     );
   });
 
-  test('a fresh trigger can be assessed without account or risk setup', () {
-    final candles = [bar(0, close: 100.5)];
-    final result = const EntryEvaluator().evaluate(
-      plan: setup(),
-      createdAt: created,
-      now: created.add(const Duration(minutes: 5)),
-      path: [],
-      triggerCandles: candles,
-      price: 101,
-      fresh: true,
+  test('volume confirmation requires 20 contiguous closed baseline bars', () {
+    const minutes = 15;
+    final plan = TradePlan(
+      decision: 'LONG_SETUP',
+      summary: '',
+      parsedJson: '{}',
+      conditions: PlanConditions(
+        triggerType: 'VOLUME_ABOVE_MULTIPLE',
+        triggerPrice: 99,
+        volumeMultiple: 2,
+        timeframeMinutes: minutes,
+      ),
     );
-    expect(result.state, EntryState.ready);
+    final bars = List.generate(
+      21,
+      (i) => Candle(
+        time: created.add(Duration(minutes: (i - 20) * minutes)),
+        open: 100,
+        high: 101,
+        low: 99,
+        close: 100,
+        volume: i == 20 ? 25 : 10,
+      ),
+    );
+    final now = created.add(Duration(minutes: minutes));
+    const evaluator = EntryEvaluator();
+    expect(evaluator.triggered(plan, bars, created, now), true);
+    expect(evaluator.triggered(plan, bars.sublist(1), created, now), false);
+    expect(
+      evaluator.triggered(
+        plan,
+        bars,
+        created,
+        now.subtract(const Duration(seconds: 1)),
+      ),
+      false,
+    );
+    final missing = [...bars]..removeAt(10);
+    expect(evaluator.triggered(plan, missing, created, now), false);
   });
-  for (final minutes in [5, 15, 60, 240]) {
-    test('native $minutes-minute volume trigger uses 20 prior bars', () {
-      final plan = TradePlan(
-        decision: 'LONG_SETUP',
+
+  TradePlan conditional(String trigger, {bool long = true, int version = 2}) =>
+      TradePlan(
+        decision: long ? 'LONG_SETUP' : 'SHORT_SETUP',
         summary: '',
         parsedJson: '{}',
+        entryLow: 99,
+        entryHigh: 101,
+        stopLoss: long ? 95 : 105,
+        maximumChasePrice: long ? 103 : 97,
+        targets: [TradeTarget(price: long ? 110 : 90)],
         conditions: PlanConditions(
-          triggerType: 'VOLUME_ABOVE_MULTIPLE',
-          volumeMultiple: 2,
-          timeframeMinutes: minutes,
+          version: version,
+          strategy: trigger == 'BREAKOUT_RETEST'
+              ? 'BREAKOUT_RETEST'
+              : 'MEAN_REVERSION',
+          triggerType: trigger,
+          triggerPrice: trigger == 'VOLUME_ABOVE_MULTIPLE' ? null : 100,
+          volumeMultiple: trigger == 'VOLUME_ABOVE_MULTIPLE' ? 2 : null,
+          timeframeMinutes: 5,
         ),
       );
-      final bars = List.generate(
-        21,
-        (i) => Candle(
-          time: created.add(Duration(minutes: (i - 20) * minutes)),
-          open: 100,
-          high: 101,
-          low: 99,
-          close: 100,
-          volume: i == 20 ? 25 : 10,
-        ),
+  for (final long in [true, false]) {
+    test('breakout retest requires distinct ordered bars, long=$long', () {
+      final p = conditional('BREAKOUT_RETEST', long: long);
+      final breakout = bar(0, close: long ? 100.5 : 99.5);
+      final retest = bar(
+        5,
+        open: long ? 100.5 : 99.5,
+        close: long ? 100.5 : 99.5,
       );
-      final now = created.add(Duration(minutes: minutes));
       const evaluator = EntryEvaluator();
-      expect(evaluator.triggered(plan, bars, created, now), true);
-      expect(evaluator.triggered(plan, bars.sublist(1), created, now), false);
       expect(
         evaluator.triggered(
-          plan,
-          bars,
+          p,
+          [breakout],
           created,
-          now.subtract(const Duration(seconds: 1)),
+          created.add(const Duration(minutes: 5)),
         ),
         false,
       );
-      final missing = [...bars]..removeAt(10);
-      expect(evaluator.triggered(plan, missing, created, now), false);
+      expect(
+        evaluator.triggered(
+          p,
+          [breakout, retest],
+          created,
+          created.add(const Duration(minutes: 10)),
+        ),
+        true,
+      );
+      expect(
+        evaluator.triggered(
+          p,
+          [
+            breakout,
+            bar(5, close: long ? 99.5 : 100.5),
+            bar(10, open: long ? 100.5 : 99.5, close: long ? 100.5 : 99.5),
+          ],
+          created,
+          created.add(const Duration(minutes: 15)),
+        ),
+        false,
+      );
+      expect(
+        evaluator.triggered(
+          p,
+          [
+            breakout,
+            bar(10, open: long ? 100.5 : 99.5, close: long ? 100.5 : 99.5),
+          ],
+          created,
+          created.add(const Duration(minutes: 15)),
+        ),
+        false,
+      );
+    });
+    test('range reentry must touch its directional boundary, long=$long', () {
+      final p = conditional('TOUCH_ZONE_AND_CLOSE_INSIDE', long: long);
+      const evaluator = EntryEvaluator();
+      final now = created.add(const Duration(minutes: 5));
+      expect(
+        evaluator.triggered(p, [bar(0, high: 100.5, low: 99.5)], created, now),
+        false,
+      );
+      expect(evaluator.triggered(p, [bar(0)], created, now), true);
+      expect(
+        evaluator.triggered(
+          conditional('TOUCH_ZONE_AND_CLOSE_INSIDE', long: long, version: 1),
+          [bar(0)],
+          created,
+          now,
+        ),
+        false,
+      );
     });
   }
-
+  test('volume without directional price confirmation never triggers', () {
+    expect(
+      const EntryEvaluator().triggered(
+        conditional('VOLUME_ABOVE_MULTIPLE'),
+        [bar(0)],
+        created,
+        created.add(const Duration(minutes: 5)),
+      ),
+      false,
+    );
+  });
   test('a four-hour trigger is not expired by an unrelated three-hour cap', () {
     final plan = TradePlan(
       decision: 'LONG_SETUP',

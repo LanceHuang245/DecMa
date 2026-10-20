@@ -8,6 +8,7 @@ part of 'plan_conditions.dart';
 
 PlanConditions _$PlanConditionsFromJson(Map<String, dynamic> json) =>
     PlanConditions(
+      version: (json['version'] as num?)?.toInt() ?? 1,
       strategy: json['strategy'] as String? ?? 'UNKNOWN',
       regime: json['regime'] as String? ?? 'UNKNOWN',
       triggerType: json['trigger_type'] as String?,
@@ -23,6 +24,7 @@ PlanConditions _$PlanConditionsFromJson(Map<String, dynamic> json) =>
 
 Map<String, dynamic> _$PlanConditionsToJson(PlanConditions instance) =>
     <String, dynamic>{
+      'version': instance.version,
       'strategy': instance.strategy,
       'regime': instance.regime,
       'trigger_type': instance.triggerType,
