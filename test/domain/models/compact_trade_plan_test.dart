@@ -7,10 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('machine plan is hidden while the readable conclusion stays intact', () {
     const raw = '{"decision":{"type":"WAIT","summary":"等待"}}';
-    expect(
-      TradePlan.displayText('偏多，但现在等待回踩。\n```json\n$raw\n```'),
-      '偏多，但现在等待回踩。',
-    );
+    for (final language in ['json', 'JSON', ' json']) {
+      expect(
+        TradePlan.displayText('偏多，但现在等待回踩。\n```$language\n$raw\n```'),
+        '偏多，但现在等待回踩。',
+      );
+    }
     expect(TradePlan.displayText(raw), '等待');
     expect(
       TradePlan.displayText('```python\nprint(1)\n```\n$raw'),

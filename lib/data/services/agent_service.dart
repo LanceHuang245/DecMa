@@ -73,6 +73,7 @@ class AgentService {
     String? previousAnalysisContext,
     DateTime? previousAnalysisAt,
     void Function(String activity)? onActivity,
+    // Snapshots contain only the current model turn; empty means a segment boundary.
     void Function(String text)? onText,
     CancellationToken? cancel,
   }) async {
@@ -227,8 +228,13 @@ class AgentService {
                   cancel: pass.token,
                   onChunk: (chunk) {
                     if (pass.token.isCancelled) return;
-                    text = chunk.role == Role.tool ? '' : text + chunk.text;
-                    onText?.call(text);
+                    if (chunk.role == Role.tool) {
+                      text = '';
+                      onText?.call('');
+                    } else if (chunk.text.isNotEmpty) {
+                      text += chunk.text;
+                      onText?.call(text);
+                    }
                   },
                 ),
                 pass.token.whenCancelled,

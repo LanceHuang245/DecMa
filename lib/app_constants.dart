@@ -5,6 +5,8 @@ class AppConstants {
   static const codexClientVersion = '0.163.0';
   static const bybitMcpPackage = 'bybit-official-trading-server@latest';
   static const openWebSearchMcpPackage = 'open-websearch@latest';
+
+  // Documentation links for external services used in the application.
   static const bybitAccountDocumentationUrl =
       'https://bybit-exchange.github.io/docs/v5/guide';
   static const nansenDocumentationUrl = 'https://docs.nansen.ai/';

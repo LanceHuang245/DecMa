@@ -95,15 +95,16 @@ class TradePlan {
           targets: targets,
           conditions: PlanConditions.fromJson(_map(data['conditions'])),
         );
-        final fence = RegExp(r'```(?:json)?\s*([\s\S]*?)```')
-            .allMatches(response)
-            .where(
-              (m) =>
-                  m.start <= jsonText.start &&
-                  m.end >= jsonText.end &&
-                  m.group(1)!.trim() == jsonText.raw.trim(),
-            )
-            .firstOrNull;
+        final fence =
+            RegExp(r'```[ \t]*(?:json)?\s*([\s\S]*?)```', caseSensitive: false)
+                .allMatches(response)
+                .where(
+                  (m) =>
+                      m.start <= jsonText.start &&
+                      m.end >= jsonText.end &&
+                      m.group(1)!.trim() == jsonText.raw.trim(),
+                )
+                .firstOrNull;
         final text = response
             .replaceRange(
               fence?.start ?? jsonText.start,

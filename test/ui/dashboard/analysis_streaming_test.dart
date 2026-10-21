@@ -43,6 +43,39 @@ void main() {
     controller.dispose();
   });
 
+  test(
+    'an intermediate JSON fence cannot hide the next tool turn or its plan',
+    () async {
+      final agent = StreamingAgent();
+      final controller = await testController(agent, bybit: AnalysisBybit());
+      addTearDown(controller.dispose);
+      controller.promptController.text = 'Analyze BTCUSDT';
+      final run = controller.runAgent();
+      await agent.started.future;
+      agent.texts.single('先核实价格\n```json\n{"decision":');
+      agent.activities.single('• MCP - 补充价格');
+      agent.texts.single('');
+      agent.texts.single('最终等待\n```JSON\n$_plan\n```');
+      expect(controller.chartPlan, isNull);
+      agent.results.single.complete(
+        const AgentResult(text: '最终等待\n```JSON\n$_plan\n```', warnings: []),
+      );
+      await run;
+      expect(
+        controller.conversation
+            .where((m) => !m.isUser && !m.isActivity)
+            .map((m) => m.text.trim()),
+        ['先核实价格', '最终等待'],
+      );
+      expect(
+        controller.conversation.where((m) => m.text == '• Result - 结果生成中…'),
+        hasLength(2),
+      );
+      expect(controller.chartPlan?.decision, 'WAIT');
+      expect(controller.showWaitZone, true);
+    },
+  );
+
   // Follow-ups retain historical analysis while obtaining a fresh market snapshot.
   test('follow-ups reuse the last analysis with current market data', () async {
     final agent = StreamingAgent();

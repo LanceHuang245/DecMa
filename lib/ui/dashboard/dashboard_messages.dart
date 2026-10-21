@@ -36,6 +36,21 @@ class ConversationMessage extends StatelessWidget {
         fontWeight: FontWeight.w600,
         color: resources.textFillColorPrimary,
       ),
+      tableHead: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: resources.textFillColorPrimary,
+      ),
+      tableBody: TextStyle(
+        fontSize: 13,
+        height: 1.4,
+        color: resources.textFillColorPrimary,
+      ),
+      // Scroll wide tables instead of squeezing text into narrow or empty cells.
+      tableColumnWidth: const FixedColumnWidth(180),
+      tableHeadAlign: TextAlign.left,
+      tableCellsPadding: const EdgeInsets.all(8),
+      tableBorder: TableBorder.all(color: resources.dividerStrokeColorDefault),
       code: TextStyle(
         fontFamily: 'monospace',
         color: resources.textFillColorPrimary,
@@ -44,7 +59,20 @@ class ConversationMessage extends StatelessWidget {
         color: resources.layerFillColorDefault,
         borderRadius: BorderRadius.circular(4),
       ),
-      blockquote: TextStyle(color: resources.textFillColorSecondary),
+      // Match callout foreground and background to the same Fluent theme.
+      blockquote: TextStyle(
+        fontSize: 13,
+        height: 1.4,
+        color: resources.textFillColorPrimary,
+      ),
+      blockquotePadding: const EdgeInsets.all(12),
+      blockquoteDecoration: BoxDecoration(
+        color: resources.systemFillColorCautionBackground,
+        borderRadius: BorderRadius.circular(4),
+        border: Border(
+          left: BorderSide(color: resources.systemFillColorCaution, width: 3),
+        ),
+      ),
     );
     return Container(
       padding: const EdgeInsets.all(10),

@@ -13,14 +13,14 @@ import '../../fixtures/llm_fixtures.dart';
 
 void main() {
   // Plugin content indexes must not merge earlier model turns into the final draft.
-  test('Chat Completions replaces pre-tool text', () async {
+  test('Chat Completions separates tool turns from the final result', () async {
     var requests = 0;
     final snapshots = <String>[];
     final client = MockClient.streaming((_, _) async {
       requests++;
       return _response(
         firstTextEvent(LlmProvider.openAiCompletions) +
-            (requests == 1
+            (requests < 3
                 ? toolEvents(LlmProvider.openAiCompletions)
                 : lastTextEvents(LlmProvider.openAiCompletions)),
       );
@@ -36,6 +36,19 @@ void main() {
         'Hello world',
       );
       expect(snapshots, isNot(contains('HelloHello')));
+      final segments = <String>[];
+      for (final snapshot in snapshots) {
+        if (snapshot.isEmpty) {
+          segments.add('');
+        } else {
+          segments[segments.length - 1] = snapshot;
+        }
+      }
+      expect(segments.where((text) => text.isNotEmpty), [
+        'Hello',
+        'Hello',
+        'Hello world',
+      ]);
     } finally {
       client.close();
     }

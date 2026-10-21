@@ -37,7 +37,7 @@ class AgentConversationController extends ChangeNotifier {
   bool _scrollScheduled = false;
   bool _disposed = false;
 
-  // Replace one draft and accept a result only while its original request is current.
+  // Replace snapshots within a turn; an empty snapshot starts a new text segment.
   Future<void> run(
     Future<AgentResult> Function(
       CancellationToken,
@@ -54,8 +54,11 @@ class AgentConversationController extends ChangeNotifier {
     bool current() => !_disposed && identical(_request, request);
     void publish(String text) {
       if (!current() || request.token.isCancelled) return;
+      if (text.isEmpty) {
+        draft = null;
+        return;
+      }
       if (draft == null) {
-        if (text.isEmpty) return;
         draft = messages.length;
         messages.add(DashboardMessage.agent(text));
       } else {

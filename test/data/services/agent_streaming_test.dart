@@ -40,9 +40,9 @@ void main() {
     controller.dispose();
   });
 
-  // Stream snapshots replace one message while retaining interleaved statuses.
+  // Empty snapshots delimit model turns without erasing the preceding text.
   test(
-    'streaming and source repair replace a draft while keeping activities',
+    'tool turns preserve separate text segments and interleaved activities',
     () async {
       final agent = StreamingAgent();
       final controller = await testController(agent);
@@ -60,6 +60,13 @@ void main() {
       );
       agent.activities.single('• MCP - data');
       agent.texts.single('');
+      expect(
+        controller.conversation
+            .where((m) => m.kind == DashboardMessageKind.agent)
+            .single
+            .text,
+        'First draft',
+      );
       agent.texts.single('Revised draft');
       agent.results.single.complete(
         const AgentResult(text: 'Final answer\n$_waitPlan', warnings: []),
@@ -69,9 +76,8 @@ void main() {
       expect(
         controller.conversation
             .where((m) => m.kind == DashboardMessageKind.agent)
-            .single
-            .text,
-        'Final answer',
+            .map((m) => m.text),
+        ['First draft', 'Final answer'],
       );
       expect(
         controller.conversation.any((m) => m.text == '• MCP - data'),

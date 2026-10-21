@@ -74,11 +74,23 @@ extension DashboardAnalysis on DashboardController {
           previousAnalysisAt: _agentUi.lastAnalysisAt,
           cancel: token,
           onText: (text) {
+            // Tool turns and source repair start new segments, including JSON visibility.
+            if (text.isEmpty) {
+              resultAnnounced = false;
+              onText('');
+              return;
+            }
             // Hide the machine payload while the readable answer is streaming.
-            final fence = text.indexOf('```json');
-            onText(fence < 0 ? text : text.substring(0, fence));
+            final fence = RegExp(
+              r'```[ \t]*json\b',
+              caseSensitive: false,
+            ).firstMatch(text);
+            final visible = fence == null
+                ? text
+                : text.substring(0, fence.start);
+            if (visible.isNotEmpty) onText(visible);
             // Log the hidden payload stage once, using the existing MCP activity UI.
-            if (fence >= 0 && !resultAnnounced) {
+            if (fence != null && !resultAnnounced) {
               resultAnnounced = true;
               onActivity('• Result - 结果生成中…');
             }
