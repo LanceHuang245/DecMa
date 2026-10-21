@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:genkit/genkit.dart';
 
 import '../../utils/network.dart';
@@ -10,6 +11,7 @@ class AgentTools extends GenerateMiddleware {
   final void Function(String)? onActivity;
   final attemptedSources = <String>{};
   final completedSources = <String>{};
+  final fetchedWebUrls = <String>{};
   final _evidence = <String, List<Map<String, String>>>{};
   final _evidenceChars = <String, int>{};
   List<Map<String, String>> get evidence =>
@@ -37,9 +39,13 @@ class AgentTools extends GenerateMiddleware {
     ToolResult result;
     try {
       result = await cancellable(next(request, ctx), ctx.cancel?.whenCancelled);
-    } catch (error) {
+    } catch (error, stackTrace) {
       ctx.cancel?.throwIfCancelled();
       if (isRequestCancelled(error)) rethrow;
+      // Diagnose tool failures without logging request arguments or page content.
+      if (kDebugMode) {
+        debugPrint('[AgentTools] $resolved failed: $error\n$stackTrace');
+      }
       onActivity?.call('${_activity(resolved)}（失败）');
       result = ToolResult.response('Tool failed: $error');
     }
@@ -59,6 +65,18 @@ class AgentTools extends GenerateMiddleware {
 
   // Classify raw output before truncation so large errors never count as evidence.
   void _track(String name, Map<String, dynamic> arguments, Object? output) {
+    // Search snippets cannot authorize a reusable project-background cache.
+    if (name.startsWith('OpenWebSearch_MCP_') &&
+        name.toLowerCase().contains('fetch') &&
+        _successful(name, output)) {
+      final input = arguments['arguments'] as Map? ?? arguments;
+      final url = input['url'];
+      if (url is String &&
+          Uri.tryParse(url)?.hasAuthority == true &&
+          const ['http', 'https'].contains(Uri.tryParse(url)?.scheme)) {
+        fetchedWebUrls.add(url);
+      }
+    }
     final source = _source(name);
     if (source == null) return;
     attemptedSources.add(source);
@@ -99,10 +117,12 @@ class AgentTools extends GenerateMiddleware {
     if (name.startsWith('Nansen_MCP_')) return 'Nansen MCP';
     if (name == 'Coinalyze_API_getFutureMarkets') return null;
     if (name.startsWith('Coinalyze_API_')) return 'Coinalyze API';
+    if (name.startsWith('OpenWebSearch_MCP_')) return 'OpenWebSearch MCP';
     return null;
   }
 
   String _activity(String name) {
+    if (name == 'decma_cache_token_background') return '• 项目背景 - 更新背景缓存';
     if (name == 'decma_discover_mcp_tools') return '• MCP - 发现可用工具';
     for (final kind in ['MCP', 'API']) {
       final marker = name.indexOf('_${kind}_');

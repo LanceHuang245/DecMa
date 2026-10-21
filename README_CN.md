@@ -38,6 +38,7 @@ DecMa 是一款 Flutter 桌面端的 Bybit Linear 永续合约只读分析工作
 - 在图表绘制前校验模型返回的结构化计划；只有合约一致且价格关系有效时，才会显示开仓区、止损与止盈价位。
 - 支持 Anthropic Messages、OpenAI Responses、兼容 OpenAI Chat Completions 的接口，以及 OpenAI Codex。可保存多个带名称的 LLM 连接；Codex 使用浏览器登录流程。
 - 可选分析数据源包括 Bybit MCP、OpenWebSearch MCP、Nansen MCP 和 Coinalyze API。Bybit MCP 只暴露明确公开、只读的操作。
+- 启用 OpenWebSearch 后，Agent 可复用项目背景缓存并补查近期催化；背景保留 7 天，策略相关事件须核验原文。搜索不可用不阻断价格策略分析。
 - 默认读取 BLS、BEA 和 Federal Reserve 的宏观与市场资讯；可选启用 Finnhub 和 Marketaux。资讯可按当前资产、分类和来源筛选。
 - API Key 与 OAuth 凭据通过 `flutter_secure_storage` 保存；非敏感设置、已缓存事件、资产配置和最近查看的合约分别保存。
 - 数据缺失、过期或互相矛盾时，Agent 会采取保守结论，可返回 `WAIT`、`NO_TRADE` 或 `DATA_INSUFFICIENT`，且没有交易执行能力。

@@ -20,6 +20,7 @@ import 'llm_models.dart';
 import 'mcp_hub.dart';
 import 'openai_codex_oauth.dart';
 import 'storage/secure_key_store.dart';
+import 'token_research.dart';
 
 // Return finalized text and source warnings after all tool work has finished.
 class AgentResult {
@@ -37,6 +38,7 @@ class AgentService {
     BybitService? bybit,
     SecureKeyStore? keyStore,
     Dio? dio,
+    this._tokenResearch,
   }) : _ownsBybit = bybit == null,
        _ownsCoinalyze = coinalyze == null,
        _ownsDio = dio == null,
@@ -51,6 +53,9 @@ class AgentService {
   late final CoinalyzeApiTools _coinalyze;
   late final BybitService _bybit;
   final SecureKeyStore _keyStore;
+  TokenResearch? _tokenResearch;
+  // Disabled web research should not initialize its local storage.
+  TokenResearch get _research => _tokenResearch ??= TokenResearch();
   final Dio _dio;
   final bool _ownsDio;
   final bool _ownsBybit;
@@ -183,6 +188,13 @@ class AgentService {
         marketSnapshot: marketSnapshot,
         marketFeatures: marketFeatures,
         bybitFeeRates: feeRates,
+        tokenResearch: mcp.useOpenWebSearch
+            ? await _research.context(
+                symbol,
+                now: DateTime.now().toUtc(),
+                searchAvailable: servers.contains('OpenWebSearch MCP'),
+              )
+            : null,
       );
       final requiredSources = <String>{
         if (servers.contains('Bybit MCP')) 'Bybit MCP',
@@ -222,7 +234,12 @@ class AgentService {
                   config: model.config,
                   system: analysisPrompt,
                   prompt: input,
-                  tools: [...mcpTools, ...coinalyzeTools],
+                  tools: [
+                    ...mcpTools,
+                    ...coinalyzeTools,
+                    if (servers.contains('OpenWebSearch MCP'))
+                      _research.cacheTool(symbol, tracked.fetchedWebUrls),
+                  ],
                   use: [model.guard, coverage()],
                   maxTurns: 24,
                   cancel: pass.token,

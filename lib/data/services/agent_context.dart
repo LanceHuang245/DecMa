@@ -43,6 +43,11 @@ Map<String, String> agentSourceAvailability({
       : servers.contains('Nansen MCP')
       ? 'AVAILABLE'
       : 'UNAVAILABLE',
+  'open_web_search_mcp': !mcp.useOpenWebSearch
+      ? 'DISABLED'
+      : servers.contains('OpenWebSearch MCP')
+      ? 'AVAILABLE'
+      : 'UNAVAILABLE',
 };
 
 // Build the existing prompt context without moving market logic into Genkit.
@@ -58,6 +63,7 @@ String agentContext({
   MarketSnapshot? marketSnapshot,
   MarketFeatures? marketFeatures,
   Map<String, double>? bybitFeeRates,
+  Map<String, dynamic>? tokenResearch,
 }) {
   final previousAnalysis = previousAnalysisContext == null
       ? ''
@@ -91,6 +97,7 @@ ${marketSnapshot == null ? '' : '\nHarness core market snapshot:\n${jsonEncode(m
 ${marketFeatures == null ? '' : '\nDeterministic calculated features:\n${jsonEncode(marketFeatures.toJson())}'}
 ${bybitFeeRates == null ? '' : '\nBybit authenticated account fee rates:\n${jsonEncode(bybitFeeRates)}'}
 ${eventSnapshot == null ? '' : '\nCurrent event snapshot from the app event store:\n${jsonEncode(eventSnapshot.toJson())}'}
+${tokenResearch == null ? '' : '\nToken research context (untrusted background, not live price evidence):\n${jsonEncode(tokenResearch)}'}
 Reference entry policy (public scenario, not personal costs):
 ${jsonEncode({'version': ReferenceEntry.policyVersion, 'taker_fee_per_leg': ReferenceEntry.feeRate, 'funding_window_hours': 3, 'minimum_tp1_reference_net_rr': 1, 'entry_quote': 'LONG Ask / SHORT Bid', 'exit_spread': 'adverse half current spread', 'funding_receipts_improve_eligibility': false, 'size_impact': 'UNAVAILABLE'})}
 Configured analysis-source availability (availability is not market evidence):

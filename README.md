@@ -38,6 +38,7 @@ Control official macro feeds and optional Finnhub and Marketaux news sources sep
 - Validate the model's structured plan before drawing its entry zone, stop loss, and take-profit levels on the active chart. Plans for another symbol or invalid price relationships are not drawn.
 - Choose from Anthropic Messages, OpenAI Responses, OpenAI Chat Completions-compatible endpoints, or OpenAI Codex. Multiple named LLM connections can be saved; the Codex option uses a browser sign-in flow.
 - Use optional analysis sources: Bybit MCP, OpenWebSearch MCP, Nansen MCP, and the Coinalyze API. The Bybit MCP integration exposes only explicitly public, read-only operations.
+- With OpenWebSearch enabled, the agent can reuse seven-day project-background context and research current catalysts, checking original sources for strategy-relevant events. Unavailable web research does not block price-based analysis.
 - Read macro and market-news feeds from BLS, BEA, and the Federal Reserve by default, with optional Finnhub and Marketaux sources. The feed can be filtered by current asset, category, and provider.
 - Store API keys and OAuth credentials with `flutter_secure_storage`; non-secret settings, cached events, saved asset profiles, and the last viewed symbol are stored separately.
 - Keep analysis conservative when data is missing, stale, or conflicting: the agent may return `WAIT`, `NO_TRADE`, or `DATA_INSUFFICIENT` and cannot execute trades.
