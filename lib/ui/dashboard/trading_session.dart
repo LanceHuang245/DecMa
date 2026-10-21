@@ -157,6 +157,8 @@ class TradingSession extends ChangeNotifier {
                   ? ticker.bestAsk
                   : ticker.bestBid,
             );
+      // Persist chase pauses even when a later refresh only sees a recovered quote.
+      if (assessment?.state == EntryState.paused) _triggerAfter = now;
       referenceEntry =
           quoteFresh && assessment?.terminal == false && _instrument != null
           ? ReferenceEntry.calculate(candidate, ticker, _instrument!, now)
@@ -247,6 +249,7 @@ class TradingSession extends ChangeNotifier {
         checking = false;
       }
       assessment = result;
+      if (result.state == EntryState.paused) _triggerAfter = result.at;
       unawaited(_recordAssessment(result, price));
       _notify();
     }

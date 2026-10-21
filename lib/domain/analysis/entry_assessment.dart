@@ -105,13 +105,18 @@ class EntryEvaluator {
     if (long ? executable < low : executable > high) {
       return result(EntryState.waiting, '尚未进入允许开仓区域');
     }
-    var triggerStart = triggerAfter != null && triggerAfter.isAfter(createdAt)
-        ? triggerAfter
-        : createdAt;
+    // Reuse a fresh closed signal initially; a risk pause requires a new full bar.
+    var triggerStart = triggerAfter;
+    if (previous?.state == EntryState.paused &&
+        (triggerStart == null || previous!.at.isAfter(triggerStart))) {
+      triggerStart = previous!.at;
+    }
     for (final candle in relevant) {
       if (long ? candle.high > chase : candle.low < chase) {
         final end = candle.time.add(const Duration(minutes: 1));
-        if (end.isAfter(triggerStart)) triggerStart = end;
+        if (triggerStart == null || end.isAfter(triggerStart)) {
+          triggerStart = end;
+        }
       }
     }
     if (!triggered(plan, triggerCandles, triggerStart, now)) {
@@ -124,7 +129,7 @@ class EntryEvaluator {
   bool triggered(
     TradePlan plan,
     List<Candle> candles,
-    DateTime created,
+    DateTime? triggerAfter,
     DateTime now,
   ) {
     final rule = plan.conditions;
@@ -143,6 +148,14 @@ class EntryEvaluator {
             .isValid) {
       return false;
     }
+    if (rule.strategy == 'BREAKOUT' &&
+        (rule.version < 2 ||
+            rule.triggerType !=
+                (plan.decision == 'LONG_SETUP'
+                    ? 'CLOSE_ABOVE'
+                    : 'CLOSE_BELOW'))) {
+      return false;
+    }
     if (rule.version >= 2 &&
         (rule.strategy == 'BREAKOUT_RETEST' &&
                 rule.triggerType != 'BREAKOUT_RETEST' ||
@@ -151,10 +164,20 @@ class EntryEvaluator {
       return false;
     }
     final bar = closed.last;
-    // Only a fresh, fully post-trigger bar can confirm entry.
-    if (bar.time.isBefore(created) ||
+    // Initial signals may predate analysis, but signals after a pause must not.
+    if (triggerAfter != null && bar.time.isBefore(triggerAfter) ||
         now.difference(bar.time.add(width)) >= width) {
       return false;
+    }
+    // A direct breakout needs a crossing, not a close already beyond the level.
+    if (rule.strategy == 'BREAKOUT') {
+      if (closed.length < 2) return false;
+      final previousClose = closed[closed.length - 2].close;
+      if (plan.decision == 'LONG_SETUP'
+          ? previousClose > rule.triggerPrice!
+          : previousClose < rule.triggerPrice!) {
+        return false;
+      }
     }
     switch (rule.triggerType) {
       case 'CLOSE_ABOVE':
@@ -168,7 +191,9 @@ class EntryEvaluator {
         final level = rule.triggerPrice!;
         final long = plan.decision == 'LONG_SETUP';
         var broke = false;
-        for (final c in closed.where((c) => !c.time.isBefore(created))) {
+        for (final c in closed.where(
+          (c) => triggerAfter == null || !c.time.isBefore(triggerAfter),
+        )) {
           final holds = long ? c.close > level : c.close < level;
           final touches = long ? c.low <= level : c.high >= level;
           if (identical(c, bar) && broke && holds && touches) return true;

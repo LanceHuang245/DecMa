@@ -103,11 +103,25 @@ void main() {
     expect(result.reason, contains('不确定'));
   });
 
-  test('native trigger bars must be closed and start after creation', () {
+  test('native signals must be fresh, closed and respect a reset cutoff', () {
     final candles = [bar(0, close: 100.5)];
     const e = EntryEvaluator();
     final now = created.add(const Duration(minutes: 5));
     expect(e.triggered(setup(), candles, created, now), true);
+    expect(e.triggered(setup(), candles, null, now), true);
+    expect(
+      e.triggered(
+        setup(),
+        candles,
+        null,
+        now.subtract(const Duration(seconds: 1)),
+      ),
+      false,
+    );
+    expect(
+      e.triggered(setup(), candles, null, now.add(const Duration(minutes: 5))),
+      false,
+    );
     expect(e.triggered(setup(), candles.sublist(1), created, now), false);
     expect(
       e.triggered(
@@ -183,6 +197,43 @@ void main() {
         ),
       );
   for (final long in [true, false]) {
+    test('direct breakout needs a new directional crossing, long=$long', () {
+      final plan = TradePlan(
+        decision: long ? 'LONG_SETUP' : 'SHORT_SETUP',
+        summary: '',
+        parsedJson: '{}',
+        conditions: PlanConditions(
+          version: 2,
+          strategy: 'BREAKOUT',
+          triggerType: long ? 'CLOSE_ABOVE' : 'CLOSE_BELOW',
+          triggerPrice: 100,
+          timeframeMinutes: 5,
+        ),
+      );
+      const evaluator = EntryEvaluator();
+      final signal = bar(0, close: long ? 100.5 : 99.5);
+      final now = created.add(const Duration(minutes: 5));
+      expect(evaluator.triggered(plan, [bar(-5), signal], null, now), true);
+      expect(evaluator.triggered(plan, [signal], null, now), false);
+      expect(
+        evaluator.triggered(
+          plan,
+          [bar(-5, close: long ? 100.2 : 99.8), signal],
+          null,
+          now,
+        ),
+        false,
+      );
+      expect(
+        evaluator.triggered(
+          plan,
+          [bar(-5), signal],
+          created.add(const Duration(seconds: 1)),
+          now,
+        ),
+        false,
+      );
+    });
     test('breakout retest requires distinct ordered bars, long=$long', () {
       final p = conditional('BREAKOUT_RETEST', long: long);
       final breakout = bar(0, close: long ? 100.5 : 99.5);

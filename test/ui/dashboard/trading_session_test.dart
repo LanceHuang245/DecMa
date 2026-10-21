@@ -101,17 +101,13 @@ void main() {
   });
 
   test(
-    'live quote cost filter pauses and requires a new trigger after recovery',
+    'fresh initial signal qualifies but cost recovery requires a new trigger',
     () async {
       final bybit = _EntryBybit()..price = 101;
       final session = TradingSession(bybit);
       addTearDown(session.dispose);
       addTearDown(bybit.dispose);
       await session.accept(candidate(), await snapshot(bybit));
-      final start = bybit.closedStart.subtract(const Duration(minutes: 5));
-      session.createdAt = start;
-      session.pathStart = start;
-      await session.recheck();
       expect(session.assessment?.state, EntryState.ready);
       expect(session.referenceEntry!.price, closeTo(101.1, 1e-9));
       bybit.price = 104;
@@ -134,11 +130,6 @@ void main() {
       addTearDown(session.dispose);
       addTearDown(bybit.dispose);
       await session.accept(candidate(), await snapshot(bybit));
-      session.createdAt = bybit.closedStart.subtract(
-        const Duration(minutes: 5),
-      );
-      session.pathStart = session.createdAt;
-      await session.recheck();
       expect(session.assessment?.state, EntryState.unverified);
       expect(session.assessment!.reason, contains('资金费'));
       expect(session.plan!.decision, 'LONG_SETUP');
