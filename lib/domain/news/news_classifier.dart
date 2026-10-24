@@ -9,7 +9,7 @@ NewsEvent normalizeNewsEvent(NewsEvent event, List<AssetProfile> profiles) {
     if (_mentionsAsset(text, profile)) directAssets.add(profile.baseAsset);
   }
   final category = event.category == NewsCategory.other
-      ? _category(text)
+      ? _firstMatch(text, _categories) ?? NewsCategory.market
       : event.category;
   final scope =
       category == NewsCategory.macro || category == NewsCategory.centralBank
@@ -17,12 +17,17 @@ NewsEvent normalizeNewsEvent(NewsEvent event, List<AssetProfile> profiles) {
       : directAssets.isNotEmpty
       ? NewsScope.assetSpecific
       : event.scope;
-  final importance = _importance(text, event.importance);
+  // Keywords may raise importance but never lower what the provider reported.
+  final classified = _firstMatch(text, _importances);
+  final importance =
+      classified != null && classified.index < event.importance.index
+      ? classified
+      : event.importance;
   return event.copyWith(
     category: category,
     scope: scope,
     importance: importance,
-    eventType: _eventType(text, category),
+    eventType: _firstMatch(text, _eventTypes) ?? category.name.toUpperCase(),
     directAssets: directAssets.toList()..sort(),
     assets: directAssets.toList()..sort(),
   );
@@ -34,120 +39,116 @@ bool _mentionsAsset(String text, AssetProfile profile) => profile.aliases.any(
   ).hasMatch(text),
 );
 
-NewsCategory _category(String text) {
-  if (_contains(text, ['FOMC', 'FEDERAL RESERVE', 'POWELL'])) {
-    return NewsCategory.centralBank;
+// Keyword groups shared by more than one table.
+const _centralBank = ['FOMC', 'FEDERAL RESERVE', 'POWELL'];
+const _macroData = [
+  'CPI',
+  'PPI',
+  'PAYROLL',
+  'EMPLOYMENT',
+  'UNEMPLOYMENT',
+  'JOLTS',
+  'GDP',
+  'PCE',
+];
+const _legal = ['SEC', 'REGULATION', 'LAWSUIT', 'COURT'];
+const _security = ['HACK', 'EXPLOIT', 'BREACH'];
+const _geopolitics = [
+  'WAR',
+  'INVASION',
+  'MISSILE',
+  'AIRSTRIKE',
+  'CEASEFIRE',
+  'SANCTION',
+  'MARTIAL LAW',
+  'TARIFF',
+];
+
+// Each table is ordered: the first matching keyword group decides.
+const _categories = [
+  (_centralBank, NewsCategory.centralBank),
+  (_macroData, NewsCategory.macro),
+  (_legal, NewsCategory.regulation),
+  (_security, NewsCategory.security),
+  (_geopolitics, NewsCategory.macro),
+  (['BYBIT', 'BINANCE', 'COINBASE', 'EXCHANGE'], NewsCategory.exchange),
+  (
+    ['BITCOIN', 'ETHEREUM', 'RIPPLE', 'CRYPTO', 'BLOCKCHAIN'],
+    NewsCategory.crypto,
+  ),
+];
+
+const _eventTypes = [
+  (['CPI'], 'CPI'),
+  (['PPI'], 'PPI'),
+  (['JOLTS'], 'JOLTS'),
+  (['PCE'], 'PCE'),
+  (['GDP'], 'GDP'),
+  (['FOMC'], 'FOMC'),
+  (['PAYROLL', 'EMPLOYMENT SITUATION'], 'NFP_EMPLOYMENT'),
+  (
+    ['FOUNDER DIES', 'CEO RESIGNS', 'CEO APPOINTED', 'LEADERSHIP TRANSITION'],
+    'PROJECT_LEADERSHIP',
+  ),
+  (['GOVERNANCE', 'CONTROL DISPUTE'], 'GOVERNANCE'),
+  ([..._security, 'TREASURY COMPROMISE'], 'SECURITY'),
+  (_legal, 'LEGAL'),
+  (['TOKEN UNLOCK', 'EMISSIONS', 'VESTING'], 'TOKENOMICS'),
+  (['DELISTING', 'LISTING'], 'EXCHANGE'),
+  (['PROTOCOL PAUSED', 'EMERGENCY UPGRADE', 'UPGRADE'], 'PROTOCOL_OPERATION'),
+  (['BANKRUPTCY', 'INSOLVENCY'], 'INSOLVENCY'),
+  (_geopolitics, 'GEOPOLITICS'),
+  (['PARTNERSHIP', 'INTEGRATION'], 'PARTNERSHIP'),
+];
+
+const _importances = [
+  (
+    [
+      'FOUNDER DIES',
+      'BANKRUPTCY',
+      'INSOLVENCY',
+      'STABLECOIN DEPEG',
+      'TREASURY COMPROMISE',
+      'BRIDGE INCIDENT',
+      'FOMC',
+      'INTEREST RATE DECISION',
+      'CPI',
+      'PAYROLL',
+      'EMPLOYMENT SITUATION',
+    ],
+    NewsImportance.critical,
+  ),
+  (
+    [
+      'CEO RESIGNS',
+      'LEADERSHIP TRANSITION',
+      'CONTROL DISPUTE',
+      'GOVERNANCE CRISIS',
+      'PROTOCOL PAUSED',
+      'EMERGENCY UPGRADE',
+      'TOKEN UNLOCK',
+      'DELISTING',
+      'PPI',
+      'JOLTS',
+      'GDP',
+      'PCE',
+      'SEC',
+      'LAWSUIT',
+      'HACK',
+      'EXPLOIT',
+      ..._geopolitics,
+    ],
+    NewsImportance.high,
+  ),
+];
+
+T? _firstMatch<T>(String text, List<(List<String>, T)> table) {
+  for (final (terms, value) in table) {
+    if (terms.any((term) => _hasWord(text, term))) return value;
   }
-  if (_contains(text, [
-    'CPI',
-    'PPI',
-    'PAYROLL',
-    'EMPLOYMENT',
-    'JOLTS',
-    'GDP',
-    'PCE',
-  ])) {
-    return NewsCategory.macro;
-  }
-  if (_contains(text, ['SEC', 'REGULATION', 'LAWSUIT', 'COURT'])) {
-    return NewsCategory.regulation;
-  }
-  if (_contains(text, ['HACK', 'EXPLOIT', 'BREACH'])) {
-    return NewsCategory.security;
-  }
-  if (_contains(text, ['BYBIT', 'BINANCE', 'COINBASE', 'EXCHANGE'])) {
-    return NewsCategory.exchange;
-  }
-  if (_contains(text, [
-    'BITCOIN',
-    'ETHEREUM',
-    'RIPPLE',
-    'CRYPTO',
-    'BLOCKCHAIN',
-  ])) {
-    return NewsCategory.crypto;
-  }
-  return NewsCategory.market;
+  return null;
 }
 
-NewsImportance _importance(String text, NewsImportance current) {
-  if (_contains(text, [
-    'FOUNDER DIES',
-    'BANKRUPTCY',
-    'INSOLVENCY',
-    'STABLECOIN DEPEG',
-    'TREASURY COMPROMISE',
-    'BRIDGE INCIDENT',
-    'FOMC',
-    'INTEREST RATE DECISION',
-    'CPI',
-    'PAYROLL',
-    'EMPLOYMENT SITUATION',
-  ])) {
-    return _higherImportance(current, NewsImportance.critical);
-  }
-  if (_contains(text, [
-    'CEO RESIGNS',
-    'LEADERSHIP TRANSITION',
-    'CONTROL DISPUTE',
-    'GOVERNANCE CRISIS',
-    'PROTOCOL PAUSED',
-    'EMERGENCY UPGRADE',
-    'TOKEN UNLOCK',
-    'DELISTING',
-    'PPI',
-    'JOLTS',
-    'GDP',
-    'PCE',
-    'SEC',
-    'LAWSUIT',
-    'HACK',
-    'EXPLOIT',
-  ])) {
-    return _higherImportance(current, NewsImportance.high);
-  }
-  return current;
-}
-
-String _eventType(String text, NewsCategory category) {
-  for (final type in ['CPI', 'PPI', 'JOLTS', 'PCE', 'GDP', 'FOMC']) {
-    if (text.contains(type)) return type;
-  }
-  if (_contains(text, ['PAYROLL', 'EMPLOYMENT SITUATION'])) {
-    return 'NFP_EMPLOYMENT';
-  }
-  if (_contains(text, [
-    'FOUNDER DIES',
-    'CEO RESIGNS',
-    'CEO APPOINTED',
-    'LEADERSHIP TRANSITION',
-  ])) {
-    return 'PROJECT_LEADERSHIP';
-  }
-  if (_contains(text, ['GOVERNANCE', 'CONTROL DISPUTE'])) {
-    return 'GOVERNANCE';
-  }
-  if (_contains(text, ['HACK', 'EXPLOIT', 'BREACH', 'TREASURY COMPROMISE'])) {
-    return 'SECURITY';
-  }
-  if (_contains(text, ['SEC', 'LAWSUIT', 'COURT', 'REGULATION'])) {
-    return 'LEGAL';
-  }
-  if (_contains(text, ['TOKEN UNLOCK', 'EMISSIONS', 'VESTING'])) {
-    return 'TOKENOMICS';
-  }
-  if (_contains(text, ['DELISTING', 'LISTING'])) return 'EXCHANGE';
-  if (_contains(text, ['PROTOCOL PAUSED', 'EMERGENCY UPGRADE', 'UPGRADE'])) {
-    return 'PROTOCOL_OPERATION';
-  }
-  if (_contains(text, ['BANKRUPTCY', 'INSOLVENCY'])) return 'INSOLVENCY';
-  if (_contains(text, ['PARTNERSHIP', 'INTEGRATION'])) return 'PARTNERSHIP';
-  return category.name.toUpperCase();
-}
-
-NewsImportance _higherImportance(
-  NewsImportance current,
-  NewsImportance classified,
-) => classified.index < current.index ? classified : current;
-
-bool _contains(String text, List<String> terms) => terms.any(text.contains);
+// Whole words with common inflections: SEC never matches SECOND, WAR never SOFTWARE.
+bool _hasWord(String text, String term) =>
+    RegExp('\\b${RegExp.escape(term)}(S|ES|D|ED|ING|ERS?)?\\b').hasMatch(text);
