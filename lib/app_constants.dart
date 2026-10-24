@@ -2,7 +2,7 @@
 class AppConstants {
   static const appName = 'DecMa';
   static const appVersion = '1.0.0';
-  static const codexClientVersion = '0.163.0';
+  static const codexClientVersion = '0.164.0';
   static const bybitMcpPackage = 'bybit-official-trading-server@latest';
   static const openWebSearchMcpPackage = 'open-websearch@latest';
 
