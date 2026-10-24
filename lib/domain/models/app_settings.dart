@@ -32,11 +32,13 @@ class LlmSettings {
     required this.provider,
     required this.endpoint,
     required this.model,
-    this.reasoningEffort,
+    this.reasoningEffort = defaultReasoningEffort,
   });
 
   static const defaultId = 'default';
   static const defaultName = '默认连接';
+  // Default to a balanced reasoning level instead of leaving it unset.
+  static const defaultReasoningEffort = 'medium';
 
   final String id;
   final String name;
@@ -83,7 +85,7 @@ class LlmSettings {
       provider: provider.single,
       endpoint: endpoint,
       model: model,
-      reasoningEffort: string('reasoningEffort'),
+      reasoningEffort: string('reasoningEffort') ?? defaultReasoningEffort,
     );
   }
 }

@@ -246,8 +246,9 @@ class DashboardController extends ChangeNotifier {
   Future<void> selectLlmReasoningEffort(String? effort) =>
       selectLlmModel(_llm.model, reasoningEffort: effort);
 
-  // Reset effort on model changes so unsupported levels never carry across.
+  // Keep the saved effort across model changes unless a new one is chosen.
   Future<void> selectLlmModel(String model, {String? reasoningEffort}) async {
+    reasoningEffort ??= _llm.reasoningEffort;
     if (loadingAgent ||
         (model == _llm.model && reasoningEffort == _llm.reasoningEffort)) {
       return;

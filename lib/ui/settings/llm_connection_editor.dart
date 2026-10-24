@@ -156,7 +156,7 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
                 _endpoint.text = provider.defaultEndpoint;
               }
               _provider = provider;
-              _reasoningEffort = null;
+              _reasoningEffort = LlmSettings.defaultReasoningEffort;
             });
           },
         ),

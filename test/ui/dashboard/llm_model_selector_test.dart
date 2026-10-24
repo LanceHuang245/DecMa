@@ -155,14 +155,15 @@ void main() {
             .widget<ComboBox<String>>(combos.last)
             .items!
             .map((item) => item.value),
-        ['low', 'ultra', 'custom'],
+        // The saved default effort stays visible alongside advertised choices.
+        ['low', 'ultra', 'custom', 'medium'],
       );
       expect(
         tester
             .widget<ComboBox<String>>(combos.last)
             .items!
             .map((item) => (item.child as Text).data),
-        ['低', '极致', 'custom'],
+        ['低', '极致', 'custom', '中'],
       );
       await tester.tap(find.byType(ComboBox<String>).last);
       await tester.pumpAndSettle();
@@ -177,6 +178,7 @@ void main() {
             provider: LlmProvider.openAiResponses,
             endpoint: 'https://llm.test/v1',
             model: 'other-model',
+            reasoningEffort: null,
           ),
         ),
       );

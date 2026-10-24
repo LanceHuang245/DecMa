@@ -44,6 +44,7 @@ void main() {
       ),
     );
     addTearDown(controller.dispose);
+    expect(controller.llm.reasoningEffort, LlmSettings.defaultReasoningEffort);
     await controller.selectLlmReasoningEffort('high');
     expect(
       (await LlmSettingsStore().readConnections()).active.reasoningEffort,
@@ -51,7 +52,7 @@ void main() {
     );
     await controller.selectLlmModel('new-model');
     expect(controller.llm.model, 'new-model');
-    expect(controller.llm.reasoningEffort, isNull);
+    expect(controller.llm.reasoningEffort, 'high');
     await controller.selectLlmReasoningEffort('low');
     final saved = await LlmSettingsStore().readConnections();
     expect(saved.active.reasoningEffort, 'low');
@@ -61,11 +62,18 @@ void main() {
     expect(saved.active.provider, active.provider);
     expect(saved.active.endpoint, active.endpoint);
     expect(saved.connections.last.toJson(), other.toJson());
-    await controller.selectLlmReasoningEffort(null);
-    expect(
-      (await LlmSettingsStore().readConnections()).active.reasoningEffort,
-      isNull,
-    );
+  });
+
+  // Saved connections without an effort fall back to medium on reload.
+  test('missing saved effort defaults to medium', () {
+    final settings = LlmSettings.fromJson({
+      'id': 'legacy',
+      'name': 'Legacy',
+      'provider': LlmProvider.anthropic.name,
+      'endpoint': 'https://llm.test',
+      'model': 'model',
+    });
+    expect(settings!.reasoningEffort, 'medium');
   });
 
   test('a stale symbol response cannot replace the current chart', () async {
