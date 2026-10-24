@@ -55,13 +55,12 @@ createLlmModel({
       apiKey: apiKey,
       httpClient: client,
       accountId: accountId,
-      onRetry: onRetry,
     );
     model = modelRef('decma/responses');
   }
   final guard = ai.defineGenerateMiddleware<void>(
     name: 'completed-model',
-    create: (_, _) => _CompletedModel(),
+    create: (_, _) => _CompletedModel(onRetry),
   );
   return (
     ai: ai,
@@ -83,8 +82,11 @@ createLlmModel({
   );
 }
 
-// Reject EOF without a finish reason before Genkit executes unfinished tools.
+// Reject EOF without a finish reason and retry transient failures per turn.
 class _CompletedModel extends GenerateMiddleware {
+  _CompletedModel(this.onRetry);
+  final void Function(int)? onRetry;
+
   @override
   Future<ModelResponse> model(
     ModelRequest request,
@@ -95,29 +97,60 @@ class _CompletedModel extends GenerateMiddleware {
     )
     next,
   ) async {
-    final result = await next(request, ctx);
-    if (result.finishReason == FinishReason.unknown) {
-      // The OpenAI plugin maps enum.name instead of its snake_case wire value.
-      final choices = result.raw?['choices'];
-      final reason = choices is List && choices.isNotEmpty
-          ? (choices.first as Map)['finish_reason']
-          : null;
-      if (reason == 'tool_calls') {
-        result.finishReason = FinishReason.stop;
+    // Tools run only after this returns, so retrying never repeats tool calls.
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final result = await next(request, ctx);
+        if (result.finishReason == FinishReason.unknown) {
+          // The OpenAI plugin maps enum.name instead of its snake_case wire value.
+          final choices = result.raw?['choices'];
+          final reason = choices is List && choices.isNotEmpty
+              ? (choices.first as Map)['finish_reason']
+              : null;
+          if (reason == 'tool_calls') {
+            result.finishReason = FinishReason.stop;
+            return result;
+          }
+          if (reason == 'content_filter') {
+            result.finishReason = FinishReason.blocked;
+            return result;
+          }
+          throw interruptedStream;
+        }
         return result;
+      } catch (error) {
+        ctx.cancel?.throwIfCancelled();
+        final failure = llmFailure(
+          error,
+          error is GenkitException ? error.status.wireName : null,
+        );
+        final retryable = switch (failure.kind) {
+          AppFailureKind.networkUnavailable ||
+          AppFailureKind.timeout ||
+          AppFailureKind.rateLimited ||
+          AppFailureKind.upstream => true,
+          _ => false,
+        };
+        if (!retryable || attempt >= 4) throw failure;
+        onRetry?.call(attempt + 1);
+        // Exponential backoff: 1s, 2s, 4s, 8s unless the provider asks otherwise.
+        await cancellable(
+          Future<void>.delayed(
+            failure.retryAfter ?? Duration(seconds: 1 << attempt),
+          ),
+          ctx.cancel?.whenCancelled,
+        );
       }
-      if (reason == 'content_filter') {
-        result.finishReason = FinishReason.blocked;
-        return result;
-      }
-      throw const AppFailure(
-        kind: AppFailureKind.invalidResponse,
-        provider: 'LLM',
-      );
     }
-    return result;
   }
 }
+
+// A stream that ended without a completion signal is a transient upstream drop.
+const interruptedStream = AppFailure(
+  kind: AppFailureKind.upstream,
+  provider: 'LLM',
+  detail: '响应流提前结束，未收到成功完成信号。',
+);
 
 // Adapt one Responses call; Genkit alone decides when to execute more turns.
 void defineResponsesModel(
@@ -126,7 +159,6 @@ void defineResponsesModel(
   required String apiKey,
   required DioClient httpClient,
   String? accountId,
-  void Function(int)? onRetry,
 }) {
   final codex = settings.provider == LlmProvider.openAiCodex;
   if (codex && (accountId == null || accountId.isEmpty)) {
@@ -220,124 +252,104 @@ void defineResponsesModel(
         ],
       );
 
-      // Retry only this model turn; Genkit retains all completed tool results.
-      for (var attempt = 0; ; attempt++) {
-        final accumulator = sdk.ResponseStreamAccumulator();
-        final doneItems = <int, sdk.OutputItem>{};
-        final doneText = <String>[];
-        var interrupted = false;
-        try {
-          // The SDK parses SSE; each attempt starts with fresh partial output.
+      // One attempt per call; the completed-model middleware owns retries.
+      final accumulator = sdk.ResponseStreamAccumulator();
+      final doneItems = <int, sdk.OutputItem>{};
+      final doneText = <String>[];
+      try {
+        // The SDK parses SSE; each attempt starts with fresh partial output.
+        ctx.cancel?.throwIfCancelled();
+        // The supplied HTTP client already aborts requests with the run token.
+        await for (final event in client.responses.createStream(body)) {
           ctx.cancel?.throwIfCancelled();
-          // The supplied HTTP client already aborts requests with the run token.
-          await for (final event in client.responses.createStream(body)) {
-            ctx.cancel?.throwIfCancelled();
-            accumulator.add(event);
-            if (event is sdk.ErrorEvent) {
-              throw _responseFailure(event.code, event.message);
-            }
-            if (event is sdk.ResponseFailedEvent) {
-              final error = event.response.error;
-              throw _responseFailure(
-                error?.code ?? error?.type ?? 'failed',
-                error?.message ?? 'Codex 返回失败状态。',
-              );
-            }
-            if (event is sdk.ResponseIncompleteEvent) {
-              throw AppFailure(
-                kind: AppFailureKind.invalidResponse,
-                provider: 'LLM',
-                detail:
-                    '响应未完成：${event.response.incompleteDetails?.reason ?? 'unknown'}',
-              );
-            }
-            if (event is sdk.OutputItemDoneEvent) {
-              doneItems[event.outputIndex] = event.item;
-            }
-            if (event is sdk.OutputTextDoneEvent) doneText.add(event.text);
-            if (event is sdk.OutputTextDeltaEvent && ctx.streamingRequested) {
-              ctx.sendChunk(
-                ModelResponseChunk(content: [TextPart(text: event.delta)]),
-              );
-            }
+          accumulator.add(event);
+          if (event is sdk.ErrorEvent) {
+            throw _responseFailure(event.code, event.message);
           }
-          var response = accumulator.response;
-          if (!accumulator.isSuccessful || response == null) {
-            interrupted = !accumulator.isComplete;
-            throw const AppFailure(
+          if (event is sdk.ResponseFailedEvent) {
+            final error = event.response.error;
+            throw _responseFailure(
+              error?.code ?? error?.type ?? 'failed',
+              error?.message ?? 'Codex 返回失败状态。',
+            );
+          }
+          if (event is sdk.ResponseIncompleteEvent) {
+            throw AppFailure(
               kind: AppFailureKind.invalidResponse,
               provider: 'LLM',
-              detail: '响应流提前结束，未收到成功完成信号。',
+              detail:
+                  '响应未完成：${event.response.incompleteDetails?.reason ?? 'unknown'}',
             );
           }
-          // Preserve complete items in their provider order, including reasoning.
-          if (response.output.isEmpty && doneItems.isNotEmpty) {
-            final indexes = doneItems.keys.toList()..sort();
-            response = sdk.Response.fromJson({
-              ...response.toJson(),
-              'output': indexes.map((i) => doneItems[i]!.toJson()).toList(),
-            });
+          if (event is sdk.OutputItemDoneEvent) {
+            doneItems[event.outputIndex] = event.item;
           }
-          final text = response.outputText.isNotEmpty
-              ? response.outputText
-              : doneText.isNotEmpty
-              ? doneText.join('\n')
-              : accumulator.text;
-          final parts = <Part>[
-            if (text.isNotEmpty) TextPart(text: text),
-            for (final call in response.functionCalls)
-              ToolRequestPart(
-                toolRequest: ToolRequest(
-                  ref: call.callId,
-                  name: call.name,
-                  input: jsonDecode(call.arguments),
-                ),
-              ),
-          ];
-          return ModelResponse(
-            finishReason: FinishReason.stop,
-            message: Message(
-              role: Role.model,
-              content: parts,
-              metadata: {
-                'outputItems': response.output
-                    .map((item) => item.toJson())
-                    .toList(),
-              },
-            ),
-            raw: response.toJson(),
-          );
-        } catch (error) {
-          ctx.cancel?.throwIfCancelled();
-          final failure = llmFailure(error, null);
-          // Log protocol state only, never credentials, prompts or response text.
-          if (kDebugMode) {
-            debugPrint(
-              '[LLM] attempt=${attempt + 1} '
-              'event=${accumulator.latestEvent?.type} status=${accumulator.status.name} '
-              'cause=${error.runtimeType} http=${failure.statusCode} '
-              'code=${accumulator.response?.error?.code} '
-              'reason=${accumulator.response?.incompleteDetails?.reason}',
+          if (event is sdk.OutputTextDoneEvent) doneText.add(event.text);
+          if (event is sdk.OutputTextDeltaEvent && ctx.streamingRequested) {
+            ctx.sendChunk(
+              ModelResponseChunk(content: [TextPart(text: event.delta)]),
             );
           }
-          final retryable =
-              interrupted ||
-              switch (failure.kind) {
-                AppFailureKind.networkUnavailable ||
-                AppFailureKind.timeout ||
-                AppFailureKind.rateLimited ||
-                AppFailureKind.upstream => true,
-                _ => false,
-              };
-          if (!codex || !retryable || attempt >= 2) throw failure;
-          onRetry?.call(attempt + 1);
-          await cancellable(
-            Future<void>.delayed(
-              failure.retryAfter ?? Duration(seconds: attempt + 1),
-            ),
-            ctx.cancel?.whenCancelled,
+        }
+        var response = accumulator.response;
+        if (!accumulator.isSuccessful || response == null) {
+          if (!accumulator.isComplete) throw interruptedStream;
+          throw const AppFailure(
+            kind: AppFailureKind.invalidResponse,
+            provider: 'LLM',
+            detail: '响应未成功完成。',
           );
         }
+        // Preserve complete items in their provider order, including reasoning.
+        if (response.output.isEmpty && doneItems.isNotEmpty) {
+          final indexes = doneItems.keys.toList()..sort();
+          response = sdk.Response.fromJson({
+            ...response.toJson(),
+            'output': indexes.map((i) => doneItems[i]!.toJson()).toList(),
+          });
+        }
+        final text = response.outputText.isNotEmpty
+            ? response.outputText
+            : doneText.isNotEmpty
+            ? doneText.join('\n')
+            : accumulator.text;
+        final parts = <Part>[
+          if (text.isNotEmpty) TextPart(text: text),
+          for (final call in response.functionCalls)
+            ToolRequestPart(
+              toolRequest: ToolRequest(
+                ref: call.callId,
+                name: call.name,
+                input: jsonDecode(call.arguments),
+              ),
+            ),
+        ];
+        return ModelResponse(
+          finishReason: FinishReason.stop,
+          message: Message(
+            role: Role.model,
+            content: parts,
+            metadata: {
+              'outputItems': response.output
+                  .map((item) => item.toJson())
+                  .toList(),
+            },
+          ),
+          raw: response.toJson(),
+        );
+      } catch (error) {
+        ctx.cancel?.throwIfCancelled();
+        final failure = llmFailure(error, null);
+        // Log protocol state only, never credentials, prompts or response text.
+        if (kDebugMode) {
+          debugPrint(
+            '[LLM] event=${accumulator.latestEvent?.type} status=${accumulator.status.name} '
+            'cause=${error.runtimeType} http=${failure.statusCode} '
+            'code=${accumulator.response?.error?.code} '
+            'reason=${accumulator.response?.incompleteDetails?.reason}',
+          );
+        }
+        throw failure;
       }
     },
   );
@@ -436,6 +448,7 @@ AppFailure llmFailure(Object? cause, String? status) {
       'RESOURCE_EXHAUSTED' => AppFailureKind.rateLimited,
       'DEADLINE_EXCEEDED' => AppFailureKind.timeout,
       'UNAVAILABLE' => AppFailureKind.networkUnavailable,
+      'INTERNAL' => AppFailureKind.upstream,
       _ => AppFailureKind.invalidResponse,
     },
   };

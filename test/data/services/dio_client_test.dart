@@ -67,6 +67,34 @@ void main() {
     expect(adapter.closed, false);
     dio.close(force: true);
   });
+
+  // A body that goes silent mid-stream must fail instead of hanging forever.
+  test('Dio SDK client times out an idle response body', () async {
+    final adapter = _Adapter(stall: true);
+    final dio = createDio()..httpClientAdapter = adapter;
+    final client = DioClient(
+      dio: dio,
+      idleTimeout: const Duration(milliseconds: 100),
+    );
+    final body = StreamController<Uint8List>();
+    try {
+      final work = client.send(
+        http.Request('POST', Uri.parse('https://test.local')),
+      );
+      await adapter.started.future;
+      adapter.release.complete(ResponseBody(body.stream, 200));
+      final response = await work;
+      body.add(utf8.encode('partial'));
+      await expectLater(
+        response.stream.bytesToString(),
+        throwsA(isA<TimeoutException>()),
+      );
+    } finally {
+      await body.close();
+      client.close();
+      dio.close(force: true);
+    }
+  });
 }
 
 // Replace only the HTTP boundary so the real Dio stream/cancellation path runs.

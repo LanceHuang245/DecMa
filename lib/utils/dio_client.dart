@@ -7,13 +7,19 @@ import 'network.dart';
 
 // Keep package:http only at the SDK boundary; Dio performs all actual I/O.
 class DioClient extends http.BaseClient {
-  DioClient({Dio? dio, this.cancel, this.timeout = networkTimeout})
-    : _dio = dio ?? createDio(),
-      _ownsDio = dio == null;
+  DioClient({
+    Dio? dio,
+    this.cancel,
+    this.timeout = networkTimeout,
+    this.idleTimeout,
+  }) : _dio = dio ?? createDio(),
+       _ownsDio = dio == null;
   final Dio _dio;
   final bool _ownsDio;
   final CancelToken? cancel;
   final Duration timeout;
+  // Dio's receiveTimeout stops at the headers; this bounds silence mid-body.
+  final Duration? idleTimeout;
   final _pending = <CancelToken>{};
   bool _closed = false;
 
@@ -65,7 +71,9 @@ class DioClient extends http.BaseClient {
   Stream<List<int>> _stream(ResponseBody body, CancelToken token) async* {
     var completed = false;
     try {
-      yield* body.stream;
+      yield* idleTimeout == null
+          ? body.stream
+          : body.stream.timeout(idleTimeout!);
       completed = true;
     } finally {
       _pending.remove(token);

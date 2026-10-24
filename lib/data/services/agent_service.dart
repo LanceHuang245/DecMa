@@ -96,6 +96,8 @@ class AgentService {
       dio: _dio,
       cancel: dioCancel,
       timeout: const Duration(minutes: 5),
+      // A stalled stream fails fast enough to be retried per model turn.
+      idleTimeout: const Duration(minutes: 5),
     );
     Genkit? ai;
     try {
@@ -210,7 +212,7 @@ class AgentService {
         client: client,
         onRetry: (attempt) {
           resetDraft?.call();
-          onActivity?.call('• Codex - 响应中断，正在重试 $attempt/2');
+          onActivity?.call('• LLM - 响应中断，正在重试 $attempt/4');
         },
       );
       ai = model.ai;
@@ -218,7 +220,7 @@ class AgentService {
         name: 'source-coverage',
         create: (_, _) => tracked,
       );
-      // Genkit owns the loop; only this pass has a separate timeout scope.
+      // Genkit owns the loop; stalls are bounded per stream, not per pass.
       Future<String> complete(String input) async {
         final pass = CancellationController();
         final unlink = token.link(pass);
@@ -227,45 +229,34 @@ class AgentService {
         resetDraft = () => text = '';
         onText?.call('');
         try {
-          final result =
-              await cancellable(
-                ai!.generate(
-                  model: model.model,
-                  config: model.config,
-                  system: analysisPrompt,
-                  prompt: input,
-                  tools: [
-                    ...mcpTools,
-                    ...coinalyzeTools,
-                    if (servers.contains('OpenWebSearch MCP'))
-                      _research.cacheTool(symbol, tracked.fetchedWebUrls),
-                  ],
-                  use: [model.guard, coverage()],
-                  maxTurns: 24,
-                  cancel: pass.token,
-                  onChunk: (chunk) {
-                    if (pass.token.isCancelled) return;
-                    if (chunk.role == Role.tool) {
-                      text = '';
-                      onText?.call('');
-                    } else if (chunk.text.isNotEmpty) {
-                      text += chunk.text;
-                      onText?.call(text);
-                    }
-                  },
-                ),
-                pass.token.whenCancelled,
-              ).timeout(
-                const Duration(minutes: 5),
-                onTimeout: () {
-                  pass.cancel('timeout');
-                  dioCancel.cancel('timeout');
-                  throw const AppFailure(
-                    kind: AppFailureKind.timeout,
-                    provider: 'LLM',
-                  );
-                },
-              );
+          final result = await cancellable(
+            ai!.generate(
+              model: model.model,
+              config: model.config,
+              system: analysisPrompt,
+              prompt: input,
+              tools: [
+                ...mcpTools,
+                ...coinalyzeTools,
+                if (servers.contains('OpenWebSearch MCP'))
+                  _research.cacheTool(symbol, tracked.fetchedWebUrls),
+              ],
+              use: [model.guard, coverage()],
+              maxTurns: 24,
+              cancel: pass.token,
+              onChunk: (chunk) {
+                if (pass.token.isCancelled) return;
+                if (chunk.role == Role.tool) {
+                  text = '';
+                  onText?.call('');
+                } else if (chunk.text.isNotEmpty) {
+                  text += chunk.text;
+                  onText?.call(text);
+                }
+              },
+            ),
+            pass.token.whenCancelled,
+          );
           token.throwIfCancelled();
           if (result.finishReason == FinishReason.aborted) {
             throw Exception('Agent reached the maximum of 24 tool rounds.');

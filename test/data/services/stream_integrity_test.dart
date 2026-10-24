@@ -51,7 +51,7 @@ void main() {
             isA<AppFailure>().having(
               (e) => e.kind,
               'kind',
-              AppFailureKind.invalidResponse,
+              AppFailureKind.upstream,
             ),
           ),
         );
@@ -85,10 +85,40 @@ void main() {
             isA<AppFailure>().having(
               (e) => e.kind,
               'kind',
-              AppFailureKind.invalidResponse,
+              AppFailureKind.upstream,
             ),
           ),
         );
+      } finally {
+        client.close();
+      }
+    });
+  }
+
+  // A truncated stream is replayed until the provider sends a complete reply.
+  for (final provider in [
+    LlmProvider.anthropic,
+    LlmProvider.openAiCompletions,
+  ]) {
+    test('$provider retries a truncated stream', () async {
+      var requests = 0;
+      final client = MockClient.streaming((_, _) async {
+        requests++;
+        final events = requests == 1
+            ? firstTextEvent(provider)
+            : firstTextEvent(provider) + lastTextEvents(provider);
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(events)),
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      });
+      try {
+        expect(
+          await generateReply(settings: testSettings(provider), client: client),
+          'Hello world',
+        );
+        expect(requests, 2);
       } finally {
         client.close();
       }

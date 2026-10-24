@@ -198,7 +198,7 @@ void main() {
 
   // Truncated streams must not turn a partial draft into a successful result.
   test(
-    'Codex without a successful terminal event is an invalid response',
+    'Codex without a successful terminal event exhausts its retries',
     () async {
       var requests = 0;
       final client = MockClient.streaming((_, _) async {
@@ -223,11 +223,11 @@ void main() {
             isA<AppFailure>().having(
               (e) => e.kind,
               'kind',
-              AppFailureKind.invalidResponse,
+              AppFailureKind.upstream,
             ),
           ),
         );
-        expect(requests, 3);
+        expect(requests, 5);
       } finally {
         client.close();
       }
@@ -283,7 +283,7 @@ void main() {
         expect(toolCalls, 1);
         expect(snapshots, isNot(contains('HelloHello')));
         expect(snapshots.last, 'Hello world');
-        expect(activities.any((text) => text.contains('1/2')), true);
+        expect(activities.any((text) => text.contains('1/4')), true);
       } finally {
         client.close();
       }
@@ -309,7 +309,7 @@ void main() {
         client: client,
         cancel: cancel.token,
         onActivity: (text) {
-          if (text.contains('1/2')) retry.complete();
+          if (text.contains('1/4')) retry.complete();
         },
       );
       final assertion = expectLater(
