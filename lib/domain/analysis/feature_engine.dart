@@ -108,7 +108,13 @@ class MarketFeatures {
 class FeatureEngine {
   const FeatureEngine();
 
-  static const _intervalMinutes = {'4h': 240, '1h': 60, '15m': 15, '5m': 5};
+  static const _intervalMinutes = {
+    '1d': 1440,
+    '4h': 240,
+    '1h': 60,
+    '15m': 15,
+    '5m': 5,
+  };
   static const _volatilityWindow = 20;
   static const _vwapWindow = 20;
 

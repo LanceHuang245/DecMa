@@ -161,7 +161,7 @@ class DashboardController extends ChangeNotifier {
   void scrollConversationToBottom() => _agentUi.scrollToBottom();
   // Expose instance methods so callers do not depend on extension imports.
   Future<void> runAgent() => _runAgent();
-  void quickAnalyze() => _quickAnalyze();
+  void quickAnalyze({bool swing = false}) => _quickAnalyze(swing: swing);
   Future<void> loadMoreHistory() => market.loadMore();
   void retryChart() => market.retry();
   void selectSymbol(String symbol) => market.selectSymbol(symbol);

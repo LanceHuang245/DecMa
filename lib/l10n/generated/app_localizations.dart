@@ -1702,6 +1702,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cross-exchange derivatives history'**
   String get coinalyzeDescription;
+
+  /// No description provided for @shortTermAnalysis.
+  ///
+  /// In en, this message translates to:
+  /// **'Short-term (intraday, hours)'**
+  String get shortTermAnalysis;
+
+  /// No description provided for @swingAnalysis.
+  ///
+  /// In en, this message translates to:
+  /// **'Swing (days to two weeks)'**
+  String get swingAnalysis;
+
+  /// No description provided for @swingAnalyzePrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'I plan a swing trade held for several days up to two weeks. Using 4H candles as the decision timeframe, 1D for the trend and 1H for the entry trigger, analyze whether {symbol} is better suited to going long, going short, or waiting right now. Based on the current price, state directly whether an entry is possible now; if the opportunity has already played out, explain what conditions to wait for.'**
+  String swingAnalyzePrompt(Object symbol);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

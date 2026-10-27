@@ -160,9 +160,11 @@ extension DashboardAnalysis on DashboardController {
         : '$visibleText\n\n${appL10n.dataSourceNotice(notices.join(' | '))}';
   }
 
-  // One click asks the trading question; no account setup is needed.
-  void _quickAnalyze() {
-    promptController.text = appL10n.quickAnalyzePrompt(market.activeSymbol);
+  // One click asks the trading question for the chosen holding horizon.
+  void _quickAnalyze({bool swing = false}) {
+    promptController.text = swing
+        ? appL10n.swingAnalyzePrompt(market.activeSymbol)
+        : appL10n.quickAnalyzePrompt(market.activeSymbol);
     _notify();
     unawaited(runAgent());
   }

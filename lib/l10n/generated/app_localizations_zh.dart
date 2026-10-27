@@ -907,4 +907,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get coinalyzeDescription => '跨交易所衍生品历史数据';
+
+  @override
+  String get shortTermAnalysis => '短线（日内，持仓数小时）';
+
+  @override
+  String get swingAnalysis => '波段（持仓数天至两周）';
+
+  @override
+  String swingAnalyzePrompt(Object symbol) {
+    return '我计划波段持仓数天到两周。以 4H K 线为决策周期、1D 判断趋势、1H 寻找入场点，分析 $symbol 现在更适合做多、做空还是等待。请结合当前价格，直接说明现在能否入场；如果机会已经走完，说明应该等待什么条件。';
+  }
 }

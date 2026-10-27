@@ -183,7 +183,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     onReasoningChanged: _controller.selectLlmReasoningEffort,
     loading: _controller.loadingAgent,
     promptController: _controller.promptController,
-    onQuickAnalysis: _controller.quickAnalyze,
+    onQuickAnalysis: (swing) => _controller.quickAnalyze(swing: swing),
     onSend: _controller.runAgent,
     onStop: _controller.stopAgent,
     onClear: _controller.clearAgentContext,

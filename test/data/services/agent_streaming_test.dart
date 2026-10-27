@@ -174,7 +174,7 @@ void main() {
             onReasoningChanged: (_) async {},
             loading: true,
             promptController: prompt,
-            onQuickAnalysis: () {},
+            onQuickAnalysis: (_) {},
             onSend: () {},
             onStop: () => stops++,
             onClear: () {},

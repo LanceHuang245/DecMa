@@ -189,7 +189,7 @@ class AnalysisBybit extends BybitService {
     60,
     (i) => Candle(
       time: DateTime.now().toUtc().subtract(
-        Duration(minutes: int.parse(interval) * (60 - i)),
+        Duration(milliseconds: BybitService.intervalMs(interval) * (60 - i)),
       ),
       open: 100,
       high: 101,

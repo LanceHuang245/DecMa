@@ -27,9 +27,9 @@ void main() {
       final bybit = _FakeBybit();
       final snapshot = await MarketSnapshotService(bybit).build('btcusdt');
 
-      expect(bybit.intervals, ['240', '60', '15', '5']);
+      expect(bybit.intervals, ['D', '240', '60', '15', '5']);
       expect(snapshot.symbol, 'BTCUSDT');
-      expect(snapshot.candlesByInterval.keys, ['4h', '1h', '15m', '5m']);
+      expect(snapshot.candlesByInterval.keys, ['1d', '4h', '1h', '15m', '5m']);
       expect(snapshot.instrument.tickSize, 0.1);
       expect(snapshot.instrument.minimumOrderQuantity, 0.001);
       expect(snapshot.instrument.maximumOrderQuantity, 100);
@@ -191,12 +191,12 @@ class _FakeBybit extends BybitService {
     CancelToken? cancelToken,
   }) async {
     intervals.add(interval);
-    final intervalMinutes = int.parse(interval);
+    final intervalMs = BybitService.intervalMs(interval);
     final now = DateTime.now().toUtc();
     return List.generate(
       60,
       (index) => Candle(
-        time: now.subtract(Duration(minutes: intervalMinutes * (60 - index))),
+        time: now.subtract(Duration(milliseconds: intervalMs * (60 - index))),
         open: 100,
         high: 101,
         low: 99,

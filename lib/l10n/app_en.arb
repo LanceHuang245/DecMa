@@ -267,5 +267,8 @@
   "bybitMcpDescription": "Bybit market data and contract details",
   "openWebSearchDescription": "Web search and webpage reading",
   "nansenDescription": "On-chain data and smart money flows",
-  "coinalyzeDescription": "Cross-exchange derivatives history"
+  "coinalyzeDescription": "Cross-exchange derivatives history",
+  "shortTermAnalysis": "Short-term (intraday, hours)",
+  "swingAnalysis": "Swing (days to two weeks)",
+  "swingAnalyzePrompt": "I plan a swing trade held for several days up to two weeks. Using 4H candles as the decision timeframe, 1D for the trend and 1H for the entry trigger, analyze whether {symbol} is better suited to going long, going short, or waiting right now. Based on the current price, state directly whether an entry is possible now; if the opportunity has already played out, explain what conditions to wait for."
 }

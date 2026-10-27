@@ -907,4 +907,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get coinalyzeDescription => 'Cross-exchange derivatives history';
+
+  @override
+  String get shortTermAnalysis => 'Short-term (intraday, hours)';
+
+  @override
+  String get swingAnalysis => 'Swing (days to two weeks)';
+
+  @override
+  String swingAnalyzePrompt(Object symbol) {
+    return 'I plan a swing trade held for several days up to two weeks. Using 4H candles as the decision timeframe, 1D for the trend and 1H for the entry trigger, analyze whether $symbol is better suited to going long, going short, or waiting right now. Based on the current price, state directly whether an entry is possible now; if the opportunity has already played out, explain what conditions to wait for.';
+  }
 }

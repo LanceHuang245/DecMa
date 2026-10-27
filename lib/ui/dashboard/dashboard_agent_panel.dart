@@ -45,7 +45,8 @@ class DashboardAgentPanel extends StatelessWidget {
   final Future<void> Function(String?) onReasoningChanged;
   final bool loading;
   final TextEditingController promptController;
-  final VoidCallback onQuickAnalysis;
+  // true for swing (days), false for short-term (intraday).
+  final ValueChanged<bool> onQuickAnalysis;
   final VoidCallback onSend;
   final VoidCallback onStop;
   final VoidCallback onClear;
@@ -143,9 +144,19 @@ class DashboardAgentPanel extends StatelessWidget {
               Positioned(
                 right: 8,
                 bottom: 8,
-                child: Button(
-                  onPressed: loading ? null : onQuickAnalysis,
-                  child: Text(loc.analyzeCurrentContract),
+                child: DropDownButton(
+                  disabled: loading,
+                  title: Text(loc.analyzeCurrentContract),
+                  items: [
+                    MenuFlyoutItem(
+                      text: Text(loc.shortTermAnalysis),
+                      onPressed: () => onQuickAnalysis(false),
+                    ),
+                    MenuFlyoutItem(
+                      text: Text(loc.swingAnalysis),
+                      onPressed: () => onQuickAnalysis(true),
+                    ),
+                  ],
                 ),
               ),
             ],
