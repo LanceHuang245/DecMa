@@ -26,6 +26,9 @@ class MarketController extends ChangeNotifier {
   bool _hasMore = true, _disposed = false;
   int _generation = 0;
   int? _loadingGeneration;
+  // Consecutive failed polls and the end of a rate-limit pause.
+  int _pollFailures = 0;
+  DateTime? _pausedUntil;
   Timer? _timer;
   CancelToken? _chartRequest, _historyRequest, _symbolsRequest;
 
@@ -41,6 +44,7 @@ class MarketController extends ChangeNotifier {
 
   void _startRefresh({bool immediately = true}) {
     _timer?.cancel();
+    _pollFailures = 0;
     if (immediately) unawaited(_load());
     _timer = Timer.periodic(
       const Duration(seconds: 1),
@@ -68,6 +72,9 @@ class MarketController extends ChangeNotifier {
     CancelToken? cancel,
   }) async {
     if (_disposed || loading) return const [];
+    if (latestOnly && (_pausedUntil?.isAfter(DateTime.now()) ?? false)) {
+      return const [];
+    }
     final generation = _generation;
     final full = !latestOnly || _series.isEmpty;
     final token = _chartRequest = cancel ?? CancelToken();
@@ -77,18 +84,7 @@ class MarketController extends ChangeNotifier {
       _notify();
     }
     try {
-      final values = await _bybit.fetchKlines(
-        symbol: activeSymbol,
-        interval: interval,
-        limit: full
-            ? (interval == 'D'
-                  ? 730
-                  : const ['1', '5', '15'].contains(interval)
-                  ? 1440
-                  : 1000)
-            : 2,
-        cancelToken: token,
-      );
+      final values = await _fetch(full, token);
       if (_disposed || generation != _generation || token.isCancelled) {
         return values;
       }
@@ -96,6 +92,7 @@ class MarketController extends ChangeNotifier {
           ? _series.replaceAll(values)
           : _series.applyLatest(values);
       error = null;
+      _pollFailures = 0;
       if (full) {
         showLoading = false;
         version++;
@@ -108,6 +105,12 @@ class MarketController extends ChangeNotifier {
         return const [];
       }
       if (_disposed || generation != _generation) return const [];
+      if (!full) {
+        // Keep the existing chart and polling through transient poll failures.
+        final wait = _rateLimitWait(failure);
+        if (wait != null) _pausedUntil = DateTime.now().add(wait);
+        if (wait != null || ++_pollFailures < 5) return const [];
+      }
       _timer?.cancel();
       error = 'K 线加载失败：$failure';
       showLoading = false;
@@ -126,6 +129,37 @@ class MarketController extends ChangeNotifier {
       }
     }
   }
+
+  // Full loads retry twice with backoff; polls rely on the next timer tick.
+  Future<List<Candle>> _fetch(bool full, CancelToken token) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await _bybit.fetchKlines(
+          symbol: activeSymbol,
+          interval: interval,
+          limit: full
+              ? (interval == 'D'
+                    ? 730
+                    : const ['1', '5', '15'].contains(interval)
+                    ? 1440
+                    : 1000)
+              : 2,
+          cancelToken: token,
+        );
+      } catch (failure) {
+        if (!full || attempt >= 2 || isRequestCancelled(failure)) rethrow;
+        await Future<void>.delayed(
+          _rateLimitWait(failure) ?? Duration(seconds: 1 << attempt),
+        );
+      }
+    }
+  }
+
+  // Honor Retry-After on HTTP 429 instead of hammering the endpoint.
+  Duration? _rateLimitWait(Object failure) =>
+      failure is AppFailure && failure.kind == AppFailureKind.rateLimited
+      ? failure.retryAfter ?? const Duration(seconds: 5)
+      : null;
 
   void retry() {
     if (loading) return;
