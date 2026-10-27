@@ -66,8 +66,6 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
     );
   }
 
-  void clearSecret() => _key.clear();
-
   // Switching a connection replaces its draft and disposes its keyed OAuth view.
   void _select(String id) {
     final connection = _connections.firstWhere((item) => item.id == id);

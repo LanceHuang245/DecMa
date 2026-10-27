@@ -211,7 +211,7 @@ class _AgentSettingsSectionState extends State<AgentSettingsSection> {
     return value.isEmpty || value == mask ? null : value;
   }
 
-  // Keep the original storage API and clear typed secrets after saving.
+  // Typed secrets stay in their fields after saving, matching what is stored.
   Future<void> _save() async {
     setState(() {
       _saving = true;
@@ -236,12 +236,6 @@ class _AgentSettingsSectionState extends State<AgentSettingsSection> {
           coinalyzeKey: _newKey(_coinalyzeKey, _coinalyzeMask),
         ),
       );
-      if (!mounted) return;
-      _llm.currentState?.clearSecret();
-      _bybitKey.clear();
-      _bybitSecret.clear();
-      _nansenKey.clear();
-      _coinalyzeKey.clear();
     } catch (error) {
       if (mounted) setState(() => _error = loc.secureStorageFailed(error));
     } finally {
