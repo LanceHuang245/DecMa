@@ -23,7 +23,6 @@ abstract final class StorageKeys {
   static const newsEvents = 'decma.news.events.v1';
   static const newsRefreshPrefix = 'decma.news.refresh.v1.';
   static const assetProfiles = 'decma.news.asset_profiles.v1';
-  static const tradeRecords = 'decma.trade.records';
   static const tokenBackgroundPrefix = 'decma.token_background.v1.';
 
   // Secure storage: credentials.

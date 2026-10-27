@@ -39,7 +39,6 @@ void main() {
     await run;
     expect(controller.chartPlan?.decision, 'WAIT');
     expect(controller.showWaitZone, true);
-    expect(controller.plan, isNull);
     controller.dispose();
   });
 

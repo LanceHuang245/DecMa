@@ -1,21 +1,5 @@
 import 'dart:convert';
 
-import 'plan_conditions.dart';
-
-class TradeTarget {
-  const TradeTarget({
-    required this.price,
-    this.closePercentage,
-    this.grossRewardRisk,
-    this.estimatedNetRewardRisk,
-  });
-
-  final double price;
-  final double? closePercentage;
-  final double? grossRewardRisk;
-  final double? estimatedNetRewardRisk;
-}
-
 class TradePlan {
   const TradePlan({
     required this.decision,
@@ -25,9 +9,7 @@ class TradePlan {
     this.entryLow,
     this.entryHigh,
     this.stopLoss,
-    this.maximumChasePrice,
-    this.targets = const [],
-    this.conditions = const PlanConditions(),
+    this.takeProfits = const [],
   });
 
   final String decision;
@@ -37,12 +19,7 @@ class TradePlan {
   final double? entryLow;
   final double? entryHigh;
   final double? stopLoss;
-  final double? maximumChasePrice;
-  final List<TradeTarget> targets;
-  final PlanConditions conditions;
-
-  List<double> get takeProfits =>
-      targets.map((target) => target.price).toList();
+  final List<double> takeProfits;
 
   bool get isSetup => decision == 'LONG_SETUP' || decision == 'SHORT_SETUP';
 
@@ -69,20 +46,6 @@ class TradePlan {
         final request = data['request'] as Map<String, dynamic>? ?? const {};
         final entry = data['entry_plan'] as Map<String, dynamic>? ?? const {};
         final risk = data['risk_plan'] as Map<String, dynamic>? ?? const {};
-        final targets = (data['take_profit_plan'] as List? ?? const [])
-            .cast<Map<String, dynamic>>()
-            .where((item) => _number(item['price']) != null)
-            .map(
-              (item) => TradeTarget(
-                price: _number(item['price'])!,
-                closePercentage: _number(item['close_percentage']),
-                grossRewardRisk: _number(item['gross_reward_risk']),
-                estimatedNetRewardRisk: _number(
-                  item['estimated_net_reward_risk'],
-                ),
-              ),
-            )
-            .toList();
         final plan = TradePlan(
           decision: decision['type']?.toString() ?? 'UNKNOWN',
           summary: decision['summary']?.toString() ?? '',
@@ -91,11 +54,10 @@ class TradePlan {
           entryLow: _number(entry['entry_zone_low']),
           entryHigh: _number(entry['entry_zone_high']),
           stopLoss: _number(risk['stop_loss']),
-          maximumChasePrice: _number(entry['maximum_chase_price']),
-          targets: targets,
-          conditions: PlanConditions.fromJson(
-            data['conditions'] as Map<String, dynamic>? ?? const {},
-          ),
+          takeProfits: (data['take_profits'] as List? ?? const [])
+              .map(_number)
+              .nonNulls
+              .toList(),
         );
         final fence =
             RegExp(r'```[ \t]*(?:json)?\s*([\s\S]*?)```', caseSensitive: false)

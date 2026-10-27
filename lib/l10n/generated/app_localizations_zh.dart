@@ -24,9 +24,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notProvided => '未提供';
 
   @override
-  String get noValue => '暂无';
-
-  @override
   String get encryptedKeyPlaceholder => '输入新密钥以加密保存';
 
   @override
@@ -471,196 +468,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String majorEventCancel(Object headline) {
-    return '出现已确认的重大事件，请重新分析：$headline';
-  }
-
-  @override
-  String get entryDetails => '开仓详情';
-
-  @override
-  String get planCleared => '当前计划已清除';
-
-  @override
-  String get biasLong => '偏多';
-
-  @override
-  String get biasShort => '偏空';
-
-  @override
-  String get actionConfirming => '正在确认';
-
-  @override
-  String get actionNoEntry => '暂不入场';
-
-  @override
-  String get actionMissed => '已经错过，不追价';
-
-  @override
-  String get actionInvalid => '原计划已失效';
-
-  @override
-  String get triggerCloseAbove => '收盘站上指定价格';
-
-  @override
-  String get triggerCloseBelow => '收盘跌破指定价格';
-
-  @override
-  String get triggerBreakoutRetest => '突破后另一根 K 线回踩守住';
-
-  @override
-  String get triggerTouchZone => '触及区间边界后收回区间';
-
-  @override
-  String get triggerVolume => '价格方向与放量共同确认';
-
-  @override
-  String statusTerminal(Object action, Object side) {
-    return '等待 · $action（此前$side）';
-  }
-
-  @override
-  String get refreshOpportunity => '刷新当前机会';
-
-  @override
-  String referencePrice(Object price) {
-    return '参考现价 $price';
-  }
-
-  @override
-  String entrySummary(Object high, Object low, Object stop) {
-    return '开仓区 $low–$high · 止损 $stop';
-  }
-
-  @override
-  String validUntil(Object time) {
-    return '有效期至 $time';
-  }
-
-  @override
-  String referenceEntry(Object price, Object rr) {
-    return '参考入场 $price · 净盈亏比 $rr:1';
-  }
-
-  @override
-  String chaseBoundary(Object price) {
-    return '成本后追价边界 $price';
-  }
-
-  @override
-  String get costEstimateNote => '按公共 Taker 费率和 3 小时资金费情景估算；未估计仓位冲击';
-
-  @override
-  String triggerSummary(Object minutes, Object price, Object trigger) {
-    return '触发：$trigger · $minutes 分钟 · 价格 $price';
-  }
-
-  @override
-  String get zoneEdge => '区间边界';
-
-  @override
-  String invalidationSummary(Object price, Object stop) {
-    return '失效价 $price · 止损参考 $stop';
-  }
-
-  @override
-  String featureSnapshot(Object time) {
-    return '指标快照 $time';
-  }
-
-  @override
-  String reviewedAt(Object time) {
-    return '复核时间 $time';
-  }
-
-  @override
-  String get viewDetails => '查看详情';
-
-  @override
-  String get checkingPrice => '正在检查最新价格';
-
-  @override
-  String get priceUnconfirmed => '暂未确认最新价格，等待行情刷新';
-
-  @override
-  String get awaitingQuotes => '等待买卖报价和资金费结算信息确认';
-
-  @override
-  String get rrTooLow => '当前参考净盈亏比不足 1:1，等待更优价格和新的触发';
-
-  @override
-  String get marketUnavailable => '暂未获取到最新行情，稍后重试';
-
-  @override
-  String get priceChanged => '价格变化，正在重新确认入场条件';
-
-  @override
-  String get recheckOnReturn => '返回后按最新行情重新确认';
-
-  @override
-  String get entryWaiting => '等待触发';
-
-  @override
-  String get entryReady => '当前可参考入场';
-
-  @override
-  String get entryPaused => '等待回踩';
-
-  @override
-  String get entryRealized => '机会已兑现';
-
-  @override
-  String get entryInvalid => '已失效';
-
-  @override
-  String get entryUnverified => '等待确认';
-
-  @override
-  String get entryNoPlan => '没有可核验的开仓计划';
-
-  @override
-  String get entryIncomplete => '价格或目标不完整';
-
-  @override
-  String get entryAmbiguousStart => '起始分钟内事件时间不明确，请重新分析';
-
-  @override
-  String get entryAmbiguousPath => '同分钟触及失效与目标，路径不确定';
-
-  @override
-  String get entryInvalidBeforeEntry => '入场前结构已失效';
-
-  @override
-  String get entryTargetReached => '未入场已到 TP1，需要新计划';
-
-  @override
-  String get entryStructureInvalid => '结构已失效';
-
-  @override
-  String get entryExpired => '候选计划已过期';
-
-  @override
-  String get entryStale => '行情已过期或价格路径不完整';
-
-  @override
-  String get entryNeedsConfirmation => '仍需确认入场条件，以最新行情为准';
-
-  @override
-  String get entryChaseUndefined => '最大追价未定义';
-
-  @override
-  String get entryAboveChase => '超过最大追价，等待回踩并重新核验';
-
-  @override
-  String get entryOutsideZone => '尚未进入允许开仓区域';
-
-  @override
-  String get entryAwaitTriggerCandle => '等待新的完整触发 K 线';
-
-  @override
-  String get entryTriggerConfirmed => '当前参考行情的入场触发已确认；价格变化后需要重新检查';
-
-  @override
   String planUnknownDecision(Object decision) {
     return '未知决策类型 $decision';
   }
@@ -699,9 +506,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get planLongTargetOrder => '多头止盈必须按价格升序排列';
 
   @override
-  String get planLongChase => '多头最大追价不能低于开仓区上限';
-
-  @override
   String get planShortStop => '空头止损必须高于开仓区';
 
   @override
@@ -711,26 +515,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get planShortTargetOrder => '空头止盈必须按价格降序排列';
 
   @override
-  String get planShortChase => '空头最大追价不能高于开仓区下限';
-
-  @override
   String get planTickMisaligned => '价格未对齐合约 Tick Size，仅供参考，实际下单需确认价格精度';
-
-  @override
-  String get planAllocationInvalid => '止盈比例不完整或无效，不作为分仓依据';
-
-  @override
-  String get planAllocationTotal => '止盈比例合计不是 100%，不作为分仓依据';
-
-  @override
-  String planGrossRrMismatch(Object price) {
-    return '止盈 $price 的 Gross RR 与确定性计算不一致';
-  }
-
-  @override
-  String planNetAboveGross(Object price) {
-    return '止盈 $price 的 Net RR 高于 Gross RR';
-  }
 
   @override
   String get coinalyzeKeyMissing => 'Coinalyze API: API Key 未配置。';
@@ -845,16 +630,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String codexLoginFailed(Object error) {
     return 'OpenAI Codex 登录失败：$error';
-  }
-
-  @override
-  String planCardDecision(Object decision) {
-    return '决策：$decision';
-  }
-
-  @override
-  String planCardEntry(Object high, Object low) {
-    return '开仓 $low – $high';
   }
 
   @override

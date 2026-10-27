@@ -179,7 +179,7 @@ class PlanCandlePainter extends CustomPainter {
     if (plan.stopLoss case final stop?) {
       _level(canvas, transform, stop, candleDownColor, 'SL ${_price(stop)}');
     }
-    for (var index = 0; index < math.min(3, plan.targets.length); index++) {
+    for (var index = 0; index < math.min(3, plan.takeProfits.length); index++) {
       final value = plan.takeProfits[index];
       _level(canvas, transform, value, candleUpColor, 'TP${index + 1} ${_price(value)}');
     }

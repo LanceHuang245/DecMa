@@ -153,7 +153,7 @@ void main() {
       entryLow: 100,
       entryHigh: 101,
       stopLoss: 98,
-      targets: [TradeTarget(price: 105)],
+      takeProfits: [105],
     );
     await tester.pumpWidget(
       FluentApp(

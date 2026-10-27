@@ -1,5 +1,4 @@
 import 'package:decma/domain/models/trade_plan.dart';
-import 'package:decma/domain/analysis/risk_engine.dart';
 import 'package:decma/domain/analysis/trade_plan_validator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,11 +12,7 @@ void main() {
         low: 100,
         high: 101,
         stop: 98,
-        chase: 102,
-        targets: const [
-          TradeTarget(price: 105, closePercentage: 50),
-          TradeTarget(price: 108, closePercentage: 50),
-        ],
+        targets: const [105, 108],
       ),
       tickSize: 0.1,
     );
@@ -32,7 +27,7 @@ void main() {
         low: 100,
         high: 101,
         stop: 100.5,
-        targets: const [TradeTarget(price: 105)],
+        targets: const [105],
       ),
     );
 
@@ -46,7 +41,7 @@ void main() {
         low: 100,
         high: 101,
         stop: 103,
-        targets: const [TradeTarget(price: 95.03), TradeTarget(price: 97)],
+        targets: const [95.03, 97],
       ),
       tickSize: 0.1,
     );
@@ -55,30 +50,21 @@ void main() {
     expect(result.warnings, contains(contains('Tick Size')));
   });
 
-  test(
-    'auxiliary allocation and precision issues preserve reference levels',
-    () {
-      final result = validator.validate(
-        _plan(
-          decision: 'LONG_SETUP',
-          low: 100.03,
-          high: 101,
-          stop: 98,
-          targets: const [
-            TradeTarget(price: 105, closePercentage: 50),
-            TradeTarget(price: 106),
-            TradeTarget(price: 107),
-            TradeTarget(price: 108),
-          ],
-        ),
-        tickSize: 0.1,
-      );
-      expect(result.isValid, true);
-      expect(result.warnings, contains(contains('前三档')));
-      expect(result.warnings, contains(contains('不作为分仓依据')));
-      expect(result.warnings, contains(contains('Tick Size')));
-    },
-  );
+  test('extra targets and precision issues only warn', () {
+    final result = validator.validate(
+      _plan(
+        decision: 'LONG_SETUP',
+        low: 100.03,
+        high: 101,
+        stop: 98,
+        targets: const [105, 106, 107, 108],
+      ),
+      tickSize: 0.1,
+    );
+    expect(result.isValid, true);
+    expect(result.warnings, contains(contains('前三档')));
+    expect(result.warnings, contains(contains('Tick Size')));
+  });
 
   test('invalid price remains fatal even with auxiliary warnings', () {
     final result = validator.validate(
@@ -87,7 +73,7 @@ void main() {
         low: 100,
         high: 101,
         stop: double.nan,
-        targets: const [TradeTarget(price: 105, closePercentage: 20)],
+        targets: const [105],
       ),
     );
     expect(result.isValid, false);
@@ -99,7 +85,7 @@ void main() {
       low: 100,
       high: 101,
       stop: 98,
-      targets: const [TradeTarget(price: 105)],
+      targets: const [105],
     );
     final result = validator.validate(plan);
 
@@ -115,7 +101,7 @@ void main() {
         low: 100,
         high: 101,
         stop: 98,
-        targets: const [TradeTarget(price: 105)],
+        targets: const [105],
       ),
       tickSize: 0.1,
     );
@@ -130,29 +116,12 @@ void main() {
     expect(invalid.warnings, contains('候选等待区无效，价格标记已忽略'));
   });
 
-  test('RiskEngine calculates gross and net reward risk deterministically', () {
-    const engine = RiskEngine();
-    final metrics = engine.calculate(
-      direction: TradeDirection.long,
-      entry: 100,
-      stop: 98,
-      target: 106,
-      openFeeRate: 0.001,
-      closeFeeRate: 0.001,
-    )!;
-    expect(metrics.grossRewardRisk, 3);
-    expect(metrics.netRewardRisk, closeTo(5.8 / 2.2, 1e-9));
-  });
-
-  test('accepts targets when every exit allocation is unavailable', () {
+  test('parses take-profit prices from the simplified JSON', () {
     final plan = TradePlan.fromResponse('''
-{"request":{"symbol":"BTCUSDT"},"decision":{"type":"LONG_SETUP","summary":"test"},"entry_plan":{"entry_zone_low":100,"entry_zone_high":101},"risk_plan":{"stop_loss":98},"take_profit_plan":[{"price":105,"close_percentage":null},{"price":108,"close_percentage":null}]}
+{"request":{"symbol":"BTCUSDT"},"decision":{"type":"LONG_SETUP","summary":"test"},"entry_plan":{"entry_zone_low":100,"entry_zone_high":101},"risk_plan":{"stop_loss":98},"take_profits":[105,108]}
 ''')!;
 
-    expect(
-      plan.targets.every((target) => target.closePercentage == null),
-      isTrue,
-    );
+    expect(plan.takeProfits, [105, 108]);
     expect(validator.validate(plan).isValid, isTrue);
   });
 }
@@ -162,8 +131,7 @@ TradePlan _plan({
   required double low,
   required double high,
   required double stop,
-  double? chase,
-  required List<TradeTarget> targets,
+  required List<double> targets,
 }) => TradePlan(
   decision: decision,
   summary: '',
@@ -171,6 +139,5 @@ TradePlan _plan({
   entryLow: low,
   entryHigh: high,
   stopLoss: stop,
-  maximumChasePrice: chase,
-  targets: targets,
+  takeProfits: targets,
 );

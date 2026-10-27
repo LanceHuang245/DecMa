@@ -1,5 +1,4 @@
 import '../models/trade_plan.dart';
-import 'risk_engine.dart';
 import '../../l10n/app_languages.dart';
 
 class TradePlanValidation {
@@ -17,7 +16,7 @@ class TradePlanValidation {
 }
 
 class TradePlanValidator {
-  const TradePlanValidator([this._riskEngine = const RiskEngine()]);
+  const TradePlanValidator();
 
   static const _allowedDecisions = {
     'LONG_SETUP',
@@ -26,7 +25,6 @@ class TradePlanValidator {
     'NO_TRADE',
     'DATA_INSUFFICIENT',
   };
-  final RiskEngine _riskEngine;
 
   // Reject plans that would draw directionally impossible price levels.
   TradePlanValidation validate(TradePlan plan, {double? tickSize}) {
@@ -39,9 +37,7 @@ class TradePlanValidator {
     if (!plan.isSetup) {
       final canDrawWaitZone = plan.decision == 'WAIT' && _validWaitZone(plan);
       final hasOtherLevels =
-          plan.stopLoss != null ||
-          plan.maximumChasePrice != null ||
-          plan.takeProfits.isNotEmpty;
+          plan.stopLoss != null || plan.takeProfits.isNotEmpty;
       if (plan.decision == 'WAIT' && plan.hasPriceLevels && !canDrawWaitZone) {
         warnings.add(appL10n.planInvalidWaitZone);
       } else if (canDrawWaitZone && hasOtherLevels) {
@@ -63,55 +59,39 @@ class TradePlanValidator {
       errors.add(appL10n.planSetupMissingEntry);
       return TradePlanValidation(errors: errors, warnings: warnings);
     }
-    final prices = [
-      low,
-      high,
-      stop,
-      ...plan.takeProfits,
-      ?plan.maximumChasePrice,
-    ];
+    final prices = [low, high, stop, ...plan.takeProfits];
     if (prices.any((price) => !price.isFinite || price <= 0)) {
       errors.add(appL10n.planPricesInvalid);
     }
     if (low > high) errors.add(appL10n.planEntryInverted);
-    if (plan.targets.isEmpty) errors.add(appL10n.planMissingTargets);
-    if (plan.targets.length > 3) warnings.add(appL10n.planTooManyTargets);
+    if (plan.takeProfits.isEmpty) errors.add(appL10n.planMissingTargets);
+    if (plan.takeProfits.length > 3) warnings.add(appL10n.planTooManyTargets);
 
-    final direction = plan.decision == 'LONG_SETUP'
-        ? TradeDirection.long
-        : TradeDirection.short;
-    if (direction == TradeDirection.long) {
+    if (plan.decision == 'LONG_SETUP') {
       if (stop >= low) errors.add(appL10n.planLongStop);
-      if (plan.targets.any((target) => target.price <= high)) {
+      if (plan.takeProfits.any((target) => target <= high)) {
         errors.add(appL10n.planLongTargets);
       }
       if (!_strictlyOrdered(plan.takeProfits, ascending: true)) {
         errors.add(appL10n.planLongTargetOrder);
       }
-      if (plan.maximumChasePrice case final chase? when chase < high) {
-        errors.add(appL10n.planLongChase);
-      }
     } else {
       if (stop <= high) errors.add(appL10n.planShortStop);
-      if (plan.targets.any((target) => target.price >= low)) {
+      if (plan.takeProfits.any((target) => target >= low)) {
         errors.add(appL10n.planShortTargets);
       }
       if (!_strictlyOrdered(plan.takeProfits, ascending: false)) {
         errors.add(appL10n.planShortTargetOrder);
       }
-      if (plan.maximumChasePrice case final chase? when chase > low) {
-        errors.add(appL10n.planShortChase);
-      }
     }
 
-    _validatePercentages(plan, warnings);
-    if (tickSize != null) {
-      if (prices.any((price) => !_riskEngine.isTickAligned(price, tickSize))) {
-        warnings.add(appL10n.planTickMisaligned);
-      }
-    }
-    if (errors.isEmpty) {
-      _compareRewardRisk(plan, direction, warnings);
+    // Prices off the contract's tick grid cannot be placed as orders.
+    if (tickSize != null &&
+        prices.any((price) {
+          final steps = price / tickSize;
+          return (steps - steps.round()).abs() >= 1e-7;
+        })) {
+      warnings.add(appL10n.planTickMisaligned);
     }
     return TradePlanValidation(errors: errors, warnings: warnings);
   }
@@ -128,51 +108,6 @@ class TradePlanValidator {
       return false;
     }
     return true;
-  }
-
-  void _validatePercentages(TradePlan plan, List<String> warnings) {
-    final percentages = plan.targets
-        .map((target) => target.closePercentage)
-        .whereType<double>()
-        .toList();
-    if (percentages.isEmpty) return;
-    if (percentages.length != plan.targets.length ||
-        percentages.any(
-          (value) => !value.isFinite || value <= 0 || value > 100,
-        )) {
-      warnings.add(appL10n.planAllocationInvalid);
-      return;
-    }
-    final total = percentages.reduce((left, right) => left + right);
-    if ((total - 100).abs() > 0.5) warnings.add(appL10n.planAllocationTotal);
-  }
-
-  void _compareRewardRisk(
-    TradePlan plan,
-    TradeDirection direction,
-    List<String> warnings,
-  ) {
-    final entry = (plan.entryLow! + plan.entryHigh!) / 2;
-    for (final target in plan.targets) {
-      final metrics = _riskEngine.calculate(
-        direction: direction,
-        entry: entry,
-        stop: plan.stopLoss!,
-        target: target.price,
-      );
-      final declared = target.grossRewardRisk;
-      if (metrics == null || declared == null) continue;
-      final tolerance = 0.15 > metrics.grossRewardRisk * 0.1
-          ? 0.15
-          : metrics.grossRewardRisk * 0.1;
-      if ((declared - metrics.grossRewardRisk).abs() > tolerance) {
-        warnings.add(appL10n.planGrossRrMismatch(target.price));
-      }
-      final net = target.estimatedNetRewardRisk;
-      if (net != null && net > declared) {
-        warnings.add(appL10n.planNetAboveGross(target.price));
-      }
-    }
   }
 
   bool _strictlyOrdered(List<double> values, {required bool ascending}) {

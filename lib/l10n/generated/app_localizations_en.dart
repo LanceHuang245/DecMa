@@ -24,9 +24,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notProvided => 'Not provided';
 
   @override
-  String get noValue => 'N/A';
-
-  @override
   String get encryptedKeyPlaceholder => 'Enter a new key to save it encrypted';
 
   @override
@@ -471,196 +468,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String majorEventCancel(Object headline) {
-    return 'A confirmed major event occurred; please analyze again: $headline';
-  }
-
-  @override
-  String get entryDetails => 'Entry details';
-
-  @override
-  String get planCleared => 'The current plan has been cleared';
-
-  @override
-  String get biasLong => 'Bullish';
-
-  @override
-  String get biasShort => 'Bearish';
-
-  @override
-  String get actionConfirming => 'Confirming';
-
-  @override
-  String get actionNoEntry => 'No entry for now';
-
-  @override
-  String get actionMissed => 'Missed; do not chase';
-
-  @override
-  String get actionInvalid => 'Original plan invalidated';
-
-  @override
-  String get triggerCloseAbove => 'Close above the specified price';
-
-  @override
-  String get triggerCloseBelow => 'Close below the specified price';
-
-  @override
-  String get triggerBreakoutRetest => 'Breakout holds on a retest by a later candle';
-
-  @override
-  String get triggerTouchZone => 'Touch the zone edge and close back inside';
-
-  @override
-  String get triggerVolume => 'Price direction confirmed by rising volume';
-
-  @override
-  String statusTerminal(Object action, Object side) {
-    return 'Wait · $action (previously $side)';
-  }
-
-  @override
-  String get refreshOpportunity => 'Refresh current opportunity';
-
-  @override
-  String referencePrice(Object price) {
-    return 'Reference price $price';
-  }
-
-  @override
-  String entrySummary(Object high, Object low, Object stop) {
-    return 'Entry zone $low–$high · Stop loss $stop';
-  }
-
-  @override
-  String validUntil(Object time) {
-    return 'Valid until $time';
-  }
-
-  @override
-  String referenceEntry(Object price, Object rr) {
-    return 'Reference entry $price · Net R:R $rr:1';
-  }
-
-  @override
-  String chaseBoundary(Object price) {
-    return 'Post-cost chase limit $price';
-  }
-
-  @override
-  String get costEstimateNote => 'Estimated with public taker fees and a 3-hour funding scenario; position impact not estimated';
-
-  @override
-  String triggerSummary(Object minutes, Object price, Object trigger) {
-    return 'Trigger: $trigger · $minutes min · price $price';
-  }
-
-  @override
-  String get zoneEdge => 'zone edge';
-
-  @override
-  String invalidationSummary(Object price, Object stop) {
-    return 'Invalidation $price · Stop reference $stop';
-  }
-
-  @override
-  String featureSnapshot(Object time) {
-    return 'Indicator snapshot $time';
-  }
-
-  @override
-  String reviewedAt(Object time) {
-    return 'Reviewed at $time';
-  }
-
-  @override
-  String get viewDetails => 'View details';
-
-  @override
-  String get checkingPrice => 'Checking the latest price';
-
-  @override
-  String get priceUnconfirmed => 'Latest price not yet confirmed; waiting for a market refresh';
-
-  @override
-  String get awaitingQuotes => 'Waiting for bid/ask quotes and funding settlement info';
-
-  @override
-  String get rrTooLow => 'Reference net R:R is below 1:1; waiting for a better price and a new trigger';
-
-  @override
-  String get marketUnavailable => 'Latest market data unavailable; retrying shortly';
-
-  @override
-  String get priceChanged => 'Price changed; re-checking entry conditions';
-
-  @override
-  String get recheckOnReturn => 'Will re-check with the latest market data on return';
-
-  @override
-  String get entryWaiting => 'Awaiting trigger';
-
-  @override
-  String get entryReady => 'Entry available for reference';
-
-  @override
-  String get entryPaused => 'Awaiting pullback';
-
-  @override
-  String get entryRealized => 'Opportunity realized';
-
-  @override
-  String get entryInvalid => 'Invalidated';
-
-  @override
-  String get entryUnverified => 'Awaiting confirmation';
-
-  @override
-  String get entryNoPlan => 'No entry plan to verify';
-
-  @override
-  String get entryIncomplete => 'Prices or targets are incomplete';
-
-  @override
-  String get entryAmbiguousStart => 'Event timing within the starting minute is unclear; please analyze again';
-
-  @override
-  String get entryAmbiguousPath => 'Invalidation and target were hit in the same minute; path is uncertain';
-
-  @override
-  String get entryInvalidBeforeEntry => 'Structure invalidated before entry';
-
-  @override
-  String get entryTargetReached => 'TP1 reached without entry; a new plan is needed';
-
-  @override
-  String get entryStructureInvalid => 'Structure invalidated';
-
-  @override
-  String get entryExpired => 'Candidate plan expired';
-
-  @override
-  String get entryStale => 'Market data is stale or the price path is incomplete';
-
-  @override
-  String get entryNeedsConfirmation => 'Entry conditions still need confirmation; rely on the latest market data';
-
-  @override
-  String get entryChaseUndefined => 'Maximum chase price is undefined';
-
-  @override
-  String get entryAboveChase => 'Above the maximum chase price; waiting for a pullback and re-check';
-
-  @override
-  String get entryOutsideZone => 'Price has not entered the allowed entry zone';
-
-  @override
-  String get entryAwaitTriggerCandle => 'Waiting for a new complete trigger candle';
-
-  @override
-  String get entryTriggerConfirmed => 'Entry trigger confirmed at the reference price; re-check after price changes';
-
-  @override
   String planUnknownDecision(Object decision) {
     return 'Unknown decision type $decision';
   }
@@ -699,9 +506,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get planLongTargetOrder => 'Long take-profits must be in ascending price order';
 
   @override
-  String get planLongChase => 'Long maximum chase price cannot be below the entry zone upper bound';
-
-  @override
   String get planShortStop => 'Short stop loss must be above the entry zone';
 
   @override
@@ -711,26 +515,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get planShortTargetOrder => 'Short take-profits must be in descending price order';
 
   @override
-  String get planShortChase => 'Short maximum chase price cannot be above the entry zone lower bound';
-
-  @override
   String get planTickMisaligned => 'Prices are not aligned to the contract tick size; for reference only, confirm precision before ordering';
-
-  @override
-  String get planAllocationInvalid => 'Take-profit allocations are incomplete or invalid and are not used for position splitting';
-
-  @override
-  String get planAllocationTotal => 'Take-profit allocations do not total 100% and are not used for position splitting';
-
-  @override
-  String planGrossRrMismatch(Object price) {
-    return 'Gross RR for take-profit $price differs from the deterministic calculation';
-  }
-
-  @override
-  String planNetAboveGross(Object price) {
-    return 'Net RR for take-profit $price is above Gross RR';
-  }
 
   @override
   String get coinalyzeKeyMissing => 'Coinalyze API: API key not configured.';
@@ -845,16 +630,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String codexLoginFailed(Object error) {
     return 'OpenAI Codex sign-in failed: $error';
-  }
-
-  @override
-  String planCardDecision(Object decision) {
-    return 'Decision: $decision';
-  }
-
-  @override
-  String planCardEntry(Object high, Object low) {
-    return 'Entry $low – $high';
   }
 
   @override

@@ -19,7 +19,7 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage>
-    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin {
   DashboardController get _controller => ref.read(dashboardControllerProvider);
 
   // Keep the chart, polling and conversation alive while Settings is shown.
@@ -29,27 +29,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _controller.initialize();
     final nodeAvailable = ref.read(appInitialSettingsProvider).nodeAvailable;
     if (!nodeAvailable) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNodeMissing());
     }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) {
-      _controller.trading.suspend();
-    } else {
-      _controller.trading.recheck();
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
   }
 
   void _showNodeMissing() {
@@ -171,8 +155,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   );
 
   Widget _agentPanel() => DashboardAgentPanel(
-    plan: _controller.plan,
-    trading: _controller.trading,
     messages: _controller.conversation,
     scrollController: _controller.conversationScrollController,
     showScrollToBottom: _controller.showScrollToBottom,

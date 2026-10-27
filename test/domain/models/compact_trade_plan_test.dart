@@ -19,27 +19,16 @@ void main() {
       '```python\nprint(1)\n```',
     );
   });
-  // The compact output must retain every field used by chart/risk validation.
+  // The compact output must retain every field the chart draws.
   for (final direction in ['LONG_SETUP', 'SHORT_SETUP']) {
-    test('$direction compact plan preserves chart levels and RR checks', () {
+    test('$direction compact plan preserves chart levels', () {
       final long = direction == 'LONG_SETUP';
       final json = {
         'request': {'symbol': 'BTCUSDT'},
         'decision': {'type': direction, 'summary': 'Conditional setup'},
-        'entry_plan': {
-          'entry_zone_low': 100,
-          'entry_zone_high': 102,
-          'maximum_chase_price': long ? 103 : 99,
-        },
+        'entry_plan': {'entry_zone_low': 100, 'entry_zone_high': 102},
         'risk_plan': {'stop_loss': long ? 95 : 107},
-        'take_profit_plan': [
-          {
-            'price': long ? 113 : 89,
-            'close_percentage': 100,
-            'gross_reward_risk': 2,
-            'estimated_net_reward_risk': null,
-          },
-        ],
+        'take_profits': [long ? 113 : 89],
       };
       final plan = TradePlan.fromResponse(
         '结论与触发条件。\n```json\n${jsonEncode(json)}\n```',
@@ -49,9 +38,7 @@ void main() {
       expect(plan.entryLow, 100);
       expect(plan.entryHigh, 102);
       expect(plan.stopLoss, long ? 95 : 107);
-      expect(plan.maximumChasePrice, long ? 103 : 99);
       expect(plan.takeProfits, [long ? 113 : 89]);
-      expect(plan.targets.single.closePercentage, 100);
       final validation = const TradePlanValidator().validate(
         plan,
         tickSize: 0.1,
@@ -81,7 +68,7 @@ void main() {
       expect(validation.canDrawWaitZone, decision == 'WAIT');
       expect(plan.isSetup, false);
       expect(plan.stopLoss, isNull);
-      expect(plan.targets, isEmpty);
+      expect(plan.takeProfits, isEmpty);
     });
   }
 }

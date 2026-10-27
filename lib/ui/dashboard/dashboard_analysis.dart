@@ -19,8 +19,6 @@ extension DashboardAnalysis on DashboardController {
       return;
     }
     final prompt = promptController.text.trim();
-    trading.clear();
-    _plan = null;
     _chartPlan = null;
     _showWaitZone = false;
     var symbol = market.activeSymbol;
@@ -148,12 +146,7 @@ extension DashboardAnalysis on DashboardController {
     final canDisplay =
         plan != null && validation!.isValid && matchesResponse && matchesChart;
     _chartPlan = canDisplay ? plan : null;
-    _plan = canDisplay && plan.isSetup ? plan : null;
     _showWaitZone = canDisplay && validation.canDrawWaitZone;
-    if (canDisplay && snapshot != null) {
-      await trading.accept(plan, snapshot);
-      if (_isDisposed) return answer.text;
-    }
     final visibleText = parsed.text;
     return notices.isEmpty
         ? visibleText

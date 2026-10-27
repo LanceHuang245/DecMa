@@ -12,7 +12,6 @@ import '../../domain/models/trade_plan.dart';
 import '../../data/services/agent_service.dart';
 import '../../data/services/llm_model_catalog.dart';
 import '../../domain/analysis/feature_engine.dart';
-import 'trading_session.dart';
 import '../../data/services/market_snapshot_service.dart';
 import '../../domain/analysis/trade_plan_validator.dart';
 import '../../data/services/bybit_service.dart';
@@ -45,8 +44,7 @@ class DashboardController extends ChangeNotifier {
     NewsSettings? initialNews,
     String? initialSymbol,
   }) : _keyStore = keyStore,
-       _marketSnapshots = MarketSnapshotService(bybit),
-       trading = TradingSession(bybit) {
+       _marketSnapshots = MarketSnapshotService(bybit) {
     final defaultLlm = LlmSettings(
       provider: LlmProvider.openAiResponses,
       endpoint: LlmProvider.openAiResponses.defaultEndpoint,
@@ -90,13 +88,11 @@ class DashboardController extends ChangeNotifier {
             useSec: true,
             useBbc: false,
           ),
-    )..addListener(_onNewsChanged);
+    )..addListener(_notify);
     market.addListener(_onMarketChanged);
     _agentUi.addListener(_notify);
-    trading.addListener(_notify);
   }
 
-  final TradingSession trading;
   late final MarketController market;
   late final NewsController newsFeed;
   final AgentService agent;
@@ -106,7 +102,7 @@ class DashboardController extends ChangeNotifier {
   final _agentUi = AgentConversationController();
   final _featureEngine = const FeatureEngine();
   final _tradePlanValidator = const TradePlanValidator();
-  TradePlan? _plan, _chartPlan;
+  TradePlan? _chartPlan;
   bool _showWaitZone = false, _isDisposed = false;
   ApiKeyStatus _apiKeyStatus = const ApiKeyStatus();
   late LlmSettings _llm;
@@ -129,9 +125,7 @@ class DashboardController extends ChangeNotifier {
   List<NewsEvent> get newsEvents => newsFeed.events;
   Listenable get newsListenable => newsFeed;
   Map<String, NewsProviderStatus> get newsProviderStatuses => newsFeed.statuses;
-  TradePlan? get plan => _plan;
-  TradePlan? get chartPlan =>
-      trading.assessment?.terminal == true ? null : _chartPlan;
+  TradePlan? get chartPlan => _chartPlan;
   bool get showWaitZone => _showWaitZone;
   List<DashboardMessage> get conversation => _agentUi.messages;
   String? get chartError => market.error;
@@ -190,32 +184,8 @@ class DashboardController extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
-  void _onNewsChanged() {
-    // Revoke only new, relevant and officially confirmed critical event risks.
-    final created = trading.createdAt;
-    if (created != null && trading.plan != null) {
-      final asset = trading.plan!.symbol?.replaceFirst(RegExp(r'USDT$'), '');
-      final event = newsFeed.events
-          .where(
-            (e) =>
-                e.importance == NewsImportance.critical &&
-                e.verificationStatus ==
-                    NewsVerificationStatus.primarySourceConfirmed &&
-                e.publishedAt.isAfter(created) &&
-                !e.publishedAt.isAfter(DateTime.now().toUtc()) &&
-                (e.scope != NewsScope.assetSpecific ||
-                    e.directAssets.contains(asset)),
-          )
-          .firstOrNull;
-      if (event != null) {
-        trading.cancel(appL10n.majorEventCancel(event.headline));
-      }
-    }
-  }
-
   void _clearPlan() {
-    trading.clear();
-    _plan = _chartPlan = null;
+    _chartPlan = null;
     _showWaitZone = false;
   }
 
@@ -225,10 +195,6 @@ class DashboardController extends ChangeNotifier {
       newsFeed.selectSymbol(market.activeSymbol);
       unawaited(settingsStore.saveLastViewedSymbol(market.activeSymbol));
     }
-    if (market.candles.isNotEmpty &&
-        trading.plan?.symbol == market.activeSymbol) {
-      trading.observe(market.candles.last.close);
-    }
     _notify();
   }
 
@@ -237,11 +203,9 @@ class DashboardController extends ChangeNotifier {
     _isDisposed = true;
     _agentUi.removeListener(_notify);
     _agentUi.dispose();
-    trading.removeListener(_notify);
-    trading.dispose();
     market.removeListener(_onMarketChanged);
     market.dispose();
-    newsFeed.removeListener(_onNewsChanged);
+    newsFeed.removeListener(_notify);
     newsFeed.dispose();
     super.dispose();
   }

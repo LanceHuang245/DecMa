@@ -1,10 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
-import '../../domain/models/trade_plan.dart';
-import '../../utils/display_formatters.dart';
 import 'dashboard_controller.dart';
-import '../../l10n/generated/app_localizations.dart';
 
 class ConversationMessage extends StatelessWidget {
   const ConversationMessage(this.message, {super.key});
@@ -134,39 +131,6 @@ class ActivityMessage extends StatelessWidget {
         fontSize: 12,
         color: FluentTheme.of(context).resources.textFillColorSecondary,
       ),
-    ),
-  );
-}
-
-class PlanCard extends StatelessWidget {
-  const PlanCard(this.plan, {super.key});
-
-  final TradePlan plan;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    padding: const EdgeInsets.all(8),
-    backgroundColor: FluentTheme.of(context).resources.subtleFillColorSecondary,
-    child: Wrap(
-      spacing: 12,
-      runSpacing: 4,
-      children: [
-        Text(
-          AppLocalizations.of(context).planCardDecision(plan.decision),
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        if (plan.entryLow != null || plan.entryHigh != null)
-          Text(
-            AppLocalizations.of(context).planCardEntry(
-              plan.entryLow == null ? '—' : formatMarketPrice(plan.entryLow!),
-              plan.entryHigh == null ? '—' : formatMarketPrice(plan.entryHigh!),
-            ),
-          ),
-        if (plan.stopLoss != null)
-          Text('SL ${formatMarketPrice(plan.stopLoss!)}'),
-        if (plan.takeProfits.isNotEmpty)
-          Text('TP ${plan.takeProfits.map(formatMarketPrice).join(' / ')}'),
-      ],
     ),
   );
 }

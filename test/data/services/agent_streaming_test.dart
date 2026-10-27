@@ -102,7 +102,7 @@ void main() {
     expect(controller.loadingAgent, false);
     expect(controller.conversation.last.text, contains('已停止生成'));
     expect(controller.conversation.last.text, contains('Partial'));
-    expect(controller.plan, isNull);
+    expect(controller.chartPlan, isNull);
     controller.clearAgentContext();
     controller.promptController.text = 'Second';
     final second = controller.runAgent();
@@ -159,7 +159,6 @@ void main() {
           width: 600,
           height: 500,
           child: DashboardAgentPanel(
-            plan: null,
             messages: const [],
             scrollController: scroll,
             showScrollToBottom: false,

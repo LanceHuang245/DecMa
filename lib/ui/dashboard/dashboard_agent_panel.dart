@@ -3,19 +3,14 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../domain/models/app_settings.dart';
 import '../../domain/models/llm_model_info.dart';
-import '../../domain/models/trade_plan.dart';
-import 'trading_session.dart';
 import 'llm_model_selector.dart';
 import 'dashboard_messages.dart';
-import 'trade_status_card.dart';
 import 'dashboard_controller.dart';
 import '../../l10n/generated/app_localizations.dart';
 
 class DashboardAgentPanel extends StatelessWidget {
   const DashboardAgentPanel({
     super.key,
-    required this.plan,
-    this.trading,
     required this.messages,
     required this.scrollController,
     required this.showScrollToBottom,
@@ -33,8 +28,6 @@ class DashboardAgentPanel extends StatelessWidget {
     required this.onScrollToBottom,
   });
 
-  final TradePlan? plan;
-  final TradingSession? trading;
   final List<DashboardMessage> messages;
   final ScrollController scrollController;
   final bool showScrollToBottom;
@@ -65,12 +58,6 @@ class DashboardAgentPanel extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
-          const SizedBox(height: 8),
-          if (plan != null && trading == null) ...[
-            const SizedBox(height: 8),
-            PlanCard(plan!),
-          ],
-          if (trading != null) TradeStatusCard(session: trading!),
           const SizedBox(height: 8),
           Expanded(
             child: Stack(
