@@ -1630,6 +1630,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'News providers and official data sources'**
   String get newsSettingsDescription;
+
+  /// No description provided for @theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get theme;
+
+  /// No description provided for @themeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose light, dark or follow the system'**
+  String get themeDescription;
+
+  /// No description provided for @themeSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'Use system setting'**
+  String get themeSystem;
+
+  /// No description provided for @themeLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeLight;
+
+  /// No description provided for @themeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeDark;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

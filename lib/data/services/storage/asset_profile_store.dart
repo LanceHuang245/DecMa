@@ -3,17 +3,17 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../domain/models/asset_profile.dart';
+import 'storage_keys.dart';
 
 /// Persists resolved asset metadata so provider lookups are not repeated.
 class AssetProfileStore {
   AssetProfileStore({SharedPreferencesAsync? preferences})
     : _preferences = preferences ?? SharedPreferencesAsync();
 
-  static const _profilesKey = 'decma.news.asset_profiles.v1';
   final SharedPreferencesAsync _preferences;
 
   Future<List<AssetProfile>> readAll() async {
-    final value = await _preferences.getString(_profilesKey);
+    final value = await _preferences.getString(StorageKeys.assetProfiles);
     if (value == null) return const [];
     return (jsonDecode(value) as List)
         .cast<Map<String, dynamic>>()
@@ -31,7 +31,7 @@ class AssetProfileStore {
       profiles[index] = profile;
     }
     await _preferences.setString(
-      _profilesKey,
+      StorageKeys.assetProfiles,
       jsonEncode(profiles.map((item) => item.toJson()).toList()),
     );
   }

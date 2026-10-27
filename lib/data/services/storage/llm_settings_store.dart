@@ -3,39 +3,36 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../domain/models/app_settings.dart';
+import 'storage_keys.dart';
 
 class LlmSettingsStore {
   LlmSettingsStore({SharedPreferencesAsync? preferences})
     : _preferences = preferences ?? SharedPreferencesAsync();
 
-  static const _connectionsKey = 'decma.llm.connections';
-  static const _activeConnectionKey = 'decma.llm.active_connection';
-  static const _lastViewedSymbolKey = 'decma.dashboard.last_viewed_symbol';
-  static const _localeCodeKey = 'decma.app.locale_code';
-  static const _bybitMcpKey = 'decma.mcp.bybit';
-  static const _nansenMcpKey = 'decma.mcp.nansen';
-  static const _openWebSearchMcpKey = 'decma.mcp.open_web_search';
-  static const _coinalyzeApiKey = 'decma.api.coinalyze';
-  static const _finnhubNewsKey = 'decma.news.finnhub';
-  static const _marketauxNewsKey = 'decma.news.marketaux';
-  static const _blsNewsKey = 'decma.news.bls';
-  static const _beaNewsKey = 'decma.news.bea';
-  static const _federalReserveNewsKey = 'decma.news.federal_reserve';
   final SharedPreferencesAsync _preferences;
 
   Future<String?> readLastViewedSymbol() =>
-      _preferences.getString(_lastViewedSymbolKey);
+      _preferences.getString(StorageKeys.lastViewedSymbol);
 
-  Future<void> saveLastViewedSymbol(String symbol) =>
-      _preferences.setString(_lastViewedSymbolKey, symbol.toUpperCase());
+  Future<void> saveLastViewedSymbol(String symbol) => _preferences.setString(
+    StorageKeys.lastViewedSymbol,
+    symbol.toUpperCase(),
+  );
 
-  Future<String?> readLocaleCode() => _preferences.getString(_localeCodeKey);
+  Future<String?> readLocaleCode() =>
+      _preferences.getString(StorageKeys.localeCode);
 
   Future<void> saveLocaleCode(String code) =>
-      _preferences.setString(_localeCodeKey, code);
+      _preferences.setString(StorageKeys.localeCode, code);
+
+  Future<String?> readThemeMode() =>
+      _preferences.getString(StorageKeys.themeMode);
+
+  Future<void> saveThemeMode(String mode) =>
+      _preferences.setString(StorageKeys.themeMode, mode);
 
   Future<LlmConnectionSettings> readConnections() async {
-    final saved = await _preferences.getString(_connectionsKey);
+    final saved = await _preferences.getString(StorageKeys.llmConnections);
     if (saved != null) {
       return LlmConnectionSettings(
         connections: (jsonDecode(saved) as List)
@@ -43,7 +40,7 @@ class LlmSettingsStore {
             .map(LlmSettings.fromJson)
             .toList(),
         activeConnectionId: (await _preferences.getString(
-          _activeConnectionKey,
+          StorageKeys.activeLlmConnection,
         ))!,
       );
     }
@@ -63,19 +60,22 @@ class LlmSettingsStore {
   Future<void> saveConnections(LlmConnectionSettings settings) async {
     await Future.wait([
       _preferences.setString(
-        _connectionsKey,
+        StorageKeys.llmConnections,
         jsonEncode(settings.connections.map((item) => item.toJson()).toList()),
       ),
-      _preferences.setString(_activeConnectionKey, settings.active.id),
+      _preferences.setString(
+        StorageKeys.activeLlmConnection,
+        settings.active.id,
+      ),
     ]);
   }
 
   // Persist MCP toggles separately from secure API keys.
   Future<McpSettings> readMcp() async {
     final values = await Future.wait([
-      _preferences.getBool(_bybitMcpKey),
-      _preferences.getBool(_nansenMcpKey),
-      _preferences.getBool(_openWebSearchMcpKey),
+      _preferences.getBool(StorageKeys.bybitMcp),
+      _preferences.getBool(StorageKeys.nansenMcp),
+      _preferences.getBool(StorageKeys.openWebSearchMcp),
     ]);
     return McpSettings(
       useBybit: values[0] ?? true,
@@ -86,26 +86,29 @@ class LlmSettingsStore {
 
   Future<void> saveMcp(McpSettings settings) async {
     await Future.wait([
-      _preferences.setBool(_bybitMcpKey, settings.useBybit),
-      _preferences.setBool(_nansenMcpKey, settings.useNansen),
-      _preferences.setBool(_openWebSearchMcpKey, settings.useOpenWebSearch),
+      _preferences.setBool(StorageKeys.bybitMcp, settings.useBybit),
+      _preferences.setBool(StorageKeys.nansenMcp, settings.useNansen),
+      _preferences.setBool(
+        StorageKeys.openWebSearchMcp,
+        settings.useOpenWebSearch,
+      ),
     ]);
   }
 
   Future<ApiSettings> readApi() async => ApiSettings(
-    useCoinalyze: await _preferences.getBool(_coinalyzeApiKey) ?? false,
+    useCoinalyze: await _preferences.getBool(StorageKeys.coinalyzeApi) ?? false,
   );
 
   Future<void> saveApi(ApiSettings settings) =>
-      _preferences.setBool(_coinalyzeApiKey, settings.useCoinalyze);
+      _preferences.setBool(StorageKeys.coinalyzeApi, settings.useCoinalyze);
 
   Future<NewsSettings> readNews() async {
     final values = await Future.wait([
-      _preferences.getBool(_finnhubNewsKey),
-      _preferences.getBool(_marketauxNewsKey),
-      _preferences.getBool(_blsNewsKey),
-      _preferences.getBool(_beaNewsKey),
-      _preferences.getBool(_federalReserveNewsKey),
+      _preferences.getBool(StorageKeys.finnhubNews),
+      _preferences.getBool(StorageKeys.marketauxNews),
+      _preferences.getBool(StorageKeys.blsNews),
+      _preferences.getBool(StorageKeys.beaNews),
+      _preferences.getBool(StorageKeys.federalReserveNews),
     ]);
     return NewsSettings(
       useFinnhub: values[0] ?? false,
@@ -118,11 +121,14 @@ class LlmSettingsStore {
 
   Future<void> saveNews(NewsSettings settings) async {
     await Future.wait([
-      _preferences.setBool(_finnhubNewsKey, settings.useFinnhub),
-      _preferences.setBool(_marketauxNewsKey, settings.useMarketaux),
-      _preferences.setBool(_blsNewsKey, settings.useBls),
-      _preferences.setBool(_beaNewsKey, settings.useBea),
-      _preferences.setBool(_federalReserveNewsKey, settings.useFederalReserve),
+      _preferences.setBool(StorageKeys.finnhubNews, settings.useFinnhub),
+      _preferences.setBool(StorageKeys.marketauxNews, settings.useMarketaux),
+      _preferences.setBool(StorageKeys.blsNews, settings.useBls),
+      _preferences.setBool(StorageKeys.beaNews, settings.useBea),
+      _preferences.setBool(
+        StorageKeys.federalReserveNews,
+        settings.useFederalReserve,
+      ),
     ]);
   }
 }

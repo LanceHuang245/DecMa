@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../repositories/asset_resolver.dart';
 import '../../utils/symbol_utils.dart';
+import 'storage/storage_keys.dart';
 
 // Cache project context separately from live catalysts and price evidence.
 class TokenResearch {
@@ -16,7 +17,7 @@ class TokenResearch {
   final SharedPreferencesAsync _preferences;
   final AssetResolver _assets;
   String _key(String symbol) =>
-      'decma.token_background.v1.${normalizeContractSymbol(symbol)}';
+      '${StorageKeys.tokenBackgroundPrefix}${normalizeContractSymbol(symbol)}';
 
   Future<Map<String, dynamic>> context(
     String symbol, {

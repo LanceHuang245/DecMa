@@ -1,6 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../domain/models/app_settings.dart';
+import 'storage_keys.dart';
 
 class ApiKeyStatus {
   const ApiKeyStatus({
@@ -69,16 +70,6 @@ class SecureKeyStore {
   SecureKeyStore({FlutterSecureStorage? storage})
     : _storage = storage ?? const FlutterSecureStorage();
 
-  static const _codexAccessToken = 'decma.codex.access_token';
-  static const _codexRefreshToken = 'decma.codex.refresh_token';
-  static const _codexAccountId = 'decma.codex.account_id';
-  static const _codexExpiresAt = 'decma.codex.expires_at';
-  static const _bybitApiKey = 'decma.bybit_api_key';
-  static const _bybitApiSecret = 'decma.bybit_api_secret';
-  static const _nansenKey = 'decma.nansen_api_key';
-  static const _coinalyzeKey = 'decma.coinalyze_api_key';
-  static const _finnhubKey = 'decma.finnhub_api_key';
-  static const _marketauxKey = 'decma.marketaux_api_key';
   final FlutterSecureStorage _storage;
 
   Future<ApiKeyStatus> status({
@@ -90,16 +81,16 @@ class SecureKeyStore {
     }
     final saved = await Future.wait<bool>([
       for (final id in connectionIds) _hasLlmKey(id),
-      _storage.containsKey(key: _codexAccessToken),
-      _storage.containsKey(key: _codexRefreshToken),
-      _storage.containsKey(key: _codexAccountId),
-      _storage.containsKey(key: _codexExpiresAt),
-      _storage.containsKey(key: _bybitApiKey),
-      _storage.containsKey(key: _bybitApiSecret),
-      _storage.containsKey(key: _nansenKey),
-      _storage.containsKey(key: _coinalyzeKey),
-      _storage.containsKey(key: _finnhubKey),
-      _storage.containsKey(key: _marketauxKey),
+      _storage.containsKey(key: StorageKeys.codexAccessToken),
+      _storage.containsKey(key: StorageKeys.codexRefreshToken),
+      _storage.containsKey(key: StorageKeys.codexAccountId),
+      _storage.containsKey(key: StorageKeys.codexExpiresAt),
+      _storage.containsKey(key: StorageKeys.bybitApiKey),
+      _storage.containsKey(key: StorageKeys.bybitApiSecret),
+      _storage.containsKey(key: StorageKeys.nansenApiKey),
+      _storage.containsKey(key: StorageKeys.coinalyzeApiKey),
+      _storage.containsKey(key: StorageKeys.finnhubApiKey),
+      _storage.containsKey(key: StorageKeys.marketauxApiKey),
     ]);
     final keyedConnections = <String>{};
     for (var index = 0; index < connectionIds.length; index++) {
@@ -133,39 +124,40 @@ class SecureKeyStore {
       );
     }
     if (updates.bybitApiKey case final key?) {
-      await _storage.write(key: _bybitApiKey, value: key);
+      await _storage.write(key: StorageKeys.bybitApiKey, value: key);
     }
     if (updates.bybitApiSecret case final secret?) {
-      await _storage.write(key: _bybitApiSecret, value: secret);
+      await _storage.write(key: StorageKeys.bybitApiSecret, value: secret);
     }
     if (updates.nansenKey case final key?) {
-      await _storage.write(key: _nansenKey, value: key);
+      await _storage.write(key: StorageKeys.nansenApiKey, value: key);
     }
     if (updates.coinalyzeKey case final key?) {
-      await _storage.write(key: _coinalyzeKey, value: key);
+      await _storage.write(key: StorageKeys.coinalyzeApiKey, value: key);
     }
     if (updates.finnhubKey case final key?) {
-      await _storage.write(key: _finnhubKey, value: key);
+      await _storage.write(key: StorageKeys.finnhubApiKey, value: key);
     }
     if (updates.marketauxKey case final key?) {
-      await _storage.write(key: _marketauxKey, value: key);
+      await _storage.write(key: StorageKeys.marketauxApiKey, value: key);
     }
   }
 
   Future<String?> readLlmKey({String connectionId = LlmSettings.defaultId}) =>
       _storage.read(key: _llmKeyFor(connectionId));
 
-  String _llmKeyFor(String connectionId) => 'decma.llm_api_key.$connectionId';
+  String _llmKeyFor(String connectionId) =>
+      '${StorageKeys.llmApiKeyPrefix}$connectionId';
 
   Future<bool> _hasLlmKey(String connectionId) =>
       _storage.containsKey(key: _llmKeyFor(connectionId));
 
   Future<CodexOAuthCredentials?> readCodexOAuth() async {
     final values = await Future.wait([
-      _storage.read(key: _codexAccessToken),
-      _storage.read(key: _codexRefreshToken),
-      _storage.read(key: _codexAccountId),
-      _storage.read(key: _codexExpiresAt),
+      _storage.read(key: StorageKeys.codexAccessToken),
+      _storage.read(key: StorageKeys.codexRefreshToken),
+      _storage.read(key: StorageKeys.codexAccountId),
+      _storage.read(key: StorageKeys.codexExpiresAt),
     ]);
     if (values[0] == null) return null;
     final expiresAt = DateTime.parse(values[3]!);
@@ -180,22 +172,34 @@ class SecureKeyStore {
   // OAuth credentials never leave encrypted storage between app launches.
   Future<void> saveCodexOAuth(CodexOAuthCredentials credentials) =>
       Future.wait([
-        _storage.write(key: _codexAccessToken, value: credentials.accessToken),
         _storage.write(
-          key: _codexRefreshToken,
+          key: StorageKeys.codexAccessToken,
+          value: credentials.accessToken,
+        ),
+        _storage.write(
+          key: StorageKeys.codexRefreshToken,
           value: credentials.refreshToken,
         ),
-        _storage.write(key: _codexAccountId, value: credentials.accountId),
         _storage.write(
-          key: _codexExpiresAt,
+          key: StorageKeys.codexAccountId,
+          value: credentials.accountId,
+        ),
+        _storage.write(
+          key: StorageKeys.codexExpiresAt,
           value: credentials.expiresAt.toUtc().toIso8601String(),
         ),
       ]).then((_) {});
 
-  Future<String?> readNansenKey() => _storage.read(key: _nansenKey);
-  Future<String?> readBybitApiKey() => _storage.read(key: _bybitApiKey);
-  Future<String?> readBybitApiSecret() => _storage.read(key: _bybitApiSecret);
-  Future<String?> readCoinalyzeKey() => _storage.read(key: _coinalyzeKey);
-  Future<String?> readFinnhubKey() => _storage.read(key: _finnhubKey);
-  Future<String?> readMarketauxKey() => _storage.read(key: _marketauxKey);
+  Future<String?> readNansenKey() =>
+      _storage.read(key: StorageKeys.nansenApiKey);
+  Future<String?> readBybitApiKey() =>
+      _storage.read(key: StorageKeys.bybitApiKey);
+  Future<String?> readBybitApiSecret() =>
+      _storage.read(key: StorageKeys.bybitApiSecret);
+  Future<String?> readCoinalyzeKey() =>
+      _storage.read(key: StorageKeys.coinalyzeApiKey);
+  Future<String?> readFinnhubKey() =>
+      _storage.read(key: StorageKeys.finnhubApiKey);
+  Future<String?> readMarketauxKey() =>
+      _storage.read(key: StorageKeys.marketauxApiKey);
 }

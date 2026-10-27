@@ -9,6 +9,7 @@ import 'providers/app_providers.dart';
 import 'data/services/storage/llm_settings_store.dart';
 import 'data/services/node_runtime_service.dart';
 import 'ui/app_shell.dart';
+import 'ui/theme_mode.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +34,9 @@ Future<void> main() async {
   localeCodeNotifier.value = determineLocaleCode(
     await settingsStore.readLocaleCode(),
   );
+  themeModeNotifier.value = ThemeMode.values.byName(
+    await settingsStore.readThemeMode() ?? ThemeMode.system.name,
+  );
   final initialSettings = AppInitialSettings(
     nodeAvailable: nodeAvailable,
     llmConnections: await settingsStore.readConnections(),
@@ -56,15 +60,22 @@ class DecmaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Rebuild the app locale whenever the language picker changes it.
-    return ValueListenableBuilder<String>(
-      valueListenable: localeCodeNotifier,
-      builder: (context, _, _) => FluentApp(
+    // Rebuild the app whenever the language or theme picker changes.
+    return ListenableBuilder(
+      listenable: Listenable.merge([localeCodeNotifier, themeModeNotifier]),
+      builder: (context, _) => FluentApp(
         title: AppConstants.appName,
         locale: appLocale,
         supportedLocales: supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
-        themeMode: ThemeMode.dark,
+        themeMode: themeModeNotifier.value,
+        theme: FluentThemeData(
+          accentColor: Colors.blue,
+          visualDensity: VisualDensity.standard,
+          navigationPaneTheme: const NavigationPaneThemeData(
+            iconPadding: EdgeInsetsDirectional.only(start: 17.5, end: 10),
+          ),
+        ),
         // Windows 11 dark surfaces: #202020 pane and page, #2B2B2B cards.
         darkTheme: FluentThemeData(
           brightness: Brightness.dark,

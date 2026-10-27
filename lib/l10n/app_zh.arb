@@ -255,5 +255,10 @@
   "planCardEntry": "开仓 {low} – {high}",
   "languageDescription": "更改应用的显示语言",
   "agentSettingsDescription": "LLM 连接、MCP 服务与数据 API",
-  "newsSettingsDescription": "新闻提供方与官方数据源"
+  "newsSettingsDescription": "新闻提供方与官方数据源",
+  "theme": "主题",
+  "themeDescription": "选择浅色、深色或跟随系统",
+  "themeSystem": "跟随系统",
+  "themeLight": "浅色",
+  "themeDark": "深色"
 }

@@ -255,5 +255,10 @@
   "planCardEntry": "Entry {low} – {high}",
   "languageDescription": "Change the display language of the app",
   "agentSettingsDescription": "LLM connections, MCP servers and data APIs",
-  "newsSettingsDescription": "News providers and official data sources"
+  "newsSettingsDescription": "News providers and official data sources",
+  "theme": "Theme",
+  "themeDescription": "Choose light, dark or follow the system",
+  "themeSystem": "Use system setting",
+  "themeLight": "Light",
+  "themeDark": "Dark"
 }

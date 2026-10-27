@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../l10n/app_languages.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/app_providers.dart';
+import '../theme_mode.dart';
 import 'agent_settings_section.dart';
 import 'news_settings_section.dart';
 
@@ -37,6 +38,34 @@ class SettingsPage extends ConsumerWidget {
               localeCodeNotifier.value = code;
               unawaited(settingsStore.saveLocaleCode(code));
             },
+          ),
+        ),
+        const SizedBox(height: 5),
+        _SettingsCard(
+          icon: FluentIcons.color,
+          title: loc.theme,
+          description: loc.themeDescription,
+          // Apply the theme immediately and remember it for the next launch.
+          action: ValueListenableBuilder(
+            valueListenable: themeModeNotifier,
+            builder: (context, mode, _) => ComboBox<ThemeMode>(
+              value: mode,
+              items: [
+                ComboBoxItem(
+                  value: ThemeMode.system,
+                  child: Text(loc.themeSystem),
+                ),
+                ComboBoxItem(
+                  value: ThemeMode.light,
+                  child: Text(loc.themeLight),
+                ),
+                ComboBoxItem(value: ThemeMode.dark, child: Text(loc.themeDark)),
+              ],
+              onChanged: (mode) {
+                themeModeNotifier.value = mode!;
+                unawaited(settingsStore.saveThemeMode(mode.name));
+              },
+            ),
           ),
         ),
         const SizedBox(height: 5),

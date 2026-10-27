@@ -873,4 +873,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newsSettingsDescription => 'News providers and official data sources';
+
+  @override
+  String get theme => 'Theme';
+
+  @override
+  String get themeDescription => 'Choose light, dark or follow the system';
+
+  @override
+  String get themeSystem => 'Use system setting';
+
+  @override
+  String get themeLight => 'Light';
+
+  @override
+  String get themeDark => 'Dark';
 }

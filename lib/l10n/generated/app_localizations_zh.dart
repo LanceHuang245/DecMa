@@ -873,4 +873,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get newsSettingsDescription => '新闻提供方与官方数据源';
+
+  @override
+  String get theme => '主题';
+
+  @override
+  String get themeDescription => '选择浅色、深色或跟随系统';
+
+  @override
+  String get themeSystem => '跟随系统';
+
+  @override
+  String get themeLight => '浅色';
+
+  @override
+  String get themeDark => '深色';
 }

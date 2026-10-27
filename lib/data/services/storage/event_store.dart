@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../domain/models/news_event.dart';
+import 'storage_keys.dart';
 
 class EventStore {
   EventStore({SharedPreferencesAsync? preferences})
@@ -11,8 +12,6 @@ class EventStore {
 
   EventStore.memory() : _preferences = null;
 
-  static const _eventsKey = 'decma.news.events.v1';
-  static const _refreshKeyPrefix = 'decma.news.refresh.v1.';
   static const _maxEvents = 500;
   static const _retention = Duration(days: 14);
   final SharedPreferencesAsync? _preferences;
@@ -22,7 +21,7 @@ class EventStore {
 
   Future<List<NewsEvent>> read() async {
     if (_preferences == null) return [..._memory];
-    final value = await _preferences.getString(_eventsKey);
+    final value = await _preferences.getString(StorageKeys.newsEvents);
     return value == null ? const [] : NewsEvent.decodeAll(value);
   }
 
@@ -35,7 +34,7 @@ class EventStore {
         if (_preferences == null) {
           _memory = merged.events;
         } else {
-          await _preferences.setString(_eventsKey, merged.encoded);
+          await _preferences.setString(StorageKeys.newsEvents, merged.encoded);
         }
         result.complete(merged.events);
       } catch (error, stackTrace) {
@@ -72,7 +71,7 @@ class EventStore {
   Future<DateTime?> readRefreshTime(String providerKey) async {
     if (_preferences == null) return _memoryRefreshTimes[providerKey];
     final value = await _preferences.getString(
-      '$_refreshKeyPrefix$providerKey',
+      '${StorageKeys.newsRefreshPrefix}$providerKey',
     );
     return value == null ? null : DateTime.parse(value);
   }
@@ -84,7 +83,7 @@ class EventStore {
       return;
     }
     await _preferences.setString(
-      '$_refreshKeyPrefix$providerKey',
+      '${StorageKeys.newsRefreshPrefix}$providerKey',
       value.toUtc().toIso8601String(),
     );
   }
