@@ -45,9 +45,9 @@ Control official macro feeds and optional Finnhub and Marketaux news sources sep
 
 ## Current opportunity checks
 
-Select a token, click **分析当前合约**, and read the direction and immediate next action. There is no first-use risk setup. After analysis, reference prices are refreshed automatically. An unentered plan that already reached TP1 is marked as missed; a chase-limit violation waits for a new confirmation after a pullback.
+Select a token, open **分析当前合约**, choose short-term or swing, and read the direction and immediate next action. There is no first-use risk setup.
 
-Machine-readable fields stay behind the chart and checks. Bybit reference data does not verify execution on other venues. `PlanConditions` serialization is generated with `dart run build_runner build`. Only plans and assessment-state changes are saved, with at most 300 evidence records. Entry triggers use native 5m/15m/1h/4h candles; one-minute candles check whether the opportunity has already reached its target or invalidation price. Plans expire after three trigger periods or an earlier explicit expiry. Auxiliary allocation/precision warnings retain reference prices, and the chart displays up to three targets.
+The answer ends with a small JSON object holding the direction, entry zone, stop loss and up to three take-profit prices; the chart draws these levels. Bybit reference data does not verify execution on other venues.
 
 ## Code organization
 
@@ -63,7 +63,6 @@ Machine-readable fields stay behind the chart and checks. Bybit reference data d
 
 - Closed-bar features include KDJ (9/3/3), ADX/DMI, Bollinger bandwidth and percentile, RSI changes, and prior structure levels. All values are serialized into the analysis context; correlated price indicators are not independent votes.
 - Optional public Bybit OI history supplies 15-minute and one-hour changes without blocking core price analysis on failure.
-- Entry checks use Ask for longs and Bid for shorts, with a minimum reference net reward/risk of 1:1 to TP1 and a cost-adjusted chase boundary. The public scenario uses 0.055% taker fees per leg, adverse half-spread at exit, and payable funding over three hours. It excludes size-dependent market impact and is not a personal cost estimate.
 - Breakout/retest requires separate closed candles. Range reentry must touch its directional boundary. Volume alone cannot approve entry; a cost pause requires a new trigger after recovery.
 
 ## Requirements
