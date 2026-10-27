@@ -1,6 +1,5 @@
 import 'package:decma/domain/models/candle.dart';
 import 'package:decma/ui/chart/candle_chart.dart';
-import 'package:decma/ui/chart/candle_chart_frame.dart';
 import 'package:decma/ui/chart/candle_chart_viewport.dart';
 import 'package:decma/ui/chart/candle_series.dart';
 import 'package:fluent_ui/fluent_ui.dart';
@@ -75,28 +74,6 @@ void main() {
     });
   });
 
-  test('sub-pixel candles aggregate with OHLC semantics', () {
-    final candles = List.generate(10000, _candle);
-    final viewport = CandleViewport.from(
-      size: const Size(1000, 500),
-      candleCount: candles.length,
-      candleSpacing: 0.35,
-      trailingOffset: 0,
-    );
-    final frame = ChartFrame.build(source: candles, viewport: viewport)!;
-
-    expect(frame.candles.length, lessThanOrEqualTo(viewport.chart.width.ceil() + 1));
-    final aggregate = frame.candles.firstWhere((item) => item.aggregated);
-    expect(aggregate.open, candles[aggregate.firstIndex].open);
-    expect(aggregate.close, candles[aggregate.lastIndex].close);
-    expect(
-      aggregate.high,
-      candles
-          .sublist(aggregate.firstIndex, aggregate.lastIndex + 1)
-          .map((item) => item.high)
-          .reduce((left, right) => left > right ? left : right),
-    );
-  });
   testWidgets('100k chart paints, zooms, drags, and resizes without errors', (
     tester,
   ) async {

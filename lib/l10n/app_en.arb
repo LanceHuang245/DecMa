@@ -41,7 +41,6 @@
   "chartShort": "Short",
   "chartWaitZone": "Wait zone",
   "chartEntryLevel": "{label} entry",
-  "chartAggregated": "{start} — {end} (aggregated)",
   "ohlcOpen": "O",
   "ohlcHigh": "H",
   "ohlcLow": "L",

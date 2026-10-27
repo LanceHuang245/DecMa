@@ -41,7 +41,6 @@
   "chartShort": "做空",
   "chartWaitZone": "等待区",
   "chartEntryLevel": "{label} 开仓",
-  "chartAggregated": "{start} — {end}（聚合）",
   "ohlcOpen": "开",
   "ohlcHigh": "高",
   "ohlcLow": "低",

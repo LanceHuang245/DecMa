@@ -11,10 +11,10 @@ import 'candle_chart_viewport.dart';
 import '../../l10n/app_languages.dart';
 
 class MainCandlePainter extends CustomPainter {
-  MainCandlePainter({required this.frame, super.repaint});
+  MainCandlePainter({required this.frame, required this.grid, super.repaint});
 
   final ChartFrame? Function() frame;
-  static const _grid = Color(0xFFBBC3CC);
+  final Color grid;
   final Paint _paint = Paint();
 
   @override
@@ -33,14 +33,14 @@ class MainCandlePainter extends CustomPainter {
   void _drawGrid(Canvas canvas, ChartTransform transform) {
     final chart = transform.viewport.chart;
     _paint
-      ..color = _grid.withAlpha(72)
+      ..color = grid.withAlpha(72)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
     for (var index = 0; index <= 4; index++) {
       final value = transform.low + transform.range * index / 4;
       final y = transform.yForPrice(value);
       canvas.drawLine(Offset(chart.left, y), Offset(chart.right, y), _paint);
-      _label(canvas, _price(value), Offset(chart.right + 6, y - 7), _grid);
+      _label(canvas, _price(value), Offset(chart.right + 6, y - 7), grid);
     }
   }
 
@@ -49,18 +49,14 @@ class MainCandlePainter extends CustomPainter {
     final chart = transform.viewport.chart;
     canvas.save();
     canvas.clipRect(chart);
-    final bodyWidth = math.max(
-      1.0,
-      math.min(14.0, transform.viewport.candleSpacing * 0.62),
-    );
-    for (final candle in frame.candles) {
-      final centerIndex = (candle.firstIndex + candle.lastIndex) / 2;
-      final x = transform.xForIndex(centerIndex);
-      final color = candle.close >= candle.open
-          ? candleUpColor
-          : candleDownColor;
+    final view = transform.viewport;
+    // Bodies fill 80% of the slot like TradingView, so zooming in never opens wide gaps.
+    final bodyWidth = math.max(1.0, view.candleSpacing * 0.8);
+    for (var index = view.start; index < view.end; index++) {
+      final candle = frame.candles[index];
+      final x = transform.xForIndex(index);
       _paint
-        ..color = color
+        ..color = candleColor(candle)
         ..strokeWidth = 1
         ..style = PaintingStyle.fill;
       canvas.drawLine(
@@ -85,26 +81,26 @@ class MainCandlePainter extends CustomPainter {
   void _drawTimeAxis(Canvas canvas, ChartFrame frame) {
     final candles = frame.candles;
     final transform = frame.transform;
-    final chart = transform.viewport.chart;
+    final view = transform.viewport;
+    final chart = view.chart;
     final daily = candles.length > 1 &&
-        candles[1].startTime.difference(candles.first.startTime).inHours >= 23;
+        candles[1].time.difference(candles.first.time).inHours >= 23;
     _paint
-      ..color = _grid.withAlpha(110)
+      ..color = grid.withAlpha(110)
       ..strokeWidth = 1;
     for (var tick = 0; tick <= 4; tick++) {
-      final candle = candles[(tick * (candles.length - 1) / 4).round()];
-      final x = transform.xForIndex(
-        (candle.firstIndex + candle.lastIndex) / 2,
-      );
+      final index = view.start + (tick * (view.visibleCount - 1) / 4).round();
+      final candle = candles[index];
+      final x = transform.xForIndex(index);
       canvas.drawLine(
         Offset(x, chart.bottom),
         Offset(x, chart.bottom + 4),
         _paint,
       );
       final text = daily
-          ? formatLocalDate(candle.startTime)
-          : '${formatLocalDate(candle.startTime)} ${formatLocalTime(candle.startTime)}';
-      final painter = _text(text, _grid);
+          ? formatLocalDate(candle.time)
+          : '${formatLocalDate(candle.time)} ${formatLocalTime(candle.time)}';
+      final painter = _text(text, grid);
       final left = (x - painter.width / 2)
           .clamp(chart.left, math.max(chart.left, chart.right - painter.width))
           .toDouble();
@@ -168,7 +164,12 @@ class PlanCandlePainter extends CustomPainter {
         chart.right,
         transform.yForPrice(lower),
       );
-      canvas.drawRect(zone, _paint..color = entryColor.withAlpha(35));
+      canvas.drawRect(
+        zone,
+        _paint
+          ..color = entryColor.withAlpha(35)
+          ..style = PaintingStyle.fill,
+      );
       _level(canvas, transform, lower, entryColor, '${plan.isSetup ? appL10n.chartEntryLevel(entryLabel) : entryLabel} ${_price(lower)}');
       if (upper != lower) {
         _level(canvas, transform, upper, entryColor, '${plan.isSetup ? appL10n.chartEntryLevel(entryLabel) : entryLabel} ${_price(upper)}');
@@ -190,13 +191,21 @@ class PlanCandlePainter extends CustomPainter {
     _label(canvas, text, Offset(transform.viewport.chart.left + 5, y - 17), color);
   }
 
+  // One path per line instead of one draw call per dash.
   void _dashedLine(Canvas canvas, Rect chart, double y, Color color, double width) {
-    _paint
-      ..color = color
-      ..strokeWidth = width;
+    final path = Path();
     for (var x = chart.left; x < chart.right; x += 8) {
-      canvas.drawLine(Offset(x, y), Offset(math.min(x + 4, chart.right), y), _paint);
+      path
+        ..moveTo(x, y)
+        ..lineTo(math.min(x + 4, chart.right), y);
     }
+    canvas.drawPath(
+      path,
+      _paint
+        ..color = color
+        ..strokeWidth = width
+        ..style = PaintingStyle.stroke,
+    );
   }
 
   @override
@@ -207,11 +216,13 @@ class InteractionCandlePainter extends CustomPainter {
   InteractionCandlePainter({
     required this.frame,
     required this.pointer,
+    required this.foreground,
     super.repaint,
   });
 
   final ChartFrame? Function() frame;
   final Offset? Function() pointer;
+  final Color foreground;
   final Paint _paint = Paint();
 
   @override
@@ -222,27 +233,18 @@ class InteractionCandlePainter extends CustomPainter {
     final transform = current.transform;
     final chart = transform.viewport.chart;
     if (!chart.contains(position)) return;
-    final dataPosition = transform.viewport.positionAtX(position.dx).round();
-    DisplayCandle? hovered;
-    for (final candle in current.candles) {
-      if (dataPosition >= candle.firstIndex && dataPosition <= candle.lastIndex) {
-        hovered = candle;
-        break;
-      }
-    }
-    if (hovered == null) return;
-    final x = transform.xForIndex((hovered.firstIndex + hovered.lastIndex) / 2);
+    final index = transform.viewport.positionAtX(position.dx).round();
+    if (index < transform.viewport.start || index >= transform.viewport.end) return;
+    final hovered = current.candles[index];
+    final x = transform.xForIndex(index);
     final y = position.dy.clamp(chart.top, chart.bottom).toDouble();
     final cursorPrice = transform.priceForY(y);
     _paint
-      ..color = Colors.white.withAlpha(145)
+      ..color = foreground.withAlpha(145)
       ..strokeWidth = 1;
     canvas.drawLine(Offset(x, chart.top), Offset(x, chart.bottom), _paint);
     canvas.drawLine(Offset(chart.left, y), Offset(chart.right, y), _paint);
-    final time = hovered.aggregated
-        ? appL10n.chartAggregated(formatLocalDateTime(hovered.startTime), formatLocalDateTime(hovered.endTime))
-        : formatLocalDateTime(hovered.startTime);
-    final color = hovered.close >= hovered.open ? candleUpColor : candleDownColor;
+    final time = formatLocalDateTime(hovered.time);
     _tooltip(canvas, chart, TextSpan(
       style: const TextStyle(color: Colors.white, fontSize: 11),
       children: [
@@ -251,13 +253,13 @@ class InteractionCandlePainter extends CustomPainter {
         _valueSpan(appL10n.ohlcHigh, hovered.high, candleUpColor),
         const TextSpan(text: '\n'),
         _valueSpan(appL10n.ohlcLow, hovered.low, candleDownColor),
-        _valueSpan(appL10n.ohlcClose, hovered.close, color),
+        _valueSpan(appL10n.ohlcClose, hovered.close, candleColor(hovered)),
         const TextSpan(text: '\n'),
         _valueSpan(appL10n.chartCursor, cursorPrice, Colors.white),
         _valueSpan(appL10n.chartLatest, current.latest.close, candleColor(current.latest)),
       ],
     ));
-    _label(canvas, _price(cursorPrice), Offset(chart.right + 6, y - 7), Colors.white);
+    _label(canvas, _price(cursorPrice), Offset(chart.right + 6, y - 7), foreground);
   }
 
   TextSpan _valueSpan(String label, double value, Color color) => TextSpan(

@@ -47,19 +47,37 @@ class _CandleChartState extends State<CandleChart> {
   bool _isDragging = false;
   bool _loadRequested = false;
   Size _size = Size.zero;
+  ChartFrame? _cachedFrame;
+  bool _frameStale = true;
 
   TradePlan? get _paintPlan =>
       widget.plan?.isSetup == true || widget.showWaitZone ? widget.plan : null;
 
-  ChartFrame? _frame() => ChartFrame.build(
-    source: widget.candles,
-    viewport: _controller.viewport,
-    plan: _paintPlan,
-  );
+  // Build the frame once per data, layout or viewport change; all layers share it.
+  ChartFrame? _frame() {
+    if (_frameStale) {
+      _cachedFrame = ChartFrame.build(
+        source: widget.candles,
+        viewport: _controller.viewport,
+        plan: _paintPlan,
+      );
+      _frameStale = false;
+    }
+    return _cachedFrame;
+  }
+
+  void _invalidateFrame() => _frameStale = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_invalidateFrame);
+  }
 
   @override
   void didUpdateWidget(covariant CandleChart oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _invalidateFrame();
     final prepended = widget.totalPrepended - oldWidget.totalPrepended;
     if (prepended > 0) {
       _controller.historyPrepended(prepended);
@@ -71,6 +89,7 @@ class _CandleChartState extends State<CandleChart> {
 
   @override
   void dispose() {
+    _controller.removeListener(_invalidateFrame);
     _pointer.dispose();
     _controller.dispose();
     super.dispose();
@@ -78,6 +97,7 @@ class _CandleChartState extends State<CandleChart> {
 
   @override
   Widget build(BuildContext context) {
+    final resources = FluentTheme.of(context).resources;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -86,6 +106,7 @@ class _CandleChartState extends State<CandleChart> {
             builder: (context, constraints) {
               _size = constraints.biggest;
               _controller.updateLayout(_size, widget.candles.length);
+              _invalidateFrame();
               return MouseRegion(
                 cursor: _isDragging
                     ? SystemMouseCursors.grabbing
@@ -107,32 +128,39 @@ class _CandleChartState extends State<CandleChart> {
                   onPointerMove: _drag,
                   onPointerUp: (_) => _stopDragging(),
                   onPointerCancel: (_) => _stopDragging(),
-                  child: RepaintBoundary(
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        CustomPaint(
+                  // Separate layers so hovering repaints only the crosshair.
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      RepaintBoundary(
+                        child: CustomPaint(
                           painter: MainCandlePainter(
                             frame: _frame,
+                            grid: resources.textFillColorSecondary,
                             repaint: _controller,
                           ),
                         ),
-                        CustomPaint(
+                      ),
+                      RepaintBoundary(
+                        child: CustomPaint(
                           painter: PlanCandlePainter(
                             frame: _frame,
                             plan: () => _paintPlan,
                             repaint: _controller,
                           ),
                         ),
-                        CustomPaint(
+                      ),
+                      RepaintBoundary(
+                        child: CustomPaint(
                           painter: InteractionCandlePainter(
                             frame: _frame,
                             pointer: () => _pointer.value,
+                            foreground: resources.textFillColorPrimary,
                             repaint: Listenable.merge([_controller, _pointer]),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -141,7 +169,7 @@ class _CandleChartState extends State<CandleChart> {
         if (widget.plan case final plan?) _PlanCard(plan: plan, showWaitZone: widget.showWaitZone),
         if (widget.loading || (widget.candles.isEmpty && widget.error == null))
           ColoredBox(
-            color: const Color(0xE6171A1F),
+            color: FluentTheme.of(context).scaffoldBackgroundColor.withAlpha(0xE6),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,

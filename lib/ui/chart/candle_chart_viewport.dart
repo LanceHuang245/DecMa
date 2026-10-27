@@ -72,7 +72,8 @@ class CandleViewport {
 class ChartController extends ChangeNotifier {
   ChartController({double initialSpacing = 8}) : _spacing = initialSpacing;
 
-  static const minSpacing = 0.35;
+  // TradingView Lightweight Charts' default minimum bar spacing.
+  static const minSpacing = 0.5;
   static const minVisibleCandles = 8.0;
   static const preloadThreshold = 12;
 

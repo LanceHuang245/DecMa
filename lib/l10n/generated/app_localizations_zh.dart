@@ -138,11 +138,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String chartAggregated(Object end, Object start) {
-    return '$start — $end（聚合）';
-  }
-
-  @override
   String get ohlcOpen => '开';
 
   @override

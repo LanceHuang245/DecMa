@@ -138,11 +138,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String chartAggregated(Object end, Object start) {
-    return '$start — $end (aggregated)';
-  }
-
-  @override
   String get ohlcOpen => 'O';
 
   @override

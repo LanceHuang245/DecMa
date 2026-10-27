@@ -341,12 +341,6 @@ abstract class AppLocalizations {
   /// **'{label} entry'**
   String chartEntryLevel(Object label);
 
-  /// No description provided for @chartAggregated.
-  ///
-  /// In en, this message translates to:
-  /// **'{start} — {end} (aggregated)'**
-  String chartAggregated(Object end, Object start);
-
   /// No description provided for @ohlcOpen.
   ///
   /// In en, this message translates to:

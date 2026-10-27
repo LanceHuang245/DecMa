@@ -4,40 +4,14 @@ import '../../domain/models/candle.dart';
 import '../../domain/models/trade_plan.dart';
 import 'candle_chart_viewport.dart';
 
-class DisplayCandle {
-  const DisplayCandle({
-    required this.firstIndex,
-    required this.lastIndex,
-    required this.startTime,
-    required this.endTime,
-    required this.open,
-    required this.high,
-    required this.low,
-    required this.close,
-  });
-
-  final int firstIndex;
-  final int lastIndex;
-  final DateTime startTime;
-  final DateTime endTime;
-  final double open;
-  final double high;
-  final double low;
-  final double close;
-
-  bool get aggregated => firstIndex != lastIndex;
-}
-
 class ChartFrame {
-  const ChartFrame({
-    required this.transform,
-    required this.candles,
-    required this.latest,
-  });
+  const ChartFrame({required this.transform, required this.candles});
 
   final ChartTransform transform;
-  final List<DisplayCandle> candles;
-  final Candle latest;
+  // The full series; painters draw only the viewport's index range.
+  final List<Candle> candles;
+
+  Candle get latest => candles.last;
 
   static ChartFrame? build({
     required List<Candle> source,
@@ -45,14 +19,11 @@ class ChartFrame {
     TradePlan? plan,
   }) {
     if (source.isEmpty || !viewport.canPaint) return null;
-    final display = _aggregate(source, viewport);
-    if (display.isEmpty) return null;
-
     var low = double.infinity;
     var high = double.negativeInfinity;
-    for (final candle in display) {
-      low = math.min(low, candle.low);
-      high = math.max(high, candle.high);
+    for (var index = viewport.start; index < viewport.end; index++) {
+      low = math.min(low, source[index].low);
+      high = math.max(high, source[index].high);
     }
     void include(double? value) {
       if (value == null || !value.isFinite) return;
@@ -79,47 +50,7 @@ class ChartFrame {
 
     return ChartFrame(
       transform: ChartTransform(viewport: viewport, low: low, high: high),
-      candles: display,
-      latest: source.last,
+      candles: source,
     );
-  }
-
-  /// Combines only candles sharing a horizontal pixel bucket, retaining OHLC.
-  static List<DisplayCandle> _aggregate(
-    List<Candle> source,
-    CandleViewport viewport,
-  ) {
-    final result = <DisplayCandle>[];
-    var index = viewport.start;
-    while (index < viewport.end) {
-      final first = source[index];
-      final bucket = viewport.xForIndex(index).floor();
-      var lastIndex = index;
-      var high = first.high;
-      var low = first.low;
-      var close = first.close;
-      while (lastIndex + 1 < viewport.end &&
-          viewport.xForIndex(lastIndex + 1).floor() == bucket) {
-        lastIndex++;
-        final candle = source[lastIndex];
-        high = math.max(high, candle.high);
-        low = math.min(low, candle.low);
-        close = candle.close;
-      }
-      result.add(
-        DisplayCandle(
-          firstIndex: index,
-          lastIndex: lastIndex,
-          startTime: first.time,
-          endTime: source[lastIndex].time,
-          open: first.open,
-          high: high,
-          low: low,
-          close: close,
-        ),
-      );
-      index = lastIndex + 1;
-    }
-    return result;
   }
 }
