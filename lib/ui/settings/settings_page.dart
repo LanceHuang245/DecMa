@@ -107,7 +107,11 @@ class _SettingsCard extends StatelessWidget {
     );
     if (content case final content?) {
       return Expander(
-        leading: Icon(icon, size: 20),
+        // Expander adds only 10px after leading; pad to the card row's 16px gap.
+        leading: Padding(
+          padding: const EdgeInsetsDirectional.only(end: 6),
+          child: Icon(icon, size: 20),
+        ),
         header: header,
         content: content,
       );
