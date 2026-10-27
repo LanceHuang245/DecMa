@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../../../app_constants.dart';
 import '../../../domain/models/news_event.dart';
 import '../../../utils/network.dart';
 
@@ -24,7 +25,7 @@ class NewsFeeds {
     }
     final events = <NewsEvent>[];
     for (final category in ['crypto', 'general', 'forex']) {
-      final uri = Uri.https('finnhub.io', '/api/v1/news', {
+      final uri = Uri.https(AppConstants.finnhubApiHost, '/api/v1/news', {
         'category': category,
         'token': apiKey,
       });
@@ -37,24 +38,18 @@ class NewsFeeds {
         ),
       );
       _checkResponse(response, provider: 'Finnhub');
-      final data = _json(response.data ?? '', 'Finnhub');
-      if (data is! List) continue;
-      for (final item in data.whereType<Map>()) {
-        final published = item['datetime'] is num
-            ? DateTime.fromMillisecondsSinceEpoch(
-                (item['datetime'] as num).toInt() * 1000,
-                isUtc: true,
-              )
-            : now;
-        final headline = item['headline']?.toString() ?? '';
-        if (headline.isEmpty) continue;
-        final source = item['source']?.toString() ?? 'Finnhub';
-        final url = item['url']?.toString();
+      for (final item in jsonDecode(response.data!)) {
+        final published = DateTime.fromMillisecondsSinceEpoch(
+          item['datetime'] * 1000,
+          isUtc: true,
+        );
+        final String source = item['source'];
+        final String url = item['url'];
         events.add(
           NewsEvent(
-            eventId: 'finnhub:${item['id'] ?? '$category:$headline'}',
-            headline: headline,
-            summary: item['summary']?.toString(),
+            eventId: 'finnhub:${item['id']}',
+            headline: item['headline'],
+            summary: item['summary'],
             provider: 'Finnhub',
             originalSource: source,
             sourceTier: NewsSourceTier.aggregator,
@@ -72,7 +67,7 @@ class NewsFeeds {
             verificationStatus: NewsVerificationStatus.unverified,
             isBreaking: now.difference(published) < const Duration(hours: 2),
             isOfficial: false,
-            rawSourceId: item['id']?.toString(),
+            rawSourceId: '${item['id']}',
             sources: [
               NewsEventSource(
                 provider: 'Finnhub',
@@ -92,13 +87,8 @@ class NewsFeeds {
     DateTime now,
     CancelToken? cancelToken,
   ) async {
-    final urls = [
-      'https://www.federalreserve.gov/feeds/press_monetary.xml',
-      'https://www.federalreserve.gov/feeds/press_all.xml',
-      'https://www.federalreserve.gov/feeds/speeches_and_testimony.xml',
-    ];
     final events = <NewsEvent>[];
-    for (final url in urls) {
+    for (final url in AppConstants.federalReserveRssUrls) {
       events.addAll(
         await rss(
           provider: 'Federal Reserve',
@@ -133,7 +123,7 @@ class NewsFeeds {
     );
     _checkResponse(response, provider: provider);
     return RegExp(r'<item\b[^>]*>(.*?)</item>', dotAll: true)
-        .allMatches(response.data ?? '')
+        .allMatches(response.data!)
         .map((item) => item.group(1)!)
         .map(
           (item) => _rssEvent(
@@ -145,11 +135,10 @@ class NewsFeeds {
             now: now,
           ),
         )
-        .whereType<NewsEvent>()
         .toList();
   }
 
-  NewsEvent? _rssEvent({
+  NewsEvent _rssEvent({
     required String provider,
     required String originalSource,
     required String item,
@@ -157,8 +146,7 @@ class NewsFeeds {
     required NewsScope scope,
     required DateTime now,
   }) {
-    final headline = _xmlValue(item, 'title');
-    if (headline == null || headline.isEmpty) return null;
+    final headline = _xmlValue(item, 'title')!;
     final link = _xmlValue(item, 'link');
     final rawId = _xmlValue(item, 'guid') ?? link ?? headline;
     final published = _httpDate(_xmlValue(item, 'pubDate')) ?? now;
@@ -193,17 +181,6 @@ class NewsFeeds {
         ),
       ],
     );
-  }
-
-  Object? _json(String body, String provider) {
-    try {
-      return jsonDecode(body);
-    } on FormatException {
-      throw AppFailure(
-        kind: AppFailureKind.invalidResponse,
-        provider: provider,
-      );
-    }
   }
 
   void _checkResponse(Response<dynamic> response, {required String provider}) {

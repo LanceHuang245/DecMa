@@ -169,26 +169,14 @@ class OpenAiCodexAuthService {
       ),
     );
     requireSuccessfulResponse(response, provider: 'OpenAI Codex');
-    final values = _json(response.data ?? '');
-    final accessToken = values['access_token']?.toString();
-    final refreshToken =
-        values['refresh_token']?.toString() ?? fallbackRefreshToken;
-    final accountId = _accountId(
-      values['id_token']?.toString() ?? accessToken ?? '',
-    );
-    if (accessToken == null || refreshToken == null || accountId == null) {
-      throw const AppFailure(
-        kind: AppFailureKind.invalidResponse,
-        provider: 'OpenAI Codex',
-      );
-    }
-    final seconds =
-        int.tryParse(values['expires_in']?.toString() ?? '') ?? 3600;
+    final values = jsonDecode(response.data!) as Map<String, dynamic>;
     return CodexOAuthCredentials(
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-      accountId: accountId,
-      expiresAt: DateTime.now().add(Duration(seconds: seconds)),
+      accessToken: values['access_token'],
+      refreshToken: values['refresh_token'] ?? fallbackRefreshToken,
+      accountId: _accountId(values['id_token'] ?? values['access_token']),
+      expiresAt: DateTime.now().add(
+        Duration(seconds: values['expires_in'] ?? 3600),
+      ),
     );
   }
 
@@ -216,16 +204,10 @@ class OpenAiCodexAuthService {
       ),
     );
     requireSuccessfulResponse(response, provider: 'OpenAI Codex');
-    final values = _json(response.data ?? '');
+    final values = jsonDecode(response.data!) as Map<String, dynamic>;
     final models = <String, LlmModelInfo>{};
-    for (final list in [values['models'], values['data']]) {
-      if (list is! List) continue;
-      for (final item in list.whereType<Map>()) {
-        final model = item['slug'] ?? item['id'] ?? item['model'];
-        if (model is String && model.isNotEmpty) {
-          models[model] = LlmModelInfo.fromJson(item);
-        }
-      }
+    for (final item in values['models']) {
+      models[item['slug']] = LlmModelInfo.fromJson(item);
     }
     return models.values.toList()..sort((a, b) => a.id.compareTo(b.id));
   }
@@ -238,26 +220,12 @@ class OpenAiCodexAuthService {
     'Accept': 'application/json',
   };
 
-  String? _accountId(String token) {
-    final parts = token.split('.');
-    if (parts.length != 3) return null;
-    try {
-      final payload = _json(
-        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
-      );
-      final auth = payload['https://api.openai.com/auth'];
-      final organizations = payload['organizations'];
-      final firstOrganization =
-          organizations is List && organizations.isNotEmpty
-          ? organizations.first
-          : null;
-      return (auth is Map ? auth['chatgpt_account_id'] : null)?.toString() ??
-          payload['chatgpt_account_id']?.toString() ??
-          (firstOrganization is Map ? firstOrganization['id'] : null)
-              ?.toString();
-    } catch (_) {
-      return null;
-    }
+  // The ChatGPT account id lives in the token's OpenAI auth claim.
+  String _accountId(String token) {
+    final payload = jsonDecode(
+      utf8.decode(base64Url.decode(base64Url.normalize(token.split('.')[1]))),
+    );
+    return payload['https://api.openai.com/auth']['chatgpt_account_id'];
   }
 
   String _randomUrlSafe(int length) {
@@ -268,17 +236,6 @@ class OpenAiCodexAuthService {
       length,
       (_) => characters[random.nextInt(characters.length)],
     ).join();
-  }
-
-  Map<String, dynamic> _json(String body) {
-    try {
-      final decoded = jsonDecode(body);
-      return decoded is Map
-          ? decoded.map((key, value) => MapEntry(key.toString(), value))
-          : const {};
-    } catch (_) {
-      return const {};
-    }
   }
 
   static Future<void> _openSystemBrowser(Uri uri) async {

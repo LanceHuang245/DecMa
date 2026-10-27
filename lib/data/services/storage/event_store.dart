@@ -74,7 +74,7 @@ class EventStore {
     final value = await _preferences.getString(
       '$_refreshKeyPrefix$providerKey',
     );
-    return value == null ? null : DateTime.tryParse(value)?.toUtc();
+    return value == null ? null : DateTime.parse(value);
   }
 
   // Persist provider freshness separately from cached event publication times.

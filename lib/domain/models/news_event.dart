@@ -92,14 +92,10 @@ class NewsEventSource {
 
   factory NewsEventSource.fromJson(Map<String, dynamic> json) =>
       NewsEventSource(
-        provider: json['provider']?.toString() ?? '',
-        originalSource: json['originalSource']?.toString() ?? '',
-        sourceTier: _enumByName(
-          NewsSourceTier.values,
-          json['sourceTier']?.toString(),
-          NewsSourceTier.discovery,
-        ),
-        url: json['url']?.toString(),
+        provider: json['provider'],
+        originalSource: json['originalSource'],
+        sourceTier: NewsSourceTier.values.byName(json['sourceTier']),
+        url: json['url'],
       );
 }
 
@@ -271,76 +267,48 @@ class NewsEvent {
   };
 
   factory NewsEvent.fromJson(Map<String, dynamic> json) => NewsEvent(
-    eventId: json['eventId']?.toString() ?? '',
-    headline: json['headline']?.toString() ?? '',
-    summary: json['summary']?.toString(),
-    provider: json['provider']?.toString() ?? '',
-    originalSource: json['originalSource']?.toString() ?? '',
-    sourceTier: _enumByName(
-      NewsSourceTier.values,
-      json['sourceTier']?.toString(),
-      NewsSourceTier.discovery,
+    eventId: json['eventId'],
+    headline: json['headline'],
+    summary: json['summary'],
+    provider: json['provider'],
+    originalSource: json['originalSource'],
+    sourceTier: NewsSourceTier.values.byName(json['sourceTier']),
+    category: NewsCategory.values.byName(json['category']),
+    eventType: json['eventType'],
+    scope: NewsScope.values.byName(json['scope']),
+    importance: NewsImportance.values.byName(json['importance']),
+    assets: List<String>.from(json['assets']),
+    directAssets: List<String>.from(json['directAssets']),
+    indirectAssets: List<String>.from(json['indirectAssets']),
+    country: json['country'],
+    scheduledAt: json['scheduledAt'] == null
+        ? null
+        : DateTime.parse(json['scheduledAt']),
+    publishedAt: DateTime.parse(json['publishedAt']),
+    receivedAt: DateTime.parse(json['receivedAt']),
+    url: json['url'],
+    actual: json['actual'],
+    forecast: json['forecast'],
+    previous: json['previous'],
+    unit: json['unit'],
+    verificationStatus: NewsVerificationStatus.values.byName(
+      json['verificationStatus'],
     ),
-    category: _enumByName(
-      NewsCategory.values,
-      json['category']?.toString(),
-      NewsCategory.other,
-    ),
-    eventType: json['eventType']?.toString() ?? 'OTHER',
-    scope: _enumByName(
-      NewsScope.values,
-      json['scope']?.toString(),
-      NewsScope.cryptoMarket,
-    ),
-    importance: _enumByName(
-      NewsImportance.values,
-      json['importance']?.toString(),
-      NewsImportance.low,
-    ),
-    assets: _stringList(json['assets']),
-    directAssets: _stringList(json['directAssets']),
-    indirectAssets: _stringList(json['indirectAssets']),
-    country: json['country']?.toString(),
-    scheduledAt: _date(json['scheduledAt']),
-    publishedAt:
-        _date(json['publishedAt']) ?? DateTime.fromMillisecondsSinceEpoch(0),
-    receivedAt:
-        _date(json['receivedAt']) ?? DateTime.fromMillisecondsSinceEpoch(0),
-    url: json['url']?.toString(),
-    actual: json['actual']?.toString(),
-    forecast: json['forecast']?.toString(),
-    previous: json['previous']?.toString(),
-    unit: json['unit']?.toString(),
-    verificationStatus: _enumByName(
-      NewsVerificationStatus.values,
-      json['verificationStatus']?.toString(),
-      NewsVerificationStatus.unverified,
-    ),
-    isBreaking: json['isBreaking'] == true,
-    isOfficial: json['isOfficial'] == true,
-    rawSourceId: json['rawSourceId']?.toString(),
-    sources: (json['sources'] as List? ?? const [])
-        .whereType<Map>()
-        .map((source) => NewsEventSource.fromJson(_stringMap(source)))
-        .toList(),
+    isBreaking: json['isBreaking'],
+    isOfficial: json['isOfficial'],
+    rawSourceId: json['rawSourceId'],
+    sources: [
+      for (final source in json['sources']) NewsEventSource.fromJson(source),
+    ],
   );
 
   static String encodeAll(List<NewsEvent> events) =>
       jsonEncode(events.map((event) => event.toJson()).toList());
 
-  static List<NewsEvent> decodeAll(String value) {
-    try {
-      return (jsonDecode(value) as List)
-          .whereType<Map>()
-          .map((event) => NewsEvent.fromJson(_stringMap(event)))
-          .where(
-            (event) => event.eventId.isNotEmpty && event.headline.isNotEmpty,
-          )
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
+  static List<NewsEvent> decodeAll(String value) => (jsonDecode(value) as List)
+      .cast<Map<String, dynamic>>()
+      .map(NewsEvent.fromJson)
+      .toList();
 }
 
 class EventSnapshot {
@@ -387,19 +355,3 @@ class EventSnapshot {
     'token_news_search_queries': tokenNewsSearchQueries,
   };
 }
-
-T _enumByName<T extends Enum>(List<T> values, String? name, T fallback) {
-  for (final value in values) {
-    if (value.name == name) return value;
-  }
-  return fallback;
-}
-
-DateTime? _date(Object? value) =>
-    value == null ? null : DateTime.tryParse(value.toString());
-
-List<String> _stringList(Object? value) =>
-    (value as List? ?? const []).map((item) => item.toString()).toList();
-
-Map<String, dynamic> _stringMap(Map value) =>
-    value.map((key, value) => MapEntry(key.toString(), value));

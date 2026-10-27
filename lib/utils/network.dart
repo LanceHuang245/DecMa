@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../app_constants.dart';
 import '../l10n/app_languages.dart';
 
 enum AppFailureKind {
@@ -121,6 +122,7 @@ Dio createDio() {
       receiveTimeout: networkTimeout,
       responseType: ResponseType.plain,
       validateStatus: (_) => true,
+      headers: {'User-Agent': AppConstants.userAgent},
     ),
   );
   if (kDebugMode) dio.interceptors.add(_DebugNetworkInterceptor());

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../../../domain/models/asset_profile.dart';
+import '../../../app_constants.dart';
 import '../../../domain/models/news_event.dart';
 import '../../../utils/network.dart';
 
@@ -40,8 +41,8 @@ class MarketauxNewsProvider {
         : candidates
               .where(
                 (item) =>
-                    _normalized(item['name']?.toString()) ==
-                    _normalized(profile.projectName),
+                    _normalized(item['name']) ==
+                    _normalized(profile.projectName!),
               )
               .toList();
     final matches = exactSymbol.isNotEmpty ? exactSymbol : exactName;
@@ -51,15 +52,13 @@ class MarketauxNewsProvider {
         : matches.isEmpty
         ? MarketauxResolution.notFound
         : MarketauxResolution.ambiguous;
-    final symbol = match?['symbol']?.toString();
     return profile.copyWith(
-      projectName: profile.projectName ?? match?['name']?.toString(),
+      projectName: profile.projectName ?? match?['name'],
       aliases: {
         ...profile.aliases,
-        if (match?['name']?.toString().isNotEmpty ?? false)
-          match!['name'].toString(),
+        if (match != null) match['name'] as String,
       }.toList(),
-      marketauxSymbol: symbol == null || symbol.isEmpty ? null : symbol,
+      marketauxSymbol: match?['symbol'],
       clearMarketauxSymbol: state != MarketauxResolution.resolved,
       marketauxResolution: state,
       marketauxResolvedAt: now,
@@ -121,28 +120,23 @@ class MarketauxNewsProvider {
     return _items(response)
         .where((item) => _matchesProfile(item, profile))
         .map((item) => normalizeArticle(item, profile: profile, now: now))
-        .whereType<NewsEvent>()
         .toList();
   }
 
   // Public for deterministic normalization tests; Marketaux remains an aggregator.
-  static NewsEvent? normalizeArticle(
+  static NewsEvent normalizeArticle(
     Map item, {
     required AssetProfile profile,
     required DateTime now,
   }) {
-    final headline = item['title']?.toString().trim() ?? '';
-    if (headline.isEmpty) return null;
-    final url = item['url']?.toString();
-    final source = item['source']?.toString() ?? 'Marketaux';
-    final published =
-        DateTime.tryParse(item['published_at']?.toString() ?? '')?.toUtc() ??
-        now;
-    final rawId = item['uuid']?.toString() ?? url ?? headline;
+    final String url = item['url'];
+    final String source = item['source'];
+    final published = DateTime.parse(item['published_at']).toUtc();
+    final String rawId = item['uuid'];
     return NewsEvent(
       eventId: 'marketaux:$rawId',
-      headline: headline,
-      summary: item['description']?.toString() ?? item['snippet']?.toString(),
+      headline: item['title'],
+      summary: item['description'] ?? item['snippet'],
       provider: 'Marketaux',
       originalSource: source,
       sourceTier: NewsSourceTier.aggregator,
@@ -180,7 +174,7 @@ class MarketauxNewsProvider {
     final response = await runNetworkRequest(
       'Marketaux',
       () => _dio.getUri<String>(
-        Uri.https('api.marketaux.com', path, parameters),
+        Uri.https(AppConstants.marketauxApiHost, path, parameters),
         options: networkOptions(),
         cancelToken: cancelToken,
       ),
@@ -204,38 +198,30 @@ class MarketauxNewsProvider {
     }
   }
 
-  List<Map> _items(Object? response) {
-    if (response is! Map || response['data'] is! List) return const [];
-    return (response['data'] as List).whereType<Map>().toList();
-  }
+  List<Map> _items(dynamic response) => List<Map>.from(response['data']);
 
-  bool _isCryptoEntity(Map item) =>
-      item['type']?.toString().toLowerCase() == 'cryptocurrency';
+  bool _isCryptoEntity(Map item) => item['type'] == 'cryptocurrency';
 
   String _entityTicker(Map item) =>
-      item['symbol']?.toString().toUpperCase().split(':').last ?? '';
+      (item['symbol'] as String).toUpperCase().split(':').last;
 
   // Only accept articles whose Marketaux entity data confirms the active token.
   bool _matchesProfile(Map article, AssetProfile profile) {
-    final entities = article['entities'];
-    if (entities is! List) return false;
-    return entities.whereType<Map>().any((entity) {
+    return (article['entities'] as List).any((entity) {
       if (!_isCryptoEntity(entity)) return false;
-      final score = entity['match_score'];
-      if (score is num && score <= 0) return false;
+      if (entity['match_score'] <= 0) return false;
       final symbolMatches =
-          entity['symbol']?.toString() == profile.marketauxSymbol ||
+          entity['symbol'] == profile.marketauxSymbol ||
           _entityTicker(entity) == profile.baseAsset;
       final nameMatches =
           profile.projectName != null &&
-          _normalized(entity['name']?.toString()) ==
-              _normalized(profile.projectName);
+          _normalized(entity['name']) == _normalized(profile.projectName!);
       return symbolMatches || nameMatches;
     });
   }
 
-  String _normalized(String? value) =>
-      value?.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '') ?? '';
+  String _normalized(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
   String _marketauxTime(DateTime value) =>
       value.toUtc().toIso8601String().split('.').first;

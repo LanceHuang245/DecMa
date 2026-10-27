@@ -192,16 +192,15 @@ class McpHub {
             cancel?.whenCancelled,
           );
           cancel?.throwIfCancelled();
-          for (final raw
-              in (result['tools'] as List? ?? const []).whereType<Map>()) {
+          for (final raw in result['tools'] as List) {
             final tool = Map<String, dynamic>.from(raw);
             if (!_allowed(entry.key, tool)) continue;
             final name =
-                '${entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${tool['name'].toString().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
+                '${entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${(tool['name'] as String).replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
             catalog[name] = {...tool, 'server': entry.key};
           }
           cursor = result['nextCursor'] as String?;
-        } while (cursor?.isNotEmpty ?? false);
+        } while (cursor != null);
         _tools.addAll(catalog);
       } catch (error) {
         await client.close();
@@ -217,8 +216,8 @@ class McpHub {
   // Preserve Bybit's explicitly public read-only tool filter.
   bool _allowed(String server, Map<String, dynamic> tool) {
     if (server != 'Bybit MCP') return true;
-    final name = tool['name'].toString().toLowerCase();
-    final description = tool['description']?.toString().toLowerCase() ?? '';
+    final name = (tool['name'] as String).toLowerCase();
+    final description = (tool['description'] as String? ?? '').toLowerCase();
     return const ['get', 'query', 'search', 'list'].any(name.startsWith) &&
         const [
           'no authentication required',
@@ -245,16 +244,14 @@ class McpHub {
     if (name == 'decma_discover_mcp_tools') {
       await _ensureConnected(cancel);
       cancel?.throwIfCancelled();
-      return {'tools': _search(arguments['query']?.toString() ?? '')};
+      return {'tools': _search(arguments['query'])};
     }
     if (name == 'decma_call_mcp_tool') {
-      name = arguments['tool_name']?.toString() ?? '';
+      name = arguments['tool_name'];
       if (!_tools.containsKey(name)) {
         throw Exception('Choose a tool returned by decma_discover_mcp_tools.');
       }
-      arguments = Map<String, dynamic>.from(
-        arguments['arguments'] as Map? ?? const {},
-      );
+      arguments = Map<String, dynamic>.from(arguments['arguments']);
     }
     final tool = _tools[name];
     if (tool == null) throw Exception('Unknown MCP tool: $name');

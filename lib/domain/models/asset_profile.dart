@@ -72,34 +72,22 @@ class AssetProfile {
   };
 
   factory AssetProfile.fromJson(Map<String, dynamic> json) => AssetProfile(
-    symbol: json['symbol']?.toString() ?? '',
-    baseAsset: json['baseAsset']?.toString() ?? '',
-    projectName: json['projectName']?.toString(),
-    aliases: _strings(json['aliases']),
-    officialDomains: _strings(json['officialDomains']),
-    keyEntities: _strings(json['keyEntities']),
-    marketauxSymbol: json['marketauxSymbol']?.toString(),
-    // Legacy boolean values with no entity are retried rather than cached forever.
-    marketauxResolution: _marketauxResolution(json),
-    marketauxResolvedAt: _date(json['marketauxResolvedAt']),
-    marketauxRetryAfter: _date(json['marketauxRetryAfter']),
-    marketauxProviderVersion: json['marketauxProviderVersion']?.toString(),
+    symbol: json['symbol'],
+    baseAsset: json['baseAsset'],
+    projectName: json['projectName'],
+    aliases: List<String>.from(json['aliases']),
+    officialDomains: List<String>.from(json['officialDomains']),
+    keyEntities: List<String>.from(json['keyEntities']),
+    marketauxSymbol: json['marketauxSymbol'],
+    marketauxResolution: MarketauxResolution.values.byName(
+      json['marketauxResolution'],
+    ),
+    marketauxResolvedAt: json['marketauxResolvedAt'] == null
+        ? null
+        : DateTime.parse(json['marketauxResolvedAt']),
+    marketauxRetryAfter: json['marketauxRetryAfter'] == null
+        ? null
+        : DateTime.parse(json['marketauxRetryAfter']),
+    marketauxProviderVersion: json['marketauxProviderVersion'],
   );
 }
-
-List<String> _strings(Object? value) =>
-    (value as List? ?? const []).map((item) => item.toString()).toList();
-
-MarketauxResolution _marketauxResolution(Map<String, dynamic> json) {
-  final saved = json['marketauxResolution']?.toString();
-  for (final value in MarketauxResolution.values) {
-    if (value.name == saved) return value;
-  }
-  return json['marketauxResolved'] == true &&
-          (json['marketauxSymbol']?.toString().isNotEmpty ?? false)
-      ? MarketauxResolution.resolved
-      : MarketauxResolution.unresolved;
-}
-
-DateTime? _date(Object? value) =>
-    DateTime.tryParse(value?.toString() ?? '')?.toUtc();

@@ -12,9 +12,6 @@ class LlmSettingsStore {
   static const _activeConnectionKey = 'decma.llm.active_connection';
   static const _lastViewedSymbolKey = 'decma.dashboard.last_viewed_symbol';
   static const _localeCodeKey = 'decma.app.locale_code';
-  static const _legacyProviderKey = 'decma.llm.provider';
-  static const _legacyEndpointKey = 'decma.llm.endpoint';
-  static const _legacyModelKey = 'decma.llm.model';
   static const _bybitMcpKey = 'decma.mcp.bybit';
   static const _nansenMcpKey = 'decma.mcp.nansen';
   static const _openWebSearchMcpKey = 'decma.mcp.open_web_search';
@@ -40,48 +37,21 @@ class LlmSettingsStore {
   Future<LlmConnectionSettings> readConnections() async {
     final saved = await _preferences.getString(_connectionsKey);
     if (saved != null) {
-      try {
-        final decoded = jsonDecode(saved);
-        if (decoded is List) {
-          final connections = decoded
-              .map(LlmSettings.fromJson)
-              .whereType<LlmSettings>()
-              .toList();
-          final activeId = await _preferences.getString(_activeConnectionKey);
-          if (connections.isNotEmpty) {
-            return LlmConnectionSettings(
-              connections: connections,
-              activeConnectionId:
-                  connections.any((connection) => connection.id == activeId)
-                  ? activeId!
-                  : connections.first.id,
-            );
-          }
-        }
-      } catch (_) {
-        // Fall back to the legacy single-connection settings below.
-      }
+      return LlmConnectionSettings(
+        connections: (jsonDecode(saved) as List)
+            .cast<Map<String, dynamic>>()
+            .map(LlmSettings.fromJson)
+            .toList(),
+        activeConnectionId: (await _preferences.getString(
+          _activeConnectionKey,
+        ))!,
+      );
     }
 
-    final values = await Future.wait([
-      _preferences.getString(_legacyProviderKey),
-      _preferences.getString(_legacyEndpointKey),
-      _preferences.getString(_legacyModelKey),
-    ]);
-    final providerName = values[0];
-    final endpoint = values[1];
-    final model = values[2];
-    final provider = LlmProvider.values.where(
-      (item) => item.name == providerName,
-    );
     final connection = LlmSettings(
-      id: LlmSettings.defaultId,
-      name: LlmSettings.defaultName,
-      provider: provider.length == 1
-          ? provider.single
-          : LlmProvider.openAiResponses,
-      endpoint: endpoint ?? LlmProvider.openAiResponses.defaultEndpoint,
-      model: model ?? 'gpt-4.1',
+      provider: LlmProvider.openAiResponses,
+      endpoint: LlmProvider.openAiResponses.defaultEndpoint,
+      model: 'gpt-4.1',
     );
     return LlmConnectionSettings(
       connections: [connection],

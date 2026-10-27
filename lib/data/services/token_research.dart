@@ -27,16 +27,10 @@ class TokenResearch {
     Map<String, dynamic>? background;
     final saved = await _preferences.getString(_key(symbol));
     if (saved != null) {
-      try {
-        final data = jsonDecode(saved) as Map<String, dynamic>;
-        final at = DateTime.parse(data['checked_at'] as String).toUtc();
-        if (!at.isAfter(now) && now.difference(at) < const Duration(days: 7)) {
-          background = data;
-        }
-      } on FormatException {
-        // A broken optional cache must not block market analysis.
-      } on TypeError {
-        // Ignore legacy or malformed cached records.
+      final data = jsonDecode(saved) as Map<String, dynamic>;
+      final at = DateTime.parse(data['checked_at']);
+      if (!at.isAfter(now) && now.difference(at) < const Duration(days: 7)) {
+        background = data;
       }
     }
     final identity =

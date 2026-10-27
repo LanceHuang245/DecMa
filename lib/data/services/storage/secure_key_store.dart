@@ -69,7 +69,6 @@ class SecureKeyStore {
   SecureKeyStore({FlutterSecureStorage? storage})
     : _storage = storage ?? const FlutterSecureStorage();
 
-  static const _legacyLlmKey = 'decma.llm_api_key';
   static const _codexAccessToken = 'decma.codex.access_token';
   static const _codexRefreshToken = 'decma.codex.refresh_token';
   static const _codexAccountId = 'decma.codex.account_id';
@@ -153,20 +152,13 @@ class SecureKeyStore {
     }
   }
 
-  Future<String?> readLlmKey({
-    String connectionId = LlmSettings.defaultId,
-  }) async {
-    final saved = await _storage.read(key: _llmKeyFor(connectionId));
-    if (saved != null || connectionId != LlmSettings.defaultId) return saved;
-    return _storage.read(key: _legacyLlmKey);
-  }
+  Future<String?> readLlmKey({String connectionId = LlmSettings.defaultId}) =>
+      _storage.read(key: _llmKeyFor(connectionId));
 
   String _llmKeyFor(String connectionId) => 'decma.llm_api_key.$connectionId';
 
-  Future<bool> _hasLlmKey(String connectionId) async =>
-      await _storage.containsKey(key: _llmKeyFor(connectionId)) ||
-      (connectionId == LlmSettings.defaultId &&
-          await _storage.containsKey(key: _legacyLlmKey));
+  Future<bool> _hasLlmKey(String connectionId) =>
+      _storage.containsKey(key: _llmKeyFor(connectionId));
 
   Future<CodexOAuthCredentials?> readCodexOAuth() async {
     final values = await Future.wait([
@@ -175,13 +167,8 @@ class SecureKeyStore {
       _storage.read(key: _codexAccountId),
       _storage.read(key: _codexExpiresAt),
     ]);
-    final expiresAt = values[3] == null ? null : DateTime.tryParse(values[3]!);
-    if (values[0] == null ||
-        values[1] == null ||
-        values[2] == null ||
-        expiresAt == null) {
-      return null;
-    }
+    if (values[0] == null) return null;
+    final expiresAt = DateTime.parse(values[3]!);
     return CodexOAuthCredentials(
       accessToken: values[0]!,
       refreshToken: values[1]!,

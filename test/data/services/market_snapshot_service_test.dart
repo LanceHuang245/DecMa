@@ -99,6 +99,7 @@ void main() {
                               'indexPrice': '100',
                               'bid1Price': '99',
                               'ask1Price': '101',
+                              'openInterest': '1000',
                               'fundingRate': '0.001',
                               'nextFundingTime': at
                                   .add(const Duration(hours: 1))

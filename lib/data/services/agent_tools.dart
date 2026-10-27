@@ -31,10 +31,10 @@ class AgentTools extends GenerateMiddleware {
   ) async {
     final name = request.toolRequest.name;
     final arguments = Map<String, dynamic>.from(
-      request.toolRequest.input as Map? ?? const {},
+      request.toolRequest.input as Map,
     );
     final resolved = name == 'decma_call_mcp_tool'
-        ? arguments['tool_name']?.toString() ?? name
+        ? arguments['tool_name'] as String
         : name;
     onActivity?.call(_activity(resolved));
     ToolResult result;
@@ -71,12 +71,7 @@ class AgentTools extends GenerateMiddleware {
         name.toLowerCase().contains('fetch') &&
         _successful(name, output)) {
       final input = arguments['arguments'] as Map? ?? arguments;
-      final url = input['url'];
-      if (url is String &&
-          Uri.tryParse(url)?.hasAuthority == true &&
-          const ['http', 'https'].contains(Uri.tryParse(url)?.scheme)) {
-        fetchedWebUrls.add(url);
-      }
+      fetchedWebUrls.add(input['url']);
     }
     final source = _source(name);
     if (source == null) return;

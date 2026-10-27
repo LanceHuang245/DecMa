@@ -157,17 +157,16 @@ class PlanCard extends StatelessWidget {
         ),
         if (plan.entryLow != null || plan.entryHigh != null)
           Text(
-            AppLocalizations.of(
-              context,
-            ).planCardEntry(_price(plan.entryLow), _price(plan.entryHigh)),
+            AppLocalizations.of(context).planCardEntry(
+              plan.entryLow == null ? '—' : formatMarketPrice(plan.entryLow!),
+              plan.entryHigh == null ? '—' : formatMarketPrice(plan.entryHigh!),
+            ),
           ),
-        if (plan.stopLoss != null) Text('SL ${_price(plan.stopLoss)}'),
+        if (plan.stopLoss != null)
+          Text('SL ${formatMarketPrice(plan.stopLoss!)}'),
         if (plan.takeProfits.isNotEmpty)
-          Text('TP ${plan.takeProfits.map(_price).join(' / ')}'),
+          Text('TP ${plan.takeProfits.map(formatMarketPrice).join(' / ')}'),
       ],
     ),
   );
-
-  String _price(double? value) =>
-      value == null ? '—' : formatMarketPrice(value);
 }

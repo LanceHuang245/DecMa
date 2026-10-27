@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../../app_constants.dart';
 import '../../domain/models/news_event.dart';
 import '../../domain/models/app_settings.dart';
 import '../../utils/network.dart';
@@ -78,7 +79,7 @@ class NewsRepository {
         task: () => _feeds.rss(
           provider: 'BLS',
           originalSource: 'U.S. Bureau of Labor Statistics',
-          url: 'https://www.bls.gov/feed/bls_latest.rss',
+          url: AppConstants.blsLatestRssUrl,
           category: NewsCategory.macro,
           scope: NewsScope.macroGlobal,
           now: now,
@@ -96,7 +97,7 @@ class NewsRepository {
         task: () => _feeds.rss(
           provider: 'BEA',
           originalSource: 'U.S. Bureau of Economic Analysis',
-          url: 'https://apps.bea.gov/rss/rss.xml',
+          url: AppConstants.beaRssUrl,
           category: NewsCategory.macro,
           scope: NewsScope.macroGlobal,
           now: now,
@@ -117,7 +118,7 @@ class NewsRepository {
         cancelToken: cancelToken,
       ),
     ]);
-    return _storedOrEmpty();
+    return readCached();
   }
 
   // Token news is refreshed only for the active asset, never for every contract.
@@ -161,7 +162,7 @@ class NewsRepository {
       onRefreshChanged: onRefreshChanged,
       cancelToken: cancelToken,
     );
-    return _storedOrEmpty();
+    return readCached();
   }
 
   // Build discovery queries from the resolved asset profile.
@@ -175,14 +176,6 @@ class NewsRepository {
       if (profile.officialDomains.isNotEmpty)
         'site:${profile.officialDomains.first} $name',
     ];
-  }
-
-  Future<List<NewsEvent>> _storedOrEmpty() async {
-    try {
-      return await readCached();
-    } catch (_) {
-      return const [];
-    }
   }
 
   Future<void> _refreshProvider({

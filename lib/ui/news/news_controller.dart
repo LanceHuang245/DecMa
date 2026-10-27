@@ -54,12 +54,8 @@ class NewsController extends ChangeNotifier {
 
   Future<void> _loadCached() async {
     final revision = _revision;
-    try {
-      final cached = await _service.readCached();
-      if (!_disposed && revision == _revision) _publish(cached);
-    } catch (_) {
-      // A damaged cache must not interrupt the live feed.
-    }
+    final cached = await _service.readCached();
+    if (!_disposed && revision == _revision) _publish(cached);
   }
 
   void _publish(List<NewsEvent> value) {

@@ -15,19 +15,10 @@ class AssetProfileStore {
   Future<List<AssetProfile>> readAll() async {
     final value = await _preferences.getString(_profilesKey);
     if (value == null) return const [];
-    try {
-      return (jsonDecode(value) as List)
-          .whereType<Map>()
-          .map(
-            (item) => AssetProfile.fromJson(
-              item.map((key, value) => MapEntry(key.toString(), value)),
-            ),
-          )
-          .where((profile) => profile.symbol.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return const [];
-    }
+    return (jsonDecode(value) as List)
+        .cast<Map<String, dynamic>>()
+        .map(AssetProfile.fromJson)
+        .toList();
   }
 
   Future<void> save(AssetProfile profile) async {

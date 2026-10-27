@@ -50,19 +50,10 @@ class BybitService {
       ),
     );
     final body = _accountBody(response);
-    final list = (_map(body['result'])['list'] as List)
-        .whereType<Map>()
-        .toList();
-    if (list.length != 1) {
-      throw const AppFailure(
-        kind: AppFailureKind.invalidResponse,
-        provider: 'Bybit Account',
-      );
-    }
-    final item = Map<String, dynamic>.from(list.single);
+    final item = (body['result']['list'] as List).single;
     return {
-      'maker_fee_rate': double.parse(item['makerFeeRate'].toString()),
-      'taker_fee_rate': double.parse(item['takerFeeRate'].toString()),
+      'maker_fee_rate': double.parse(item['makerFeeRate']),
+      'taker_fee_rate': double.parse(item['takerFeeRate']),
     };
   });
 
@@ -90,34 +81,19 @@ class BybitService {
       cancelToken: cancelToken,
     );
     final body = _marketBody(response);
-    final list = (_map(body['result'])['list'] as List)
-        .whereType<Map>()
-        .toList();
-    if (list.length != 1) {
-      throw const AppFailure(
-        kind: AppFailureKind.invalidResponse,
-        provider: 'Bybit',
-      );
-    }
-    final item = Map<String, dynamic>.from(list.single);
-    final priceFilter = _map(item['priceFilter']);
-    final lotSizeFilter = _map(item['lotSizeFilter']);
+    final item = (body['result']['list'] as List).single;
+    final priceFilter = item['priceFilter'];
+    final lotSizeFilter = item['lotSizeFilter'];
     return InstrumentSnapshot(
-      symbol: item['symbol'].toString(),
-      contractType: item['contractType'].toString(),
-      status: item['status'].toString(),
-      tickSize: double.parse(priceFilter['tickSize'].toString()),
-      quantityStep: double.parse(lotSizeFilter['qtyStep'].toString()),
-      minimumOrderQuantity: double.parse(
-        lotSizeFilter['minOrderQty'].toString(),
-      ),
-      maximumOrderQuantity: double.parse(
-        lotSizeFilter['maxOrderQty'].toString(),
-      ),
-      minimumNotionalValue: double.parse(
-        lotSizeFilter['minNotionalValue'].toString(),
-      ),
-      fundingIntervalMinutes: int.parse(item['fundingInterval'].toString()),
+      symbol: item['symbol'],
+      contractType: item['contractType'],
+      status: item['status'],
+      tickSize: double.parse(priceFilter['tickSize']),
+      quantityStep: double.parse(lotSizeFilter['qtyStep']),
+      minimumOrderQuantity: double.parse(lotSizeFilter['minOrderQty']),
+      maximumOrderQuantity: double.parse(lotSizeFilter['maxOrderQty']),
+      minimumNotionalValue: double.parse(lotSizeFilter['minNotionalValue']),
+      fundingIntervalMinutes: item['fundingInterval'],
       observedAt: _responseTime(body),
     );
   });
@@ -134,26 +110,17 @@ class BybitService {
       cancelToken: cancelToken,
     );
     final body = _marketBody(response);
-    final list = (_map(body['result'])['list'] as List)
-        .whereType<Map>()
-        .toList();
-    if (list.length != 1) {
-      throw const AppFailure(
-        kind: AppFailureKind.invalidResponse,
-        provider: 'Bybit',
-      );
-    }
-    final item = Map<String, dynamic>.from(list.single);
-    final nextFunding = int.tryParse(item['nextFundingTime']?.toString() ?? '');
+    final item = (body['result']['list'] as List).single;
+    final nextFunding = int.tryParse(item['nextFundingTime']);
     return TickerSnapshot(
-      symbol: item['symbol'].toString(),
-      lastPrice: double.parse(item['lastPrice'].toString()),
-      markPrice: double.parse(item['markPrice'].toString()),
-      indexPrice: double.parse(item['indexPrice'].toString()),
-      bestBid: double.parse(item['bid1Price'].toString()),
-      bestAsk: double.parse(item['ask1Price'].toString()),
-      openInterest: double.tryParse(item['openInterest']?.toString() ?? ''),
-      fundingRate: double.tryParse(item['fundingRate']?.toString() ?? ''),
+      symbol: item['symbol'],
+      lastPrice: double.parse(item['lastPrice']),
+      markPrice: double.parse(item['markPrice']),
+      indexPrice: double.parse(item['indexPrice']),
+      bestBid: double.parse(item['bid1Price']),
+      bestAsk: double.parse(item['ask1Price']),
+      openInterest: double.tryParse(item['openInterest']),
+      fundingRate: double.tryParse(item['fundingRate']),
       nextFundingAt: nextFunding != null && nextFunding > 0
           ? DateTime.fromMillisecondsSinceEpoch(nextFunding, isUtc: true)
           : null,
@@ -193,18 +160,16 @@ class BybitService {
         ),
       );
       final points =
-          (_map(body['result'])['list'] as List)
-              .cast<Map>()
+          (body['result']['list'] as List)
               .map(
                 (p) => (
                   at: DateTime.fromMillisecondsSinceEpoch(
-                    int.parse(p['timestamp'].toString()),
+                    int.parse(p['timestamp']),
                     isUtc: true,
                   ),
-                  value: double.parse(p['openInterest'].toString()),
+                  value: double.parse(p['openInterest']),
                 ),
               )
-              .where((p) => p.value.isFinite && p.value >= 0)
               .toList()
             ..sort((a, b) => a.at.compareTo(b.at));
       return points;
@@ -227,13 +192,13 @@ class BybitService {
               cancelToken: cancelToken,
             ),
           );
-          final result = _map(body['result']);
-          for (final item in (result['list'] as List).cast<Map>()) {
+          final result = body['result'];
+          for (final item in result['list']) {
             if (item['status'] == 'Trading') {
-              symbols.add(item['symbol'].toString());
+              symbols.add(item['symbol']);
             }
           }
-          cursor = result['nextPageCursor']?.toString();
+          cursor = result['nextPageCursor'];
         } while (cursor != null && cursor.isNotEmpty);
 
         return symbols.toList()..sort();
@@ -279,7 +244,7 @@ class BybitService {
       final oldestMs = all
           .map((c) => c.time.millisecondsSinceEpoch)
           .reduce((a, b) => a < b ? a : b);
-      cursorEnd = oldestMs - _intervalMs(interval);
+      cursorEnd = oldestMs - intervalMs(interval);
       if (start != null && cursorEnd < start) break;
       remaining = limit - all.length;
       if (all.length >= limit) break;
@@ -318,23 +283,21 @@ class BybitService {
         cancelToken: cancelToken,
       ),
     );
-    final rows = (_map(body['result'])['list'] as List).cast<List>();
+    final rows = body['result']['list'] as List;
     return rows.reversed.map((row) {
       return Candle(
-        time: DateTime.fromMillisecondsSinceEpoch(int.parse(row[0].toString())),
-        open: double.parse(row[1].toString()),
-        high: double.parse(row[2].toString()),
-        low: double.parse(row[3].toString()),
-        close: double.parse(row[4].toString()),
-        volume: double.parse(row[5].toString()),
+        time: DateTime.fromMillisecondsSinceEpoch(int.parse(row[0])),
+        open: double.parse(row[1]),
+        high: double.parse(row[2]),
+        low: double.parse(row[3]),
+        close: double.parse(row[4]),
+        volume: double.parse(row[5]),
       );
     }).toList();
   }
 
   // Interval string to milliseconds for pagination stepping.
-  static int intervalMs(String interval) => _intervalMsStatic(interval);
-  int _intervalMs(String interval) => _intervalMsStatic(interval);
-  static int _intervalMsStatic(String interval) => switch (interval) {
+  static int intervalMs(String interval) => switch (interval) {
         '1' => 60 * 1000,
         '3' => 3 * 60 * 1000,
         '5' => 5 * 60 * 1000,
@@ -377,7 +340,7 @@ class BybitService {
 
   Map<String, dynamic> _marketBody(Response<String> response) {
     requireSuccessfulResponse(response, provider: 'Bybit');
-    final body = _map(jsonDecode(response.data ?? ''));
+    final body = jsonDecode(response.data!) as Map<String, dynamic>;
     if (body['retCode'] != 0) {
       throw const AppFailure(kind: AppFailureKind.upstream, provider: 'Bybit');
     }
@@ -386,7 +349,7 @@ class BybitService {
 
   Map<String, dynamic> _accountBody(Response<String> response) {
     requireSuccessfulResponse(response, provider: 'Bybit Account');
-    final body = _map(jsonDecode(response.data ?? ''));
+    final body = jsonDecode(response.data!) as Map<String, dynamic>;
     if (body['retCode'] != 0) {
       final code = body['retCode'];
       throw AppFailure(
@@ -399,12 +362,9 @@ class BybitService {
     return body;
   }
 
-  Map<String, dynamic> _map(Object? value) =>
-      Map<String, dynamic>.from(value as Map);
-
   DateTime _responseTime(Map<String, dynamic> body) =>
       DateTime.fromMillisecondsSinceEpoch(
-        int.parse(body['time'].toString()),
+        body['time'],
         isUtc: true,
       );
 

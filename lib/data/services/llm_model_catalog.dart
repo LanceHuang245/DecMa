@@ -57,14 +57,12 @@ Future<List<LlmModelInfo>> fetchLlmModels(
         ),
       );
       requireSuccessfulResponse(response, provider: settings.name);
-      final body = jsonDecode(response.data ?? '') as Map<String, dynamic>;
-      for (final item in body['data'] as List) {
-        final model = LlmModelInfo.fromJson(item as Map);
-        if (model.id.isNotEmpty) models[model.id] = model;
+      final body = jsonDecode(response.data!) as Map<String, dynamic>;
+      for (final item in body['data']) {
+        final model = LlmModelInfo.fromJson(item);
+        models[model.id] = model;
       }
-      after = anthropic && body['has_more'] == true
-          ? body['last_id'] as String
-          : null;
+      after = anthropic && body['has_more'] ? body['last_id'] : null;
     } while (after != null);
     return models.values.toList()..sort((a, b) => a.id.compareTo(b.id));
   } finally {

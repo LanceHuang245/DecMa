@@ -163,16 +163,6 @@ class CoinalyzeApiTools {
     if (_apiKey == null || endpoint == null) {
       throw StateError('Coinalyze API tool is unavailable.');
     }
-    final required = endpoint == 'future-markets'
-        ? const <String>[]
-        : name.endsWith('History')
-        ? const ['symbols', 'interval', 'from', 'to']
-        : const ['symbols'];
-    for (final field in required) {
-      if (arguments[field]?.toString().trim().isEmpty ?? true) {
-        throw ArgumentError('Coinalyze API requires "$field".');
-      }
-    }
     _reserveQuota(arguments);
     final response = await runNetworkRequest(
       'Coinalyze API',
@@ -188,18 +178,11 @@ class CoinalyzeApiTools {
       ),
     );
     requireSuccessfulResponse(response, provider: 'Coinalyze API');
-    try {
-      return {
-        'source': 'Coinalyze API',
-        'endpoint': endpoint,
-        'data': jsonDecode(response.data ?? ''),
-      };
-    } on FormatException {
-      throw const AppFailure(
-        kind: AppFailureKind.invalidResponse,
-        provider: 'Coinalyze API',
-      );
-    }
+    return {
+      'source': 'Coinalyze API',
+      'endpoint': endpoint,
+      'data': jsonDecode(response.data!),
+    };
   }
 
   // Keep the existing rolling quota where each requested symbol consumes one unit.
@@ -208,12 +191,8 @@ class CoinalyzeApiTools {
     _quotaUnits.removeWhere(
       (time) => now.difference(time) >= const Duration(minutes: 1),
     );
-    final symbols = arguments['symbols']
-        ?.toString()
-        .split(',')
-        .where((s) => s.trim().isNotEmpty)
-        .length;
-    final units = symbols == null || symbols == 0 ? 1 : symbols;
+    final String? symbols = arguments['symbols'];
+    final units = symbols == null ? 1 : symbols.split(',').length;
     if (_quotaUnits.length + units > 40) {
       throw StateError(
         'Coinalyze API local quota guard: 40 calls/minute would be exceeded.',

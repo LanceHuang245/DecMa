@@ -2,9 +2,22 @@
 class AppConstants {
   static const appName = 'DecMa';
   static const appVersion = '1.0.0';
+  static const projectUrl = 'https://github.com/LanceHuang245/DecMa';
+  static const userAgent = '$appName/$appVersion (+$projectUrl)';
   static const codexClientVersion = '0.164.0';
   static const bybitMcpPackage = 'bybit-official-trading-server@latest';
   static const openWebSearchMcpPackage = 'open-websearch@latest';
+
+  // News source endpoints.
+  static const finnhubApiHost = 'finnhub.io';
+  static const marketauxApiHost = 'api.marketaux.com';
+  static const blsLatestRssUrl = 'https://www.bls.gov/feed/bls_latest.rss';
+  static const beaRssUrl = 'https://apps.bea.gov/rss/rss.xml';
+  static const federalReserveRssUrls = [
+    'https://www.federalreserve.gov/feeds/press_monetary.xml',
+    'https://www.federalreserve.gov/feeds/press_all.xml',
+    'https://www.federalreserve.gov/feeds/speeches_and_testimony.xml',
+  ];
 
   // Documentation links for external services used in the application.
   static const bybitAccountDocumentationUrl =

@@ -62,15 +62,15 @@ class TradePlan {
     for (final jsonText in _jsonObjects(response).toList().reversed) {
       try {
         final decoded = jsonDecode(jsonText.raw);
-        if (decoded is! Map) continue;
-        final data = _map(decoded);
-        final decision = _map(data['decision']);
+        if (decoded is! Map<String, dynamic>) continue;
+        final data = decoded;
+        final decision = data['decision'] as Map<String, dynamic>? ?? const {};
         if (decision.isEmpty) continue;
-        final request = _map(data['request']);
-        final entry = _map(data['entry_plan']);
-        final risk = _map(data['risk_plan']);
-        final targets = (_list(data['take_profit_plan']))
-            .map(_map)
+        final request = data['request'] as Map<String, dynamic>? ?? const {};
+        final entry = data['entry_plan'] as Map<String, dynamic>? ?? const {};
+        final risk = data['risk_plan'] as Map<String, dynamic>? ?? const {};
+        final targets = (data['take_profit_plan'] as List? ?? const [])
+            .cast<Map<String, dynamic>>()
             .where((item) => _number(item['price']) != null)
             .map(
               (item) => TradeTarget(
@@ -93,7 +93,9 @@ class TradePlan {
           stopLoss: _number(risk['stop_loss']),
           maximumChasePrice: _number(entry['maximum_chase_price']),
           targets: targets,
-          conditions: PlanConditions.fromJson(_map(data['conditions'])),
+          conditions: PlanConditions.fromJson(
+            data['conditions'] as Map<String, dynamic>? ?? const {},
+          ),
         );
         final fence =
             RegExp(r'```[ \t]*(?:json)?\s*([\s\S]*?)```', caseSensitive: false)
@@ -154,12 +156,6 @@ class TradePlan {
       }
     }
   }
-
-  static Map<String, dynamic> _map(Object? value) => value is Map
-      ? value.map((key, value) => MapEntry(key.toString(), value))
-      : const {};
-
-  static List<Object?> _list(Object? value) => value is List ? value : const [];
 
   static double? _number(Object? value) => switch (value) {
     num value => value.toDouble(),

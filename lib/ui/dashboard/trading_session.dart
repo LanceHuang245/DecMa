@@ -301,11 +301,7 @@ class TradingSession extends ChangeNotifier {
       if (_recordedState == assessment?.state) return;
       _recordedState = assessment?.state;
     }
-    try {
-      await store.append({...event, 'id': id});
-    } catch (_) {
-      /* Keep analysis usable if local storage fails. */
-    }
+    await store.append({...event, 'id': id});
   }
 
   void clear() {

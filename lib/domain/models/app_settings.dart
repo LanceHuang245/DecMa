@@ -59,35 +59,14 @@ class LlmSettings {
     'reasoningEffort': ?reasoningEffort,
   };
 
-  static LlmSettings? fromJson(Object? value) {
-    if (value is! Map) return null;
-    String? string(String key) =>
-        value[key] is String ? value[key] as String : null;
-    final provider = LlmProvider.values.where(
-      (item) => item.name == string('provider'),
-    );
-    final id = string('id');
-    final name = string('name');
-    final endpoint = string('endpoint');
-    final model = string('model');
-    if (provider.length != 1 ||
-        id == null ||
-        id.isEmpty ||
-        name == null ||
-        name.isEmpty ||
-        endpoint == null ||
-        model == null) {
-      return null;
-    }
-    return LlmSettings(
-      id: id,
-      name: name,
-      provider: provider.single,
-      endpoint: endpoint,
-      model: model,
-      reasoningEffort: string('reasoningEffort') ?? defaultReasoningEffort,
-    );
-  }
+  factory LlmSettings.fromJson(Map<String, dynamic> json) => LlmSettings(
+    id: json['id'],
+    name: json['name'],
+    provider: LlmProvider.values.byName(json['provider']),
+    endpoint: json['endpoint'],
+    model: json['model'],
+    reasoningEffort: json['reasoningEffort'] ?? defaultReasoningEffort,
+  );
 }
 
 class LlmConnectionSettings {

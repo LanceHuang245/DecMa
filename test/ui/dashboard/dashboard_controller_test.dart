@@ -74,7 +74,7 @@ void main() {
       'endpoint': 'https://llm.test',
       'model': 'model',
     });
-    expect(settings!.reasoningEffort, 'medium');
+    expect(settings.reasoningEffort, 'medium');
   });
 
   test('a stale symbol response cannot replace the current chart', () async {
