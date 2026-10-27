@@ -19,82 +19,97 @@ class SettingsPage extends ConsumerWidget {
     final loc = AppLocalizations.of(context);
     final controller = ref.watch(dashboardControllerProvider);
     final settingsStore = ref.read(llmSettingsStoreProvider);
-    return ScaffoldPage.scrollable(
+    // Not ScaffoldPage.scrollable: its lazy ListView disposes off-screen cards,
+    // collapsing expanders and dropping unsaved drafts.
+    return ScaffoldPage(
       header: PageHeader(title: Text(loc.settings)),
-      children: [
-        _SettingsCard(
-          icon: FluentIcons.locale_language,
-          title: loc.language,
-          description: loc.languageDescription,
-          // Switch the language immediately and remember it for the next launch.
-          action: ComboBox<String>(
-            value: localeCodeNotifier.value,
-            items: [
-              for (final language in appLanguages)
-                ComboBoxItem(value: language.code, child: Text(language.name)),
-            ],
-            onChanged: (code) {
-              if (code == null) return;
-              localeCodeNotifier.value = code;
-              unawaited(settingsStore.saveLocaleCode(code));
-            },
-          ),
-        ),
-        const SizedBox(height: 5),
-        _SettingsCard(
-          icon: FluentIcons.color,
-          title: loc.theme,
-          description: loc.themeDescription,
-          // Apply the theme immediately and remember it for the next launch.
-          action: ValueListenableBuilder(
-            valueListenable: themeModeNotifier,
-            builder: (context, mode, _) => ComboBox<ThemeMode>(
-              value: mode,
-              items: [
-                ComboBoxItem(
-                  value: ThemeMode.system,
-                  child: Text(loc.themeSystem),
-                ),
-                ComboBoxItem(
-                  value: ThemeMode.light,
-                  child: Text(loc.themeLight),
-                ),
-                ComboBoxItem(value: ThemeMode.dark, child: Text(loc.themeDark)),
-              ],
-              onChanged: (mode) {
-                themeModeNotifier.value = mode!;
-                unawaited(settingsStore.saveThemeMode(mode.name));
-              },
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SettingsCard(
+              icon: FluentIcons.locale_language,
+              title: loc.language,
+              description: loc.languageDescription,
+              // Switch the language immediately and remember it for the next launch.
+              action: ComboBox<String>(
+                value: localeCodeNotifier.value,
+                items: [
+                  for (final language in appLanguages)
+                    ComboBoxItem(
+                      value: language.code,
+                      child: Text(language.name),
+                    ),
+                ],
+                onChanged: (code) {
+                  if (code == null) return;
+                  localeCodeNotifier.value = code;
+                  unawaited(settingsStore.saveLocaleCode(code));
+                },
+              ),
             ),
-          ),
+            const SizedBox(height: 5),
+            _SettingsCard(
+              icon: FluentIcons.color,
+              title: loc.theme,
+              description: loc.themeDescription,
+              // Apply the theme immediately and remember it for the next launch.
+              action: ValueListenableBuilder(
+                valueListenable: themeModeNotifier,
+                builder: (context, mode, _) => ComboBox<ThemeMode>(
+                  value: mode,
+                  items: [
+                    ComboBoxItem(
+                      value: ThemeMode.system,
+                      child: Text(loc.themeSystem),
+                    ),
+                    ComboBoxItem(
+                      value: ThemeMode.light,
+                      child: Text(loc.themeLight),
+                    ),
+                    ComboBoxItem(
+                      value: ThemeMode.dark,
+                      child: Text(loc.themeDark),
+                    ),
+                  ],
+                  onChanged: (mode) {
+                    themeModeNotifier.value = mode!;
+                    unawaited(settingsStore.saveThemeMode(mode.name));
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 5),
+            _SettingsCard(
+              icon: FluentIcons.robot,
+              title: loc.agentSettings,
+              description: loc.agentSettingsDescription,
+              content: AgentSettingsSection(
+                llm: controller.llm,
+                llmConnections: controller.llmConnections,
+                mcp: controller.mcp,
+                api: controller.api,
+                keyStatus: controller.apiKeyStatus,
+                nodeAvailable: ref
+                    .read(appInitialSettingsProvider)
+                    .nodeAvailable,
+                onSave: controller.saveSettings,
+              ),
+            ),
+            const SizedBox(height: 5),
+            _SettingsCard(
+              icon: FluentIcons.news,
+              title: loc.newsSettingsTitle,
+              description: loc.newsSettingsDescription,
+              content: NewsSettingsSection(
+                settings: controller.news,
+                keyStatus: controller.apiKeyStatus,
+                onSave: controller.saveNewsSettings,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 5),
-        _SettingsCard(
-          icon: FluentIcons.robot,
-          title: loc.agentSettings,
-          description: loc.agentSettingsDescription,
-          content: AgentSettingsSection(
-            llm: controller.llm,
-            llmConnections: controller.llmConnections,
-            mcp: controller.mcp,
-            api: controller.api,
-            keyStatus: controller.apiKeyStatus,
-            nodeAvailable: ref.read(appInitialSettingsProvider).nodeAvailable,
-            onSave: controller.saveSettings,
-          ),
-        ),
-        const SizedBox(height: 5),
-        _SettingsCard(
-          icon: FluentIcons.news,
-          title: loc.newsSettingsTitle,
-          description: loc.newsSettingsDescription,
-          content: NewsSettingsSection(
-            settings: controller.news,
-            keyStatus: controller.apiKeyStatus,
-            onSave: controller.saveNewsSettings,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

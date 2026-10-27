@@ -107,7 +107,6 @@
   "providerError": "连接失败",
   "providerRateLimited": "请求受限",
   "agentSettings": "Agent 设置",
-  "bybitAccountApi": "Bybit 账户 API（可选）",
   "bybitDocs": "查看 Bybit 只读账户 API 文档",
   "bybitHint": "仅用于读取实际手续费率",
   "nansenDocs": "查看 Nansen MCP 文档",
@@ -259,5 +258,14 @@
   "themeDescription": "选择浅色、深色或跟随系统",
   "themeSystem": "跟随系统",
   "themeLight": "浅色",
-  "themeDark": "深色"
+  "themeDark": "深色",
+  "newsApis": "新闻 API",
+  "newsOutlets": "新闻媒体",
+  "finnhubDescription": "加密、综合与外汇市场新闻",
+  "marketauxDescription": "当前查看代币的相关新闻",
+  "bbcDescription": "国际新闻，涵盖地缘政治与冲突",
+  "bybitMcpDescription": "Bybit 行情与合约数据",
+  "openWebSearchDescription": "网页搜索与网页内容读取",
+  "nansenDescription": "链上数据与聪明钱流向",
+  "coinalyzeDescription": "跨交易所衍生品历史数据"
 }

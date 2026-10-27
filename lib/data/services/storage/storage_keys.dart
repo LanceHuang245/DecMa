@@ -15,6 +15,9 @@ abstract final class StorageKeys {
   static const blsNews = 'decma.news.bls';
   static const beaNews = 'decma.news.bea';
   static const federalReserveNews = 'decma.news.federal_reserve';
+  static const whiteHouseNews = 'decma.news.white_house';
+  static const secNews = 'decma.news.sec';
+  static const bbcNews = 'decma.news.bbc';
 
   // SharedPreferences: cached data.
   static const newsEvents = 'decma.news.events.v1';

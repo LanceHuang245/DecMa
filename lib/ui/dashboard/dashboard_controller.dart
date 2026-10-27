@@ -86,6 +86,9 @@ class DashboardController extends ChangeNotifier {
             useBls: true,
             useBea: true,
             useFederalReserve: true,
+            useWhiteHouse: true,
+            useSec: true,
+            useBbc: false,
           ),
     )..addListener(_onNewsChanged);
     market.addListener(_onMarketChanged);

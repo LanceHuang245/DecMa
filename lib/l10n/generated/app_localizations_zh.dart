@@ -358,9 +358,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentSettings => 'Agent 设置';
 
   @override
-  String get bybitAccountApi => 'Bybit 账户 API（可选）';
-
-  @override
   String get bybitDocs => '查看 Bybit 只读账户 API 文档';
 
   @override
@@ -883,4 +880,31 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get themeDark => '深色';
+
+  @override
+  String get newsApis => '新闻 API';
+
+  @override
+  String get newsOutlets => '新闻媒体';
+
+  @override
+  String get finnhubDescription => '加密、综合与外汇市场新闻';
+
+  @override
+  String get marketauxDescription => '当前查看代币的相关新闻';
+
+  @override
+  String get bbcDescription => '国际新闻，涵盖地缘政治与冲突';
+
+  @override
+  String get bybitMcpDescription => 'Bybit 行情与合约数据';
+
+  @override
+  String get openWebSearchDescription => '网页搜索与网页内容读取';
+
+  @override
+  String get nansenDescription => '链上数据与聪明钱流向';
+
+  @override
+  String get coinalyzeDescription => '跨交易所衍生品历史数据';
 }

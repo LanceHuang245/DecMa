@@ -18,6 +18,10 @@ class AppConstants {
     'https://www.federalreserve.gov/feeds/press_all.xml',
     'https://www.federalreserve.gov/feeds/speeches_and_testimony.xml',
   ];
+  static const whiteHouseRssUrl =
+      'https://www.whitehouse.gov/presidential-actions/feed/';
+  static const secRssUrl = 'https://www.sec.gov/news/pressreleases.rss';
+  static const bbcWorldRssUrl = 'https://feeds.bbci.co.uk/news/world/rss.xml';
 
   // Documentation links for external services used in the application.
   static const bybitAccountDocumentationUrl =

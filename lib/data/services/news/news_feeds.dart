@@ -111,6 +111,7 @@ class NewsFeeds {
     required NewsCategory category,
     required NewsScope scope,
     required DateTime now,
+    bool official = true,
     CancelToken? cancelToken,
   }) async {
     final response = await runNetworkRequest(
@@ -133,6 +134,7 @@ class NewsFeeds {
             category: category,
             scope: scope,
             now: now,
+            official: official,
           ),
         )
         .toList();
@@ -145,18 +147,23 @@ class NewsFeeds {
     required NewsCategory category,
     required NewsScope scope,
     required DateTime now,
+    required bool official,
   }) {
     final headline = _xmlValue(item, 'title')!;
     final link = _xmlValue(item, 'link');
     final rawId = _xmlValue(item, 'guid') ?? link ?? headline;
-    final published = _httpDate(_xmlValue(item, 'pubDate')) ?? now;
+    final pubDate = _xmlValue(item, 'pubDate');
+    final published = pubDate == null ? now : _rfc822Date(pubDate);
+    final tier = official
+        ? NewsSourceTier.primary
+        : NewsSourceTier.highQualityNews;
     return NewsEvent(
       eventId: '${provider.toLowerCase().replaceAll(' ', '_')}:$rawId',
       headline: headline,
       summary: _xmlValue(item, 'description'),
       provider: provider,
       originalSource: originalSource,
-      sourceTier: NewsSourceTier.primary,
+      sourceTier: tier,
       category: category,
       eventType: category.name.toUpperCase(),
       scope: scope,
@@ -164,19 +171,21 @@ class NewsFeeds {
       assets: const [],
       directAssets: const [],
       indirectAssets: const [],
-      country: 'US',
+      country: official ? 'US' : null,
       publishedAt: published,
       receivedAt: now,
       url: link,
-      verificationStatus: NewsVerificationStatus.primarySourceConfirmed,
+      verificationStatus: official
+          ? NewsVerificationStatus.primarySourceConfirmed
+          : NewsVerificationStatus.unverified,
       isBreaking: now.difference(published) < const Duration(hours: 2),
-      isOfficial: true,
+      isOfficial: official,
       rawSourceId: rawId,
       sources: [
         NewsEventSource(
           provider: provider,
           originalSource: originalSource,
-          sourceTier: NewsSourceTier.primary,
+          sourceTier: tier,
           url: link,
         ),
       ],
@@ -206,12 +215,31 @@ class NewsFeeds {
         .trim();
   }
 
-  DateTime? _httpDate(String? value) {
-    if (value == null) return null;
-    try {
-      return HttpDate.parse(value).toUtc();
-    } catch (_) {
-      return DateTime.tryParse(value)?.toUtc();
-    }
+  // RSS pubDate is RFC 822; HttpDate only accepts "GMT", but feeds also use
+  // named US zones (BEA: "EDT") and numeric offsets (SEC: "-0400").
+  DateTime _rfc822Date(String value) {
+    final split = value.lastIndexOf(' ');
+    final zone = value.substring(split + 1);
+    final gmt = HttpDate.parse('${value.substring(0, split)} GMT');
+    final offset =
+        _rfc822Zones[zone] ??
+        (zone.startsWith('-') ? -1 : 1) *
+            (int.parse(zone.substring(1, 3)) * 60 +
+                int.parse(zone.substring(3)));
+    return gmt.subtract(Duration(minutes: offset));
   }
+
+  // Named RFC 822 zones as minute offsets from GMT.
+  static const _rfc822Zones = {
+    'GMT': 0,
+    'UT': 0,
+    'EST': -300,
+    'EDT': -240,
+    'CST': -360,
+    'CDT': -300,
+    'MST': -420,
+    'MDT': -360,
+    'PST': -480,
+    'PDT': -420,
+  };
 }

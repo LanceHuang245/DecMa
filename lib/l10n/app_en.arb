@@ -107,7 +107,6 @@
   "providerError": "Connection failed",
   "providerRateLimited": "Rate limited",
   "agentSettings": "Agent settings",
-  "bybitAccountApi": "Bybit account API (optional)",
   "bybitDocs": "View Bybit read-only account API docs",
   "bybitHint": "Only used to read actual fee rates",
   "nansenDocs": "View Nansen MCP docs",
@@ -257,7 +256,16 @@
   "newsSettingsDescription": "News providers and official data sources",
   "theme": "Theme",
   "themeDescription": "Choose light, dark or follow the system",
-  "themeSystem": "Use system setting",
+  "themeSystem": "Follow System",
   "themeLight": "Light",
-  "themeDark": "Dark"
+  "themeDark": "Dark",
+  "newsApis": "News APIs",
+  "newsOutlets": "News outlets",
+  "finnhubDescription": "Crypto, general and forex market news",
+  "marketauxDescription": "News about the token you are viewing",
+  "bbcDescription": "World news, including geopolitics and conflicts",
+  "bybitMcpDescription": "Bybit market data and contract details",
+  "openWebSearchDescription": "Web search and webpage reading",
+  "nansenDescription": "On-chain data and smart money flows",
+  "coinalyzeDescription": "Cross-exchange derivatives history"
 }

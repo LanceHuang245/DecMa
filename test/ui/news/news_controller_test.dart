@@ -16,6 +16,9 @@ const settings = NewsSettings(
   useBls: false,
   useBea: false,
   useFederalReserve: false,
+  useWhiteHouse: false,
+  useSec: false,
+  useBbc: false,
 );
 
 void main() {

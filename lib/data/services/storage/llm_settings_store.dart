@@ -109,6 +109,9 @@ class LlmSettingsStore {
       _preferences.getBool(StorageKeys.blsNews),
       _preferences.getBool(StorageKeys.beaNews),
       _preferences.getBool(StorageKeys.federalReserveNews),
+      _preferences.getBool(StorageKeys.whiteHouseNews),
+      _preferences.getBool(StorageKeys.secNews),
+      _preferences.getBool(StorageKeys.bbcNews),
     ]);
     return NewsSettings(
       useFinnhub: values[0] ?? false,
@@ -116,6 +119,9 @@ class LlmSettingsStore {
       useBls: values[2] ?? true,
       useBea: values[3] ?? true,
       useFederalReserve: values[4] ?? true,
+      useWhiteHouse: values[5] ?? true,
+      useSec: values[6] ?? true,
+      useBbc: values[7] ?? false,
     );
   }
 
@@ -129,6 +135,9 @@ class LlmSettingsStore {
         StorageKeys.federalReserveNews,
         settings.useFederalReserve,
       ),
+      _preferences.setBool(StorageKeys.whiteHouseNews, settings.useWhiteHouse),
+      _preferences.setBool(StorageKeys.secNews, settings.useSec),
+      _preferences.setBool(StorageKeys.bbcNews, settings.useBbc),
     ]);
   }
 }

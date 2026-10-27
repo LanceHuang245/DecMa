@@ -109,6 +109,9 @@ class NewsSettings {
     required this.useBls,
     required this.useBea,
     required this.useFederalReserve,
+    required this.useWhiteHouse,
+    required this.useSec,
+    required this.useBbc,
   });
 
   final bool useFinnhub;
@@ -116,4 +119,7 @@ class NewsSettings {
   final bool useBls;
   final bool useBea;
   final bool useFederalReserve;
+  final bool useWhiteHouse;
+  final bool useSec;
+  final bool useBbc;
 }

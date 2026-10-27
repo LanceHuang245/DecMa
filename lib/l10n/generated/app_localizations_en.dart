@@ -358,9 +358,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSettings => 'Agent settings';
 
   @override
-  String get bybitAccountApi => 'Bybit account API (optional)';
-
-  @override
   String get bybitDocs => 'View Bybit read-only account API docs';
 
   @override
@@ -876,11 +873,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeDescription => 'Choose light, dark or follow the system';
 
   @override
-  String get themeSystem => 'Use system setting';
+  String get themeSystem => 'Follow System';
 
   @override
   String get themeLight => 'Light';
 
   @override
   String get themeDark => 'Dark';
+
+  @override
+  String get newsApis => 'News APIs';
+
+  @override
+  String get newsOutlets => 'News outlets';
+
+  @override
+  String get finnhubDescription => 'Crypto, general and forex market news';
+
+  @override
+  String get marketauxDescription => 'News about the token you are viewing';
+
+  @override
+  String get bbcDescription => 'World news, including geopolitics and conflicts';
+
+  @override
+  String get bybitMcpDescription => 'Bybit market data and contract details';
+
+  @override
+  String get openWebSearchDescription => 'Web search and webpage reading';
+
+  @override
+  String get nansenDescription => 'On-chain data and smart money flows';
+
+  @override
+  String get coinalyzeDescription => 'Cross-exchange derivatives history';
 }

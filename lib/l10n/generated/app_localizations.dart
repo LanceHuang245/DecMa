@@ -737,12 +737,6 @@ abstract class AppLocalizations {
   /// **'Agent settings'**
   String get agentSettings;
 
-  /// No description provided for @bybitAccountApi.
-  ///
-  /// In en, this message translates to:
-  /// **'Bybit account API (optional)'**
-  String get bybitAccountApi;
-
   /// No description provided for @bybitDocs.
   ///
   /// In en, this message translates to:
@@ -1640,7 +1634,7 @@ abstract class AppLocalizations {
   /// No description provided for @themeSystem.
   ///
   /// In en, this message translates to:
-  /// **'Use system setting'**
+  /// **'Follow System'**
   String get themeSystem;
 
   /// No description provided for @themeLight.
@@ -1654,6 +1648,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dark'**
   String get themeDark;
+
+  /// No description provided for @newsApis.
+  ///
+  /// In en, this message translates to:
+  /// **'News APIs'**
+  String get newsApis;
+
+  /// No description provided for @newsOutlets.
+  ///
+  /// In en, this message translates to:
+  /// **'News outlets'**
+  String get newsOutlets;
+
+  /// No description provided for @finnhubDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Crypto, general and forex market news'**
+  String get finnhubDescription;
+
+  /// No description provided for @marketauxDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'News about the token you are viewing'**
+  String get marketauxDescription;
+
+  /// No description provided for @bbcDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'World news, including geopolitics and conflicts'**
+  String get bbcDescription;
+
+  /// No description provided for @bybitMcpDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Bybit market data and contract details'**
+  String get bybitMcpDescription;
+
+  /// No description provided for @openWebSearchDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Web search and webpage reading'**
+  String get openWebSearchDescription;
+
+  /// No description provided for @nansenDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'On-chain data and smart money flows'**
+  String get nansenDescription;
+
+  /// No description provided for @coinalyzeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Cross-exchange derivatives history'**
+  String get coinalyzeDescription;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

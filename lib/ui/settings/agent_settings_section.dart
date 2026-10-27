@@ -7,6 +7,7 @@ import '../../data/services/storage/secure_key_store.dart';
 import '../../utils/display_formatters.dart';
 import '../core/documentation_help_label.dart';
 import 'llm_connection_editor.dart';
+import 'settings_rows.dart';
 import '../../l10n/generated/app_localizations.dart';
 
 // Coordinate one save while each editor owns its own draft/request state.
@@ -62,7 +63,7 @@ class _AgentSettingsSectionState extends State<AgentSettingsSection> {
   bool _saving = false;
   String? _error;
 
-  // Reuse the existing two source columns, help links and masked-key behavior.
+  // Same grouped-row layout as the news settings.
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -75,99 +76,79 @@ class _AgentSettingsSectionState extends State<AgentSettingsSection> {
         codexAuth: widget.codexAuth,
       ),
       const SizedBox(height: 20),
-      IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'MCP',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 6),
-                  ToggleSwitch(
-                    checked: _bybit,
-                    content: const Text('Bybit MCP'),
-                    onChanged: widget.nodeAvailable
-                        ? (value) => setState(() => _bybit = value)
-                        : null,
-                  ),
-                  if (_bybit) ...[
-                    const SizedBox(height: 8),
-                    DocumentationHelpLabel(
-                      label: loc.bybitAccountApi,
-                      tooltip: loc.bybitDocs,
-                      documentationUrl:
-                          AppConstants.bybitAccountDocumentationUrl,
-                    ),
-                    const SizedBox(height: 6),
-                    _secret(
-                      'Bybit API Key',
-                      _bybitKey,
-                      _bybitMask,
-                      hint: loc.bybitHint,
-                    ),
-                    const SizedBox(height: 6),
-                    _secret('Bybit API Secret', _bybitSecret, _bybitSecretMask),
-                  ],
-                  const SizedBox(height: 8),
-                  ToggleSwitch(
-                    checked: _search,
-                    content: const Text('OpenWebSearch MCP'),
-                    onChanged: widget.nodeAvailable
-                        ? (value) => setState(() => _search = value)
-                        : null,
-                  ),
-                  const SizedBox(height: 8),
-                  ToggleSwitch(
-                    checked: _nansen,
-                    content: DocumentationHelpLabel(
-                      label: 'Nansen MCP',
-                      tooltip: loc.nansenDocs,
-                      documentationUrl: AppConstants.nansenDocumentationUrl,
-                    ),
-                    onChanged: (value) => setState(() => _nansen = value),
-                  ),
-                  if (_nansen) ...[
-                    const SizedBox(height: 6),
-                    _secret('Nansen API Key', _nansenKey, _nansenMask),
-                  ],
-                ],
-              ),
+      SettingsGroup(
+        title: 'MCP',
+        rows: [
+          SettingsToggleRow(
+            title: DocumentationHelpLabel(
+              label: 'Bybit MCP',
+              tooltip: loc.bybitDocs,
+              documentationUrl: AppConstants.bybitAccountDocumentationUrl,
             ),
-            const SizedBox(width: 20),
-            Container(width: 1, color: Colors.grey),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'API',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 6),
-                  ToggleSwitch(
-                    checked: _coinalyze,
-                    content: DocumentationHelpLabel(
-                      label: 'Coinalyze',
-                      tooltip: loc.coinalyzeDocs,
-                      documentationUrl: AppConstants.coinalyzeDocumentationUrl,
-                    ),
-                    onChanged: (value) => setState(() => _coinalyze = value),
-                  ),
-                  if (_coinalyze) ...[
-                    const SizedBox(height: 6),
-                    _secret('Coinalyze API Key', _coinalyzeKey, _coinalyzeMask),
-                  ],
-                ],
-              ),
+            description: loc.bybitMcpDescription,
+            value: _bybit,
+            onChanged: widget.nodeAvailable
+                ? (value) => setState(() => _bybit = value)
+                : null,
+            details: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _secret(
+                  'Bybit API Key (Optional)',
+                  _bybitKey,
+                  _bybitMask,
+                  hint: loc.bybitHint,
+                ),
+                const SizedBox(height: 6),
+                _secret(
+                  'Bybit API Secret (Optional)',
+                  _bybitSecret,
+                  _bybitSecretMask,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          SettingsToggleRow(
+            title: const Text('OpenWebSearch MCP'),
+            description: loc.openWebSearchDescription,
+            value: _search,
+            onChanged: widget.nodeAvailable
+                ? (value) => setState(() => _search = value)
+                : null,
+          ),
+          SettingsToggleRow(
+            title: DocumentationHelpLabel(
+              label: 'Nansen MCP',
+              tooltip: loc.nansenDocs,
+              documentationUrl: AppConstants.nansenDocumentationUrl,
+            ),
+            description: loc.nansenDescription,
+            value: _nansen,
+            onChanged: (value) => setState(() => _nansen = value),
+            details: _secret('Nansen API Key', _nansenKey, _nansenMask),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      SettingsGroup(
+        title: 'API',
+        rows: [
+          SettingsToggleRow(
+            title: DocumentationHelpLabel(
+              label: 'Coinalyze',
+              tooltip: loc.coinalyzeDocs,
+              documentationUrl: AppConstants.coinalyzeDocumentationUrl,
+            ),
+            description: loc.coinalyzeDescription,
+            value: _coinalyze,
+            onChanged: (value) => setState(() => _coinalyze = value),
+            details: _secret(
+              'Coinalyze API Key',
+              _coinalyzeKey,
+              _coinalyzeMask,
+            ),
+          ),
+        ],
       ),
       if (_error != null) ...[
         const SizedBox(height: 10),

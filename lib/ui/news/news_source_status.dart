@@ -5,10 +5,25 @@ import '../../data/repositories/news_repository.dart';
 import '../../utils/display_formatters.dart';
 import '../../l10n/generated/app_localizations.dart';
 
-class NewsSourceStatus extends StatelessWidget {
+class NewsSourceStatus extends StatefulWidget {
   const NewsSourceStatus({super.key, required this.statuses});
 
   final Map<String, NewsProviderStatus> statuses;
+
+  @override
+  State<NewsSourceStatus> createState() => _NewsSourceStatusState();
+}
+
+class _NewsSourceStatusState extends State<NewsSourceStatus> {
+  final _flyout = FlyoutController();
+
+  Map<String, NewsProviderStatus> get statuses => widget.statuses;
+
+  @override
+  void dispose() {
+    _flyout.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,16 +57,34 @@ class NewsSourceStatus extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Keep provider diagnostics accessible without status badges.
+          // Hovering the summary opens a flyout listing every provider's state.
           Expanded(
-            child: Tooltip(
-              message: statuses.values
-                  .map(
-                    (status) =>
-                        '${status.id}：${_label(loc, status.state)}${status.message == null ? '' : '\n${status.message}'}',
-                  )
-                  .join('\n'),
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: FlyoutTarget(
+              controller: _flyout,
+              child: MouseRegion(
+                onEnter: (_) => _flyout.showFlyout(
+                  dismissOnPointerMoveAway: true,
+                  placementMode: FlyoutPlacementMode.topLeft,
+                  builder: (context) => FlyoutContent(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final status in statuses.values)
+                          _ProviderRow(
+                            status: status,
+                            label: _label(loc, status.state),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -77,4 +110,66 @@ class NewsSourceStatus extends StatelessWidget {
         NewsProviderState.error => loc.providerError,
         NewsProviderState.rateLimited => loc.providerRateLimited,
       };
+}
+
+// One provider: state icon, name and state, with the failure message underneath.
+class _ProviderRow extends StatelessWidget {
+  const _ProviderRow({required this.status, required this.label});
+
+  final NewsProviderStatus status;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final resources = FluentTheme.of(context).resources;
+    final (icon, color) = switch (status.state) {
+      NewsProviderState.active => (
+        FluentIcons.completed_solid,
+        Colors.successPrimaryColor,
+      ),
+      NewsProviderState.disabled => (
+        FluentIcons.circle_ring,
+        resources.textFillColorDisabled,
+      ),
+      NewsProviderState.rateLimited => (
+        FluentIcons.warning,
+        Colors.warningPrimaryColor,
+      ),
+      NewsProviderState.error => (
+        FluentIcons.error_badge,
+        Colors.errorPrimaryColor,
+      ),
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Icon(icon, size: 12, color: color),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${status.id} · $label'),
+              if (status.message case final message?)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: Text(
+                    message,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: resources.textFillColorSecondary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
