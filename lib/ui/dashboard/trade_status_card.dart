@@ -4,6 +4,8 @@ import 'trading_session.dart';
 import '../../domain/analysis/entry_assessment.dart';
 import '../../domain/analysis/feature_engine.dart';
 import '../../utils/display_formatters.dart';
+import '../../l10n/generated/app_localizations.dart';
+import '../../l10n/app_languages.dart';
 
 // Show the answer and next action, without asking users to understand risk settings.
 class TradeStatusCard extends StatelessWidget {
@@ -12,7 +14,7 @@ class TradeStatusCard extends StatelessWidget {
   final TradingSession session;
   final bool _dialog;
 
-  String _value(double? value) => value?.toStringAsFixed(1) ?? '暂无';
+  String _value(double? value) => value?.toStringAsFixed(1) ?? appL10n.noValue;
   DateTime _expiry(TradingSession session) {
     final limit = session.createdAt!.add(
       Duration(minutes: session.plan!.conditions.timeframeMinutes * 3),
@@ -29,57 +31,60 @@ class TradeStatusCard extends StatelessWidget {
 
   // Keep the summary compact; the dialog observes the same live session.
   Widget _build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final plan = session.plan;
     if (plan == null) {
       return _dialog
           ? ContentDialog(
-              title: const Text('开仓详情'),
-              content: const Text('当前计划已清除'),
+              title: Text(loc.entryDetails),
+              content: Text(loc.planCleared),
               actions: [
                 Button(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('关闭'),
+                  child: Text(loc.close),
                 ),
               ],
             )
           : const SizedBox.shrink();
     }
     final side = switch (plan.decision) {
-      'LONG_SETUP' => '偏多',
-      'SHORT_SETUP' => '偏空',
-      _ => '等待',
+      'LONG_SETUP' => loc.biasLong,
+      'SHORT_SETUP' => loc.biasShort,
+      _ => loc.decisionWait,
     };
     final status = session.assessment;
     final action = switch (status?.state) {
-      null => plan.isSetup ? '正在确认' : '暂不入场',
-      EntryState.realized => '已经错过，不追价',
-      EntryState.invalid => '原计划已失效',
+      null => plan.isSetup ? loc.actionConfirming : loc.actionNoEntry,
+      EntryState.realized => loc.actionMissed,
+      EntryState.invalid => loc.actionInvalid,
       _ => status!.label,
     };
     final trigger = switch (plan.conditions.triggerType) {
-      'CLOSE_ABOVE' => '收盘站上指定价格',
-      'CLOSE_BELOW' => '收盘跌破指定价格',
-      'BREAKOUT_RETEST' => '突破后另一根 K 线回踩守住',
-      'TOUCH_ZONE_AND_CLOSE_INSIDE' => '触及区间边界后收回区间',
-      'VOLUME_ABOVE_MULTIPLE' => '价格方向与放量共同确认',
-      _ => '等待确认',
+      'CLOSE_ABOVE' => loc.triggerCloseAbove,
+      'CLOSE_BELOW' => loc.triggerCloseBelow,
+      'BREAKOUT_RETEST' => loc.triggerBreakoutRetest,
+      'TOUCH_ZONE_AND_CLOSE_INSIDE' => loc.triggerTouchZone,
+      'VOLUME_ABOVE_MULTIPLE' => loc.triggerVolume,
+      _ => loc.entryUnverified,
     };
     final title = Text(
-      status?.terminal == true ? '等待 · $action（此前$side）' : '$side · $action',
+      status?.terminal == true
+          ? loc.statusTerminal(action, side)
+          : '$side · $action',
       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
     );
     final canRefresh =
         !session.checking && plan.isSetup && status?.terminal != true;
     final refresh = Button(
       onPressed: session.recheck,
-      child: const Text('刷新当前机会'),
+      child: Text(loc.refreshOpportunity),
     );
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_dialog && session.currentPrice != null)
-          Text('参考现价 ${formatMarketPrice(session.currentPrice!)}'),
+          Text(loc.referencePrice(formatMarketPrice(session.currentPrice!))),
         if (status != null) Text(status.reason),
         if (plan.isSetup &&
             status?.terminal != true &&
@@ -88,24 +93,40 @@ class TradeStatusCard extends StatelessWidget {
             plan.stopLoss != null &&
             plan.targets.isNotEmpty) ...[
           Text(
-            '开仓区 ${formatMarketPrice(plan.entryLow!)}–${formatMarketPrice(plan.entryHigh!)} · 止损 ${formatMarketPrice(plan.stopLoss!)}',
+            loc.entrySummary(
+              formatMarketPrice(plan.entryLow!),
+              formatMarketPrice(plan.entryHigh!),
+              formatMarketPrice(plan.stopLoss!),
+            ),
           ),
           Text('TP1 ${formatMarketPrice(plan.targets.first.price)}'),
           if (_dialog) ...[
-            Text('有效期至 ${_expiry(session).toLocal()}'),
+            Text(loc.validUntil(_expiry(session).toLocal())),
             if (session.referenceEntry case final reference?) ...[
               Text(
-                '参考入场 ${formatMarketPrice(reference.price)} · 净盈亏比 ${reference.netRewardRisk.toStringAsFixed(2)}:1',
+                loc.referenceEntry(
+                  formatMarketPrice(reference.price),
+                  reference.netRewardRisk.toStringAsFixed(2),
+                ),
               ),
-              Text('成本后追价边界 ${formatMarketPrice(reference.maximumPrice)}'),
-              const Text('按公共 Taker 费率和 3 小时资金费情景估算；未估计仓位冲击'),
+              Text(
+                loc.chaseBoundary(formatMarketPrice(reference.maximumPrice)),
+              ),
+              Text(loc.costEstimateNote),
             ],
             const SizedBox(height: 12),
             Text(
-              '触发：$trigger · ${plan.conditions.timeframeMinutes} 分钟 · 价格 ${plan.conditions.triggerPrice ?? '区间边界'}',
+              loc.triggerSummary(
+                trigger,
+                plan.conditions.timeframeMinutes,
+                plan.conditions.triggerPrice ?? loc.zoneEdge,
+              ),
             ),
             Text(
-              '失效价 ${plan.conditions.cancellationPrice ?? plan.stopLoss} · 止损参考 ${plan.conditions.stopReference}',
+              loc.invalidationSummary(
+                '${plan.conditions.cancellationPrice ?? plan.stopLoss}',
+                plan.conditions.stopReference,
+              ),
             ),
             for (final entry
                 in (session.features?.timeframes ??
@@ -115,10 +136,13 @@ class TradeStatusCard extends StatelessWidget {
                 '${entry.key}: RSI ${_value(entry.value.rsi14)} · ADX ${_value(entry.value.details['adx14'])} · K/D/J ${_value(entry.value.details['kdj_k9'])}/${_value(entry.value.details['kdj_d3'])}/${_value(entry.value.details['kdj_j3'])}',
               ),
             if (session.features != null)
-              Text('指标快照 ${session.features!.calculatedAt.toLocal()}'),
+              Text(
+                loc.featureSnapshot(session.features!.calculatedAt.toLocal()),
+              ),
           ],
         ],
-        if (_dialog && status != null) Text('复核时间 ${status.at.toLocal()}'),
+        if (_dialog && status != null)
+          Text(loc.reviewedAt(status.at.toLocal())),
       ],
     );
     if (_dialog) {
@@ -129,7 +153,7 @@ class TradeStatusCard extends StatelessWidget {
           if (canRefresh) refresh,
           Button(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
+            child: Text(loc.close),
           ),
         ],
       );
@@ -151,7 +175,7 @@ class TradeStatusCard extends StatelessWidget {
                   context: context,
                   builder: (_) => TradeStatusCard._dialog(session: session),
                 ),
-                child: const Text('查看详情'),
+                child: Text(loc.viewDetails),
               ),
               if (canRefresh) refresh,
             ],

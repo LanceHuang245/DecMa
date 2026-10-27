@@ -12,6 +12,7 @@ import '../settings/agent_settings_dialog.dart';
 import 'dashboard_agent_panel.dart';
 import 'dashboard_chart_panel.dart';
 import 'dashboard_controller.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -54,27 +55,30 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     if (!mounted) return;
     showDialog<void>(
       context: context,
-      builder: (context) => ContentDialog(
-        title: const Text('Nodejs 未检测到'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('未检测到Nodejs，部分功能有缺失。'),
-            const SizedBox(height: 10),
-            HyperlinkButton(
-              onPressed: NodeRuntimeService.openDownloadPage,
-              child: const Text('前往 Nodejs 官网'),
+      builder: (context) {
+        final loc = AppLocalizations.of(context);
+        return ContentDialog(
+          title: Text(loc.nodeMissingTitle),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(loc.nodeMissingBody),
+              const SizedBox(height: 10),
+              HyperlinkButton(
+                onPressed: NodeRuntimeService.openDownloadPage,
+                child: Text(loc.openNodeSite),
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(
+              child: Text(loc.gotIt),
+              onPressed: () => Navigator.pop(context),
             ),
           ],
-        ),
-        actions: [
-          FilledButton(
-            child: const Text('知道了'),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

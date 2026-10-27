@@ -7,6 +7,7 @@ import '../../domain/models/app_settings.dart';
 import '../../domain/models/llm_model_info.dart';
 import '../../utils/network.dart';
 import '../core/reasoning_effort_labels.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 // Keep catalog requests local to the selected connection and cancel stale work.
 class LlmModelSelector extends StatefulWidget {
@@ -64,7 +65,9 @@ class _LlmModelSelectorState extends State<LlmModelSelector> {
       if (mounted && !cancel.isCancelled) setState(() => _models = models);
     } catch (error) {
       if (mounted && !cancel.isCancelled && !isRequestCancelled(error)) {
-        setState(() => _error = '模型列表获取失败：$error');
+        setState(
+          () => _error = AppLocalizations.of(context).modelListFailed(error),
+        );
       }
     } finally {
       if (mounted && !cancel.isCancelled) setState(() => _loading = false);
@@ -84,7 +87,11 @@ class _LlmModelSelectorState extends State<LlmModelSelector> {
         await widget.onChanged(value);
       }
     } catch (error) {
-      if (mounted) setState(() => _error = '模型保存失败：$error');
+      if (mounted) {
+        setState(
+          () => _error = AppLocalizations.of(context).modelSaveFailed(error),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -92,6 +99,7 @@ class _LlmModelSelectorState extends State<LlmModelSelector> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     // Retain the saved model even when a catalog is empty or unavailable.
     final models = {
       ..._models.map((model) => model.id),
@@ -130,7 +138,9 @@ class _LlmModelSelectorState extends State<LlmModelSelector> {
               child: ComboBox<String>(
                 value: widget.llm.model.isEmpty ? null : widget.llm.model,
                 isExpanded: true,
-                placeholder: Text(_loading ? '正在获取模型…' : '选择模型'),
+                placeholder: Text(
+                  _loading ? loc.fetchingModels : loc.selectModel,
+                ),
                 items: [
                   for (final model in models)
                     ComboBoxItem(value: model, child: Text(model)),
@@ -143,21 +153,21 @@ class _LlmModelSelectorState extends State<LlmModelSelector> {
               width: 88,
               child: Tooltip(
                 message: _loading
-                    ? '正在获取思考等级'
+                    ? loc.fetchingEffort
                     : efforts.isEmpty
-                    ? '此模型不支持选择思考等级'
+                    ? loc.effortUnsupported
                     : advertisedEfforts == null
-                    ? '思考等级：通用选项，具体支持范围由服务端决定'
-                    : '思考等级',
+                    ? loc.effortGeneric
+                    : loc.reasoningEffort,
                 child: ComboBox<String>(
                   value: selectedEffort,
                   isExpanded: true,
-                  placeholder: const Text('思考等级'),
+                  placeholder: Text(loc.reasoningEffort),
                   items: [
                     for (final effort in efforts)
                       ComboBoxItem(
                         value: effort,
-                        child: Text(reasoningEffortLabels[effort] ?? effort),
+                        child: Text(reasoningEffortLabel(loc, effort)),
                       ),
                   ],
                   onChanged: widget.enabled && !_saving && efforts.isNotEmpty
@@ -168,7 +178,7 @@ class _LlmModelSelectorState extends State<LlmModelSelector> {
             ),
             const SizedBox(width: 4),
             Tooltip(
-              message: '刷新模型列表',
+              message: loc.refreshModels,
               child: IconButton(
                 icon: const Icon(FluentIcons.refresh),
                 onPressed: _loading ? null : _load,

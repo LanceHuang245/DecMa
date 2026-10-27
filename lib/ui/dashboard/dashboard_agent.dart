@@ -5,6 +5,7 @@ import 'package:genkit/genkit.dart';
 
 import '../../data/services/agent_service.dart';
 import '../../utils/network.dart';
+import '../../l10n/app_languages.dart';
 
 // Keep presentation messages independent of chart and exchange state.
 enum DashboardMessageKind { user, agent, activity }
@@ -70,7 +71,7 @@ class AgentConversationController extends ChangeNotifier {
 
     loading = true;
     messages.add(DashboardMessage.user(input));
-    messages.add(const DashboardMessage.activity('• Thinking - 分析中…'));
+    messages.add(DashboardMessage.activity(appL10n.activityThinking));
     prompt.clear();
     _notify();
     _queueScroll();
@@ -91,8 +92,8 @@ class AgentConversationController extends ChangeNotifier {
       if (!current()) return;
       final stopped = request.token.isCancelled || isRequestCancelled(error);
       final notice = stopped
-          ? '> 已停止生成，未完成的回答未用于更新分析结果。'
-          : '> Agent 请求失败：$error';
+          ? appL10n.generationStopped
+          : appL10n.agentRequestFailed(error);
       if (draft == null) {
         messages.add(DashboardMessage.agent(notice));
       } else {

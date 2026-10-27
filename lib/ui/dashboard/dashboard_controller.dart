@@ -23,6 +23,7 @@ import '../../utils/network.dart';
 import '../chart/market_controller.dart';
 import 'dashboard_agent.dart';
 import '../news/news_controller.dart';
+import '../../l10n/app_languages.dart';
 
 export 'dashboard_agent.dart' show DashboardMessage, DashboardMessageKind;
 
@@ -203,7 +204,9 @@ class DashboardController extends ChangeNotifier {
                     e.directAssets.contains(asset)),
           )
           .firstOrNull;
-      if (event != null) trading.cancel('出现已确认的重大事件，请重新分析：${event.headline}');
+      if (event != null) {
+        trading.cancel(appL10n.majorEventCancel(event.headline));
+      }
     }
   }
 

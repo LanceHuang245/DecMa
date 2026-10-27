@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:genkit/genkit.dart';
 
 import '../../utils/network.dart';
+import '../../l10n/app_languages.dart';
 
 // Observe native Genkit tools without a second dispatch loop or tool DTOs.
 class AgentTools extends GenerateMiddleware {
@@ -46,7 +47,7 @@ class AgentTools extends GenerateMiddleware {
       if (kDebugMode) {
         debugPrint('[AgentTools] $resolved failed: $error\n$stackTrace');
       }
-      onActivity?.call('${_activity(resolved)}（失败）');
+      onActivity?.call(appL10n.activityFailed(_activity(resolved)));
       result = ToolResult.response('Tool failed: $error');
     }
     ctx.cancel?.throwIfCancelled();
@@ -122,8 +123,12 @@ class AgentTools extends GenerateMiddleware {
   }
 
   String _activity(String name) {
-    if (name == 'decma_cache_token_background') return '• 项目背景 - 更新背景缓存';
-    if (name == 'decma_discover_mcp_tools') return '• MCP - 发现可用工具';
+    if (name == 'decma_cache_token_background') {
+      return appL10n.activityTokenBackground;
+    }
+    if (name == 'decma_discover_mcp_tools') {
+      return appL10n.activityDiscoverTools;
+    }
     for (final kind in ['MCP', 'API']) {
       final marker = name.indexOf('_${kind}_');
       if (marker > 0) {

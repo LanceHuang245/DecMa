@@ -21,6 +21,7 @@ import 'mcp_hub.dart';
 import 'openai_codex_oauth.dart';
 import 'storage/secure_key_store.dart';
 import 'token_research.dart';
+import '../../l10n/app_languages.dart';
 
 // Return finalized text and source warnings after all tool work has finished.
 class AgentResult {
@@ -109,7 +110,7 @@ class AgentService {
           credentials?.accessToken ??
           await _keyStore.readLlmKey(connectionId: llm.id);
       if (key == null || key.isEmpty) {
-        throw Exception('请先在设置中保存 LLM API Key 或登录 OpenAI Codex。');
+        throw Exception(appL10n.llmKeyMissing);
       }
       final nansenKey = mcp.useNansen ? await _keyStore.readNansenKey() : null;
       final coinalyzeKey = api.useCoinalyze
@@ -136,9 +137,9 @@ class AgentService {
       // Account fee data stays an app-owned API call, not an LLM tool.
       Map<String, double>? feeRates;
       if (hasBybitKey != hasBybitSecret) {
-        warnings.add('Bybit 账户 API：API Key 和 API Secret 需同时配置。');
+        warnings.add(appL10n.bybitKeyPair);
       } else if (hasBybitKey) {
-        onActivity?.call('• Bybit Account - 获取实际手续费率');
+        onActivity?.call(appL10n.activityBybitFees);
         try {
           feeRates = await _bybit.fetchAccountFeeRates(
             symbol: symbol,
@@ -173,7 +174,9 @@ class AgentService {
           final status = availability[entry.key];
           if (status != 'AVAILABLE') {
             warnings.add(
-              'FULL_SOURCE_ENRICHMENT：${entry.value} ${status == 'DISABLED' ? '已禁用' : '当前不可用'}。',
+              status == 'DISABLED'
+                  ? appL10n.sourceDisabled(entry.value)
+                  : appL10n.sourceUnavailable(entry.value),
             );
           }
         }
@@ -212,7 +215,7 @@ class AgentService {
         client: client,
         onRetry: (attempt) {
           resetDraft?.call();
-          onActivity?.call('• LLM - 响应中断，正在重试 $attempt/4');
+          onActivity?.call(appL10n.activityLlmRetry(attempt));
         },
       );
       ai = model.ai;
@@ -279,7 +282,7 @@ class AgentService {
       var reply = await complete(context);
       final missing = requiredSources.difference(tracked.attemptedSources);
       if (fullCoverage && missing.isNotEmpty) {
-        onActivity?.call('• Data Sources - 补充缺失来源：${missing.join(', ')}');
+        onActivity?.call(appL10n.activityFillSources(missing.join(', ')));
         final provisional = reply;
         try {
           reply = await complete(
@@ -302,23 +305,19 @@ SOURCE COVERAGE GATE: Before returning the revised final analysis, call actual d
           if (isRequestCancelled(error)) rethrow;
           reply = provisional;
           onText?.call(reply);
-          warnings.add('FULL_SOURCE_ENRICHMENT：补采请求失败，已保留首轮分析。');
+          warnings.add(appL10n.enrichmentFailed);
         }
       }
       token.throwIfCancelled();
       final remaining = requiredSources.difference(tracked.attemptedSources);
       if (fullCoverage && remaining.isNotEmpty) {
-        warnings.add(
-          'FULL_SOURCE_ENRICHMENT 未完成：${remaining.join(', ')} 可用但未调用，可能不适用于当前资产或被模型跳过。',
-        );
+        warnings.add(appL10n.enrichmentIncomplete(remaining.join(', ')));
       }
       final invalid = tracked.attemptedSources
           .intersection(requiredSources)
           .difference(tracked.completedSources);
       if (fullCoverage && invalid.isNotEmpty) {
-        warnings.add(
-          'FULL_SOURCE_ENRICHMENT：${invalid.join(', ')} 已尝试，但未返回有效数据。',
-        );
+        warnings.add(appL10n.enrichmentInvalid(invalid.join(', ')));
       }
       return AgentResult(text: reply, warnings: warnings);
     } on CancelledException {

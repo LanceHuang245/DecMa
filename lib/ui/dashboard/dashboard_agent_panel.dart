@@ -9,6 +9,7 @@ import 'llm_model_selector.dart';
 import 'dashboard_messages.dart';
 import 'trade_status_card.dart';
 import 'dashboard_controller.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class DashboardAgentPanel extends StatelessWidget {
   const DashboardAgentPanel({
@@ -54,6 +55,7 @@ class DashboardAgentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final resources = FluentTheme.of(context).resources;
     return Card(
       child: Column(
@@ -108,7 +110,7 @@ class DashboardAgentPanel extends StatelessWidget {
                     right: 16,
                     bottom: 16,
                     child: Tooltip(
-                      message: '滚动到底部',
+                      message: loc.scrollToBottom,
                       child: SizedBox(
                         width: 36,
                         height: 36,
@@ -148,14 +150,14 @@ class DashboardAgentPanel extends StatelessWidget {
                 minLines: 3,
                 maxLines: 5,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 46),
-                placeholder: '输入代币或继续追问分析结果',
+                placeholder: loc.promptPlaceholder,
               ),
               Positioned(
                 right: 8,
                 bottom: 8,
                 child: Button(
                   onPressed: loading ? null : onQuickAnalysis,
-                  child: const Text('分析当前合约'),
+                  child: Text(loc.analyzeCurrentContract),
                 ),
               ),
             ],
@@ -167,13 +169,13 @@ class DashboardAgentPanel extends StatelessWidget {
                 child: FilledButton(
                   // Keep cancellation available throughout preparation and output.
                   onPressed: loading ? onStop : onSend,
-                  child: Text(loading ? '停止生成' : '发送'),
+                  child: Text(loading ? loc.stopGenerating : loc.send),
                 ),
               ),
               const SizedBox(width: 8),
               Button(
                 onPressed: loading ? null : onClear,
-                child: const Text('清空'),
+                child: Text(loc.clear),
               ),
             ],
           ),

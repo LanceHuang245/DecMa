@@ -12,6 +12,7 @@ import '../../data/services/storage/trade_store.dart';
 import '../../domain/analysis/entry_assessment.dart';
 import '../../domain/analysis/reference_entry.dart';
 import '../../domain/analysis/feature_engine.dart';
+import '../../l10n/app_languages.dart';
 
 // Check opportunity freshness in the background; never require account configuration.
 class TradingSession extends ChangeNotifier {
@@ -73,7 +74,7 @@ class TradingSession extends ChangeNotifier {
     _expiry?.cancel();
     assessment = EntryAssessment(
       EntryState.unverified,
-      '正在检查最新价格',
+      appL10n.checkingPrice,
       DateTime.now().toUtc(),
     );
     _notify();
@@ -140,7 +141,11 @@ class TradingSession extends ChangeNotifier {
           );
       currentPrice = quoteFresh ? ticker.lastPrice : null;
       assessment = !quoteFresh
-          ? EntryAssessment(EntryState.unverified, '暂未确认最新价格，等待行情刷新', now)
+          ? EntryAssessment(
+              EntryState.unverified,
+              appL10n.priceUnconfirmed,
+              now,
+            )
           : const EntryEvaluator().evaluate(
               plan: candidate,
               createdAt: createdAt!,
@@ -168,7 +173,7 @@ class TradingSession extends ChangeNotifier {
         if (referenceEntry == null && assessment?.state == EntryState.ready) {
           assessment = EntryAssessment(
             EntryState.unverified,
-            '等待买卖报价和资金费结算信息确认',
+            appL10n.awaitingQuotes,
             now,
           );
         } else if (referenceEntry != null &&
@@ -179,7 +184,7 @@ class TradingSession extends ChangeNotifier {
           _triggerAfter = now;
           assessment = EntryAssessment(
             EntryState.paused,
-            '当前参考净盈亏比不足 1:1，等待更优价格和新的触发',
+            appL10n.rrTooLow,
             now,
           );
         }
@@ -191,7 +196,7 @@ class TradingSession extends ChangeNotifier {
       if (!_disposed && generation == _generation) {
         assessment = EntryAssessment(
           EntryState.unverified,
-          '暂未获取到最新行情，稍后重试',
+          appL10n.marketUnavailable,
           DateTime.now().toUtc(),
         );
       }
@@ -222,7 +227,7 @@ class TradingSession extends ChangeNotifier {
       referenceEntry = null;
       assessment = EntryAssessment(
         EntryState.unverified,
-        '价格变化，正在重新确认入场条件',
+        appL10n.priceChanged,
         DateTime.now().toUtc(),
       );
       _notify();
@@ -327,7 +332,7 @@ class TradingSession extends ChangeNotifier {
     checking = false;
     assessment = EntryAssessment(
       EntryState.unverified,
-      '返回后按最新行情重新确认',
+      appL10n.recheckOnReturn,
       DateTime.now().toUtc(),
     );
     _notify();

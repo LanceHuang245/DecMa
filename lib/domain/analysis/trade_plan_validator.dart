@@ -1,5 +1,6 @@
 import '../models/trade_plan.dart';
 import 'risk_engine.dart';
+import '../../l10n/app_languages.dart';
 
 class TradePlanValidation {
   const TradePlanValidation({
@@ -32,7 +33,7 @@ class TradePlanValidator {
     final errors = <String>[];
     final warnings = <String>[];
     if (!_allowedDecisions.contains(plan.decision)) {
-      errors.add('未知决策类型 ${plan.decision}');
+      errors.add(appL10n.planUnknownDecision(plan.decision));
       return TradePlanValidation(errors: errors, warnings: warnings);
     }
     if (!plan.isSetup) {
@@ -42,11 +43,11 @@ class TradePlanValidator {
           plan.maximumChasePrice != null ||
           plan.takeProfits.isNotEmpty;
       if (plan.decision == 'WAIT' && plan.hasPriceLevels && !canDrawWaitZone) {
-        warnings.add('候选等待区无效，价格标记已忽略');
+        warnings.add(appL10n.planInvalidWaitZone);
       } else if (canDrawWaitZone && hasOtherLevels) {
-        warnings.add('WAIT 仅保留候选等待区，其他价格标记已忽略');
+        warnings.add(appL10n.planWaitOnlyZone);
       } else if (plan.decision != 'WAIT' && plan.hasPriceLevels) {
-        warnings.add('非交易 Setup 的价格标记已忽略');
+        warnings.add(appL10n.planNonSetupIgnored);
       }
       return TradePlanValidation(
         errors: errors,
@@ -59,7 +60,7 @@ class TradePlanValidator {
     final high = plan.entryHigh;
     final stop = plan.stopLoss;
     if (low == null || high == null || stop == null) {
-      errors.add('交易 Setup 缺少完整开仓区或止损');
+      errors.add(appL10n.planSetupMissingEntry);
       return TradePlanValidation(errors: errors, warnings: warnings);
     }
     final prices = [
@@ -70,43 +71,43 @@ class TradePlanValidator {
       ?plan.maximumChasePrice,
     ];
     if (prices.any((price) => !price.isFinite || price <= 0)) {
-      errors.add('价格必须为正数且有限');
+      errors.add(appL10n.planPricesInvalid);
     }
-    if (low > high) errors.add('开仓区下限高于上限');
-    if (plan.targets.isEmpty) errors.add('交易 Setup 缺少止盈目标');
-    if (plan.targets.length > 3) warnings.add('图表仅显示前三档止盈目标');
+    if (low > high) errors.add(appL10n.planEntryInverted);
+    if (plan.targets.isEmpty) errors.add(appL10n.planMissingTargets);
+    if (plan.targets.length > 3) warnings.add(appL10n.planTooManyTargets);
 
     final direction = plan.decision == 'LONG_SETUP'
         ? TradeDirection.long
         : TradeDirection.short;
     if (direction == TradeDirection.long) {
-      if (stop >= low) errors.add('多头止损必须低于开仓区');
+      if (stop >= low) errors.add(appL10n.planLongStop);
       if (plan.targets.any((target) => target.price <= high)) {
-        errors.add('多头止盈必须高于开仓区');
+        errors.add(appL10n.planLongTargets);
       }
       if (!_strictlyOrdered(plan.takeProfits, ascending: true)) {
-        errors.add('多头止盈必须按价格升序排列');
+        errors.add(appL10n.planLongTargetOrder);
       }
       if (plan.maximumChasePrice case final chase? when chase < high) {
-        errors.add('多头最大追价不能低于开仓区上限');
+        errors.add(appL10n.planLongChase);
       }
     } else {
-      if (stop <= high) errors.add('空头止损必须高于开仓区');
+      if (stop <= high) errors.add(appL10n.planShortStop);
       if (plan.targets.any((target) => target.price >= low)) {
-        errors.add('空头止盈必须低于开仓区');
+        errors.add(appL10n.planShortTargets);
       }
       if (!_strictlyOrdered(plan.takeProfits, ascending: false)) {
-        errors.add('空头止盈必须按价格降序排列');
+        errors.add(appL10n.planShortTargetOrder);
       }
       if (plan.maximumChasePrice case final chase? when chase > low) {
-        errors.add('空头最大追价不能高于开仓区下限');
+        errors.add(appL10n.planShortChase);
       }
     }
 
     _validatePercentages(plan, warnings);
     if (tickSize != null) {
       if (prices.any((price) => !_riskEngine.isTickAligned(price, tickSize))) {
-        warnings.add('价格未对齐合约 Tick Size，仅供参考，实际下单需确认价格精度');
+        warnings.add(appL10n.planTickMisaligned);
       }
     }
     if (errors.isEmpty) {
@@ -139,11 +140,11 @@ class TradePlanValidator {
         percentages.any(
           (value) => !value.isFinite || value <= 0 || value > 100,
         )) {
-      warnings.add('止盈比例不完整或无效，不作为分仓依据');
+      warnings.add(appL10n.planAllocationInvalid);
       return;
     }
     final total = percentages.reduce((left, right) => left + right);
-    if ((total - 100).abs() > 0.5) warnings.add('止盈比例合计不是 100%，不作为分仓依据');
+    if ((total - 100).abs() > 0.5) warnings.add(appL10n.planAllocationTotal);
   }
 
   void _compareRewardRisk(
@@ -165,11 +166,11 @@ class TradePlanValidator {
           ? 0.15
           : metrics.grossRewardRisk * 0.1;
       if ((declared - metrics.grossRewardRisk).abs() > tolerance) {
-        warnings.add('止盈 ${target.price} 的 Gross RR 与确定性计算不一致');
+        warnings.add(appL10n.planGrossRrMismatch(target.price));
       }
       final net = target.estimatedNetRewardRisk;
       if (net != null && net > declared) {
-        warnings.add('止盈 ${target.price} 的 Net RR 高于 Gross RR');
+        warnings.add(appL10n.planNetAboveGross(target.price));
       }
     }
   }

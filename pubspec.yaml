@@ -11,6 +11,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: 
   fluent_ui: 
   flutter_markdown_plus: 
   flutter_secure_storage: 
@@ -42,4 +45,5 @@ dev_dependencies:
   json_serializable: 
 
 flutter:
+  generate: true
   uses-material-design: true

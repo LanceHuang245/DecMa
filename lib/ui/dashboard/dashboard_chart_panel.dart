@@ -4,6 +4,7 @@ import '../../domain/models/candle.dart';
 import '../../domain/models/trade_plan.dart';
 import '../chart/candle_chart.dart';
 import '../chart/candle_chart_colors.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class DashboardChartPanel extends StatelessWidget {
   const DashboardChartPanel({
@@ -49,6 +50,7 @@ class DashboardChartPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     return Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -62,7 +64,7 @@ class DashboardChartPanel extends StatelessWidget {
                 width: 210,
                 child: AutoSuggestBox<String>(
                   controller: symbolController,
-                  placeholder: '搜索代币，例如 BTC',
+                  placeholder: loc.searchTokenPlaceholder,
                   items: symbols
                       .map(
                         (symbol) => AutoSuggestBoxItem<String>(
@@ -120,11 +122,11 @@ class DashboardChartPanel extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              _ChartLegend(color: chartEntryColor, text: '开仓区'),
+              _ChartLegend(color: chartEntryColor, text: loc.entryZone),
               const SizedBox(width: 14),
-              _ChartLegend(color: Colors.red, text: '止损'),
+              _ChartLegend(color: Colors.red, text: loc.stopLoss),
               const SizedBox(width: 14),
-              _ChartLegend(color: Colors.green, text: '止盈'),
+              _ChartLegend(color: Colors.green, text: loc.takeProfit),
             ],
           ),
         ],

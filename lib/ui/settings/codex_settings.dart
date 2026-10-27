@@ -3,6 +3,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../data/services/openai_codex_oauth.dart';
 import '../../utils/network.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 // Own OAuth requests separately from the connection being edited.
 class CodexSettings extends StatefulWidget {
@@ -40,7 +41,9 @@ class _CodexSettingsState extends State<CodexSettings> {
       widget.onConnected();
     } catch (error) {
       if (mounted && !_cancel.isCancelled && !isRequestCancelled(error)) {
-        setState(() => _error = 'OpenAI Codex 登录失败：$error');
+        setState(
+          () => _error = AppLocalizations.of(context).codexLoginFailed(error),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -49,26 +52,23 @@ class _CodexSettingsState extends State<CodexSettings> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
             Expanded(
-              child: Text(
-                _connected
-                    ? '已登录 ChatGPT，使用 Codex 订阅额度。'
-                    : '通过 ChatGPT 登录以使用 Codex。',
-              ),
+              child: Text(_connected ? loc.codexSignedIn : loc.codexSignInHint),
             ),
             FilledButton(
               onPressed: _loading ? null : _signIn,
               child: Text(
                 _loading
-                    ? '正在连接…'
+                    ? loc.connecting
                     : _connected
-                    ? '重新登录'
-                    : '登录 ChatGPT',
+                    ? loc.signInAgain
+                    : loc.signInChatGpt,
               ),
             ),
           ],

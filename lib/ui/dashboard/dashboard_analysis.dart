@@ -12,8 +12,8 @@ extension DashboardAnalysis on DashboardController {
       _agentUi.addMessage(
         DashboardMessage.agent(
           _llm.provider == LlmProvider.openAiCodex
-              ? '> 请先在设置中登录 OpenAI Codex 并选择模型。'
-              : '> 请先在设置中填写 LLM Endpoint、Model 并保存 API Key。',
+              ? appL10n.codexNotReady
+              : appL10n.llmNotReady,
         ),
       );
       return;
@@ -41,7 +41,7 @@ extension DashboardAnalysis on DashboardController {
         );
         token.throwIfCancelled();
         if (candles.isEmpty) {
-          throw Exception('$symbol 没有可分析的 K 线。');
+          throw Exception(appL10n.noCandlesToAnalyze(symbol));
         }
         snapshot = await cancellable(
           _buildMarketSnapshot(symbol, cancel),
@@ -49,7 +49,7 @@ extension DashboardAnalysis on DashboardController {
         );
         token.throwIfCancelled();
         final features = _featureEngine.calculate(snapshot!);
-        onActivity('• Deterministic Engine - 指标计算完成');
+        onActivity(appL10n.activityIndicatorsDone);
         await cancellable(
           newsFeed.refreshToken(symbol, requestCancel: cancel),
           token.whenCancelled,
@@ -92,7 +92,7 @@ extension DashboardAnalysis on DashboardController {
             // Log the hidden payload stage once, using the existing MCP activity UI.
             if (fence != null && !resultAnnounced) {
               resultAnnounced = true;
-              onActivity('• Result - 结果生成中…');
+              onActivity(appL10n.activityResultGenerating);
             }
           },
           onActivity: onActivity,
@@ -107,11 +107,11 @@ extension DashboardAnalysis on DashboardController {
     String symbol,
     CancelToken cancel,
   ) async {
-    _recordActivity('• Market Snapshot - 获取固定多周期行情');
+    _recordActivity(appL10n.activityMarketSnapshot);
     final snapshot = await _marketSnapshots.build(symbol, cancelToken: cancel);
     if (snapshot.instrument.status != 'Trading' ||
         snapshot.instrument.contractType != 'LinearPerpetual') {
-      throw Exception('$symbol 合约状态或类型无效。');
+      throw Exception(appL10n.invalidContract(symbol));
     }
     return snapshot;
   }
@@ -134,16 +134,16 @@ extension DashboardAnalysis on DashboardController {
     final matchesResponse = plan?.symbol == null || plan!.symbol == symbol;
     final matchesChart = market.activeSymbol == symbol;
     if (plan == null) {
-      notices.add('暂未获得完整价格计划，请以文字说明为准。');
+      notices.add(appL10n.noticeNoPlan);
     } else {
       notices.addAll(validation!.warnings);
       if (!validation.isValid) {
-        notices.add('价格计划未通过校验，暂不使用这些价位。');
+        notices.add(appL10n.noticePlanRejected);
       }
     }
-    if (!matchesResponse) notices.add('分析对象与 $symbol 不一致，请重新分析。');
+    if (!matchesResponse) notices.add(appL10n.noticeSymbolMismatch(symbol));
     if (!matchesChart) {
-      notices.add('当前图表已切换为 ${market.activeSymbol}，未添加 $symbol 的图表标记。');
+      notices.add(appL10n.noticeChartSwitched(market.activeSymbol, symbol));
     }
     final canDisplay =
         plan != null && validation!.isValid && matchesResponse && matchesChart;
@@ -157,14 +157,12 @@ extension DashboardAnalysis on DashboardController {
     final visibleText = parsed.text;
     return notices.isEmpty
         ? visibleText
-        : '$visibleText\n\n> 数据源提示：${notices.join(' | ')}';
+        : '$visibleText\n\n${appL10n.dataSourceNotice(notices.join(' | '))}';
   }
 
   // One click asks the trading question; no account setup is needed.
   void _quickAnalyze() {
-    promptController.text =
-        '分析 ${market.activeSymbol} 现在更适合做多、做空还是等待。'
-        '请结合当前价格，直接说明现在能否入场；如果机会已经走完，说明应该等待什么条件。';
+    promptController.text = appL10n.quickAnalyzePrompt(market.activeSymbol);
     _notify();
     unawaited(runAgent());
   }

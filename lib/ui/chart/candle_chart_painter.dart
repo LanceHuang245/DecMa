@@ -8,6 +8,7 @@ import '../../utils/display_formatters.dart';
 import 'candle_chart_colors.dart';
 import 'candle_chart_frame.dart';
 import 'candle_chart_viewport.dart';
+import '../../l10n/app_languages.dart';
 
 class MainCandlePainter extends CustomPainter {
   MainCandlePainter({required this.frame, super.repaint});
@@ -154,10 +155,10 @@ class PlanCandlePainter extends CustomPainter {
     final entryHigh = plan.entryHigh;
     final entryColor = chartEntryColor;
     final entryLabel = plan.decision == 'LONG_SETUP'
-        ? '做多'
+        ? appL10n.chartLong
         : plan.decision == 'SHORT_SETUP'
-        ? '做空'
-        : '等待区';
+        ? appL10n.chartShort
+        : appL10n.chartWaitZone;
     if (entryLow != null || entryHigh != null) {
       final lower = math.min(entryLow ?? entryHigh!, entryHigh ?? entryLow!);
       final upper = math.max(entryLow ?? entryHigh!, entryHigh ?? entryLow!);
@@ -168,9 +169,9 @@ class PlanCandlePainter extends CustomPainter {
         transform.yForPrice(lower),
       );
       canvas.drawRect(zone, _paint..color = entryColor.withAlpha(35));
-      _level(canvas, transform, lower, entryColor, '${plan.isSetup ? '$entryLabel 开仓' : entryLabel} ${_price(lower)}');
+      _level(canvas, transform, lower, entryColor, '${plan.isSetup ? appL10n.chartEntryLevel(entryLabel) : entryLabel} ${_price(lower)}');
       if (upper != lower) {
-        _level(canvas, transform, upper, entryColor, '${plan.isSetup ? '$entryLabel 开仓' : entryLabel} ${_price(upper)}');
+        _level(canvas, transform, upper, entryColor, '${plan.isSetup ? appL10n.chartEntryLevel(entryLabel) : entryLabel} ${_price(upper)}');
       }
     }
     if (!plan.isSetup) return;
@@ -239,21 +240,21 @@ class InteractionCandlePainter extends CustomPainter {
     canvas.drawLine(Offset(x, chart.top), Offset(x, chart.bottom), _paint);
     canvas.drawLine(Offset(chart.left, y), Offset(chart.right, y), _paint);
     final time = hovered.aggregated
-        ? '${formatLocalDateTime(hovered.startTime)} — ${formatLocalDateTime(hovered.endTime)}（聚合）'
+        ? appL10n.chartAggregated(formatLocalDateTime(hovered.startTime), formatLocalDateTime(hovered.endTime))
         : formatLocalDateTime(hovered.startTime);
     final color = hovered.close >= hovered.open ? candleUpColor : candleDownColor;
     _tooltip(canvas, chart, TextSpan(
       style: const TextStyle(color: Colors.white, fontSize: 11),
       children: [
         TextSpan(text: '$time\n', style: const TextStyle(fontWeight: FontWeight.w700)),
-        _valueSpan('开', hovered.open, Colors.white),
-        _valueSpan('高', hovered.high, candleUpColor),
+        _valueSpan(appL10n.ohlcOpen, hovered.open, Colors.white),
+        _valueSpan(appL10n.ohlcHigh, hovered.high, candleUpColor),
         const TextSpan(text: '\n'),
-        _valueSpan('低', hovered.low, candleDownColor),
-        _valueSpan('收', hovered.close, color),
+        _valueSpan(appL10n.ohlcLow, hovered.low, candleDownColor),
+        _valueSpan(appL10n.ohlcClose, hovered.close, color),
         const TextSpan(text: '\n'),
-        _valueSpan('鼠标', cursorPrice, Colors.white),
-        _valueSpan('最新', current.latest.close, candleColor(current.latest)),
+        _valueSpan(appL10n.chartCursor, cursorPrice, Colors.white),
+        _valueSpan(appL10n.chartLatest, current.latest.close, candleColor(current.latest)),
       ],
     ));
     _label(canvas, _price(cursorPrice), Offset(chart.right + 6, y - 7), Colors.white);

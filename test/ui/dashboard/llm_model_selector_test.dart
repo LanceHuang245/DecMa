@@ -6,6 +6,7 @@ import 'package:decma/ui/dashboard/llm_model_selector.dart';
 import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:decma/l10n/generated/app_localizations.dart';
 
 const _first = LlmSettings(
   id: 'first',
@@ -30,6 +31,8 @@ void main() {
     ) async {
       await tester.pumpWidget(
         FluentApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           home: Center(
             child: SizedBox(
               width: 320,
@@ -82,6 +85,8 @@ void main() {
       String? selected;
       await tester.pumpWidget(
         FluentApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           home: Center(
             child: SizedBox(
               width: 320,
@@ -124,6 +129,8 @@ void main() {
     (tester) async {
       String? selected;
       Widget view(LlmSettings llm) => FluentApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
         home: Center(
           child: SizedBox(
             width: 320,
@@ -205,6 +212,8 @@ void main() {
       LlmSettings llm,
       Future<List<LlmModelInfo>> Function(CancelToken) load,
     ) => FluentApp(
+      locale: const Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
       home: Center(
         child: SizedBox(
           width: 320,
@@ -252,6 +261,8 @@ void main() {
       String? selected;
       await tester.pumpWidget(
         FluentApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           home: Center(
             child: SizedBox(
               width: 320,

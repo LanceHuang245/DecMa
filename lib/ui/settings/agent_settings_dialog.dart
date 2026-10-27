@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../app_constants.dart';
 import '../../domain/models/app_settings.dart';
 import '../../data/services/openai_codex_oauth.dart';
+import '../../data/services/storage/llm_settings_store.dart';
 import '../../data/services/storage/secure_key_store.dart';
 import '../../utils/display_formatters.dart';
 import '../core/documentation_help_label.dart';
 import 'llm_connection_editor.dart';
+import '../../l10n/generated/app_localizations.dart';
+import '../../l10n/app_languages.dart';
 
 // Coordinate one save while each editor owns its own draft/request state.
 class AgentSettingsDialog extends StatefulWidget {
@@ -40,6 +45,7 @@ class AgentSettingsDialog extends StatefulWidget {
 }
 
 class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
+  AppLocalizations get loc => AppLocalizations.of(context);
   final _llm = GlobalKey<LlmConnectionEditorState>();
   late bool _bybit = widget.nodeAvailable && widget.mcp.useBybit;
   late bool _nansen = widget.mcp.useNansen;
@@ -63,7 +69,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
   // Reuse the existing two source columns, help links and masked-key behavior.
   @override
   Widget build(BuildContext context) => ContentDialog(
-    title: const Text('Agent 设置'),
+    title: Text(loc.agentSettings),
     constraints: const BoxConstraints(maxWidth: 1040),
     content: SizedBox(
       width: 960,
@@ -71,6 +77,26 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Switch the language immediately and remember it for the next launch.
+            InfoLabel(
+              label: loc.language,
+              child: ComboBox<String>(
+                value: localeCodeNotifier.value,
+                items: [
+                  for (final language in appLanguages)
+                    ComboBoxItem(
+                      value: language.code,
+                      child: Text(language.name),
+                    ),
+                ],
+                onChanged: (code) {
+                  if (code == null) return;
+                  localeCodeNotifier.value = code;
+                  unawaited(LlmSettingsStore().saveLocaleCode(code));
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
             LlmConnectionEditor(
               key: _llm,
               initial: widget.llm,
@@ -101,9 +127,9 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                         ),
                         if (_bybit) ...[
                           const SizedBox(height: 8),
-                          const DocumentationHelpLabel(
-                            label: 'Bybit 账户 API（可选）',
-                            tooltip: '查看 Bybit 只读账户 API 文档',
+                          DocumentationHelpLabel(
+                            label: loc.bybitAccountApi,
+                            tooltip: loc.bybitDocs,
                             documentationUrl:
                                 AppConstants.bybitAccountDocumentationUrl,
                           ),
@@ -112,7 +138,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                             'Bybit API Key',
                             _bybitKey,
                             _bybitMask,
-                            hint: '仅用于读取实际手续费率',
+                            hint: loc.bybitHint,
                           ),
                           const SizedBox(height: 6),
                           _secret(
@@ -132,9 +158,9 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                         const SizedBox(height: 8),
                         ToggleSwitch(
                           checked: _nansen,
-                          content: const DocumentationHelpLabel(
+                          content: DocumentationHelpLabel(
                             label: 'Nansen MCP',
-                            tooltip: '查看 Nansen MCP 文档',
+                            tooltip: loc.nansenDocs,
                             documentationUrl:
                                 AppConstants.nansenDocumentationUrl,
                           ),
@@ -161,9 +187,9 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
                         const SizedBox(height: 6),
                         ToggleSwitch(
                           checked: _coinalyze,
-                          content: const DocumentationHelpLabel(
+                          content: DocumentationHelpLabel(
                             label: 'Coinalyze',
-                            tooltip: '查看 Coinalyze API 文档',
+                            tooltip: loc.coinalyzeDocs,
                             documentationUrl:
                                 AppConstants.coinalyzeDocumentationUrl,
                           ),
@@ -196,10 +222,10 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
       ),
     ),
     actions: [
-      Button(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+      Button(onPressed: () => Navigator.pop(context), child: Text(loc.cancel)),
       FilledButton(
         onPressed: _saving ? null : _save,
-        child: Text(_saving ? '保存中…' : '保存'),
+        child: Text(_saving ? loc.saving : loc.save),
       ),
     ],
   );
@@ -209,13 +235,13 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
     String label,
     TextEditingController controller,
     String? mask, {
-    String hint = '输入新密钥以加密保存',
+    String? hint,
   }) => InfoLabel(
     label: label,
     child: TextBox(
       controller: controller,
       obscureText: true,
-      placeholder: hint,
+      placeholder: hint ?? loc.encryptedKeyPlaceholder,
       onTap: () {
         if (mask != null && controller.text == mask) {
           controller.selection = TextSelection(
@@ -264,7 +290,7 @@ class _AgentSettingsDialogState extends State<AgentSettingsDialog> {
       _coinalyzeKey.clear();
       Navigator.pop(context);
     } catch (error) {
-      if (mounted) setState(() => _error = '安全存储失败：$error');
+      if (mounted) setState(() => _error = loc.secureStorageFailed(error));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

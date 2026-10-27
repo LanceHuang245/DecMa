@@ -8,6 +8,7 @@ import 'package:decma/ui/settings/llm_connection_editor.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
+import 'package:decma/l10n/generated/app_localizations.dart';
 
 void main() {
   // Native editor extraction keeps connection metadata and saved-key placeholders intact.
@@ -25,6 +26,8 @@ void main() {
       );
       await tester.pumpWidget(
         FluentApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           home: LlmConnectionEditor(
             key: key,
             initial: initial,
@@ -80,6 +83,8 @@ void main() {
     );
     await tester.pumpWidget(
       FluentApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
         home: AgentSettingsDialog(
           llm: codex,
           llmConnections: LlmConnectionSettings(

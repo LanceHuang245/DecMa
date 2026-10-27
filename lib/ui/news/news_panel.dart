@@ -5,6 +5,7 @@ import '../../data/repositories/news_repository.dart';
 import '../../utils/display_formatters.dart';
 import '../../utils/symbol_utils.dart';
 import 'news_source_status.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 enum _NewsView { all, currentAsset, macro, crypto, regulation, exchange }
 
@@ -43,11 +44,19 @@ class _NewsPanelState extends State<NewsPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final resources = FluentTheme.of(context).resources;
     final providers =
         widget.events.map((event) => event.provider).toSet().toList()..sort();
     final currentAsset = baseAssetFromSymbol(widget.currentSymbol);
-    final labels = ['全部新闻', '$currentAsset 相关', '宏观', '加密市场', '监管', '交易所'];
+    final labels = [
+      loc.newsAll,
+      loc.newsRelated(currentAsset),
+      loc.categoryMacro,
+      loc.newsCryptoMarket,
+      loc.categoryRegulation,
+      loc.categoryExchange,
+    ];
     final events = widget.events
         .where(
           (event) =>
@@ -69,11 +78,11 @@ class _NewsPanelState extends State<NewsPanel> {
                 ),
               ),
               if (widget.isRefreshing)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Tooltip(
-                    message: '正在更新新闻',
-                    child: SizedBox(
+                    message: loc.updatingNews,
+                    child: const SizedBox(
                       width: 14,
                       height: 14,
                       child: ProgressRing(),
@@ -81,7 +90,7 @@ class _NewsPanelState extends State<NewsPanel> {
                   ),
                 ),
               Tooltip(
-                message: '新闻设置',
+                message: loc.newsSettings,
                 child: IconButton(
                   icon: const Icon(FluentIcons.settings),
                   onPressed: widget.onOpenSettings,
@@ -117,7 +126,7 @@ class _NewsPanelState extends State<NewsPanel> {
                   value: _provider,
                   isExpanded: true,
                   items: [
-                    const ComboBoxItem(value: '', child: Text('全部来源')),
+                    ComboBoxItem(value: '', child: Text(loc.allSources)),
                     for (final provider in providers)
                       ComboBoxItem(
                         value: provider,
@@ -135,7 +144,9 @@ class _NewsPanelState extends State<NewsPanel> {
             child: events.isEmpty
                 ? Center(
                     child: Text(
-                      widget.isRefreshing ? '正在获取新闻…' : '暂无相关新闻',
+                      widget.isRefreshing
+                          ? loc.fetchingNews
+                          : loc.noRelatedNews,
                       style: TextStyle(color: resources.textFillColorSecondary),
                     ),
                   )
@@ -169,6 +180,7 @@ class _NewsItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final resources = FluentTheme.of(context).resources;
     final uri = _webUri(event.url);
     // Truncate by visible characters so names cannot crowd out the timestamp.
@@ -177,16 +189,16 @@ class _NewsItem extends StatelessWidget {
         ? '${source.take(8)}...'
         : event.originalSource;
     final verification = switch (event.verificationStatus) {
-      NewsVerificationStatus.unverified => '待核实',
-      NewsVerificationStatus.secondaryConfirmed => '媒体确认',
-      NewsVerificationStatus.primarySourceConfirmed => '官方确认',
-      NewsVerificationStatus.conflicted => '信息存疑',
+      NewsVerificationStatus.unverified => loc.verifyUnverified,
+      NewsVerificationStatus.secondaryConfirmed => loc.verifySecondary,
+      NewsVerificationStatus.primarySourceConfirmed => loc.verifyPrimary,
+      NewsVerificationStatus.conflicted => loc.verifyConflicted,
     };
     final (importance, importanceColor) = switch (event.importance) {
-      NewsImportance.critical => ('重大', Colors.red),
-      NewsImportance.high => ('重要', Colors.orange),
-      NewsImportance.medium => ('中等', Colors.yellow),
-      NewsImportance.low => ('较低', resources.textFillColorPrimary),
+      NewsImportance.critical => (loc.importanceCritical, Colors.red),
+      NewsImportance.high => (loc.importanceHigh, Colors.orange),
+      NewsImportance.medium => (loc.importanceMedium, Colors.yellow),
+      NewsImportance.low => (loc.importanceLow, resources.textFillColorPrimary),
     };
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -13,6 +13,7 @@ import 'package:openai_dart/openai_dart.dart' as sdk;
 import '../../domain/models/app_settings.dart';
 import '../../utils/network.dart';
 import '../../utils/dio_client.dart';
+import '../../l10n/app_languages.dart';
 
 // Configure native models only; the Agent calls Genkit directly.
 ({Genkit ai, ModelRef model, Object? config, GenerateMiddlewareRef guard})
@@ -146,10 +147,10 @@ class _CompletedModel extends GenerateMiddleware {
 }
 
 // A stream that ended without a completion signal is a transient upstream drop.
-const interruptedStream = AppFailure(
+AppFailure get interruptedStream => AppFailure(
   kind: AppFailureKind.upstream,
   provider: 'LLM',
-  detail: '响应流提前结束，未收到成功完成信号。',
+  detail: appL10n.streamEndedEarly,
 );
 
 // Adapt one Responses call; Genkit alone decides when to execute more turns.
@@ -162,7 +163,7 @@ void defineResponsesModel(
 }) {
   final codex = settings.provider == LlmProvider.openAiCodex;
   if (codex && (accountId == null || accountId.isEmpty)) {
-    throw Exception('OpenAI Codex OAuth 缺少 ChatGPT account ID，请重新登录。');
+    throw Exception(appL10n.codexMissingAccount);
   }
   final client = sdk.OpenAIClient(
     httpClient: codex ? _StrictResponsesClient(httpClient) : httpClient,
@@ -270,15 +271,16 @@ void defineResponsesModel(
             final error = event.response.error;
             throw _responseFailure(
               error?.code ?? error?.type ?? 'failed',
-              error?.message ?? 'Codex 返回失败状态。',
+              error?.message ?? appL10n.codexFailedStatus,
             );
           }
           if (event is sdk.ResponseIncompleteEvent) {
             throw AppFailure(
               kind: AppFailureKind.invalidResponse,
               provider: 'LLM',
-              detail:
-                  '响应未完成：${event.response.incompleteDetails?.reason ?? 'unknown'}',
+              detail: appL10n.responseIncomplete(
+                event.response.incompleteDetails?.reason ?? 'unknown',
+              ),
             );
           }
           if (event is sdk.OutputItemDoneEvent) {
@@ -294,10 +296,10 @@ void defineResponsesModel(
         var response = accumulator.response;
         if (!accumulator.isSuccessful || response == null) {
           if (!accumulator.isComplete) throw interruptedStream;
-          throw const AppFailure(
+          throw AppFailure(
             kind: AppFailureKind.invalidResponse,
             provider: 'LLM',
-            detail: '响应未成功完成。',
+            detail: appL10n.responseNotCompleted,
           );
         }
         // Preserve complete items in their provider order, including reasoning.
@@ -456,6 +458,8 @@ AppFailure llmFailure(Object? cause, String? status) {
     kind: kind,
     provider: 'LLM',
     statusCode: code,
-    detail: cause is FormatException || cause is TypeError ? '响应解析失败。' : null,
+    detail: cause is FormatException || cause is TypeError
+        ? appL10n.responseParseFailed
+        : null,
   );
 }

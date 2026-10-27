@@ -5,6 +5,7 @@ import '../../domain/models/app_settings.dart';
 import '../../data/services/storage/secure_key_store.dart';
 import 'package:decma/utils/display_formatters.dart';
 import '../core/documentation_help_label.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class NewsSettingsDialog extends StatefulWidget {
   const NewsSettingsDialog({
@@ -23,6 +24,7 @@ class NewsSettingsDialog extends StatefulWidget {
 }
 
 class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
+  AppLocalizations get loc => AppLocalizations.of(context);
   late bool _useFinnhub;
   late bool _useMarketaux;
   late bool _useBls;
@@ -58,7 +60,7 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
 
   @override
   Widget build(BuildContext context) => ContentDialog(
-    title: const Text('Market News 设置'),
+    title: Text(loc.newsSettingsTitle),
     content: SizedBox(
       width: 460,
       child: Column(
@@ -67,9 +69,9 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
         children: [
           ToggleSwitch(
             checked: _useFinnhub,
-            content: const DocumentationHelpLabel(
+            content: DocumentationHelpLabel(
               label: 'Finnhub Market News',
-              tooltip: '查看 Finnhub Market News 文档',
+              tooltip: loc.finnhubDocs,
               documentationUrl: AppConstants.finnhubDocumentationUrl,
             ),
             onChanged: (value) => setState(() => _useFinnhub = value),
@@ -81,7 +83,7 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
               child: TextBox(
                 controller: _finnhubKey,
                 obscureText: true,
-                placeholder: '输入新密钥以加密保存',
+                placeholder: loc.encryptedKeyPlaceholder,
                 onTap: () => _selectMask(_finnhubKey, _finnhubMask),
               ),
             ),
@@ -89,9 +91,9 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
           const SizedBox(height: 12),
           ToggleSwitch(
             checked: _useMarketaux,
-            content: const DocumentationHelpLabel(
+            content: DocumentationHelpLabel(
               label: 'Marketaux Token News',
-              tooltip: '查看 Marketaux API 文档',
+              tooltip: loc.marketauxDocs,
               documentationUrl: AppConstants.marketauxDocumentationUrl,
             ),
             onChanged: (value) => setState(() => _useMarketaux = value),
@@ -103,13 +105,16 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
               child: TextBox(
                 controller: _marketauxKey,
                 obscureText: true,
-                placeholder: '输入新密钥以加密保存',
+                placeholder: loc.encryptedKeyPlaceholder,
                 onTap: () => _selectMask(_marketauxKey, _marketauxMask),
               ),
             ),
           ],
           const SizedBox(height: 12),
-          const Text('官方数据源', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(
+            loc.officialSources,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 6),
           ToggleSwitch(
             checked: _useBls,
@@ -139,10 +144,10 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
       ),
     ),
     actions: [
-      Button(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+      Button(onPressed: () => Navigator.pop(context), child: Text(loc.cancel)),
       FilledButton(
         onPressed: _saving ? null : _save,
-        child: Text(_saving ? '保存中…' : '保存'),
+        child: Text(_saving ? loc.saving : loc.save),
       ),
     ],
   );
@@ -177,7 +182,7 @@ class _NewsSettingsDialogState extends State<NewsSettingsDialog> {
       );
       if (mounted) Navigator.pop(context);
     } catch (error) {
-      if (mounted) setState(() => _error = '安全存储失败：$error');
+      if (mounted) setState(() => _error = loc.secureStorageFailed(error));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

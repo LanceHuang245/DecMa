@@ -7,6 +7,8 @@ import '../../utils/display_formatters.dart';
 import 'candle_chart_frame.dart';
 import 'candle_chart_painter.dart';
 import 'candle_chart_viewport.dart';
+import '../../l10n/generated/app_localizations.dart';
+import '../../l10n/app_languages.dart';
 
 class CandleChart extends StatefulWidget {
   const CandleChart({
@@ -138,15 +140,15 @@ class _CandleChartState extends State<CandleChart> {
           ),
         if (widget.plan case final plan?) _PlanCard(plan: plan, showWaitZone: widget.showWaitZone),
         if (widget.loading || (widget.candles.isEmpty && widget.error == null))
-          const ColoredBox(
-            color: Color(0xE6171A1F),
+          ColoredBox(
+            color: const Color(0xE6171A1F),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ProgressRing(),
-                  SizedBox(height: 10),
-                  Text('正在加载 Bybit 永续合约 K 线…'),
+                  const ProgressRing(),
+                  const SizedBox(height: 10),
+                  Text(AppLocalizations.of(context).loadingKlines),
                 ],
               ),
             ),
@@ -210,7 +212,7 @@ class _LoadError extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        FilledButton(onPressed: onRetry, child: const Text('重试')),
+        FilledButton(onPressed: onRetry, child: Text(AppLocalizations.of(context).retry)),
         const SizedBox(height: 8),
         SizedBox(width: 320, child: Text(error, textAlign: TextAlign.center, style: const TextStyle(color: Colors.errorPrimaryColor))),
       ],
@@ -221,17 +223,17 @@ class _LoadError extends StatelessWidget {
 class _HistoryLoading extends StatelessWidget {
   const _HistoryLoading();
   @override
-  Widget build(BuildContext context) => const Positioned(
+  Widget build(BuildContext context) => Positioned(
     right: 80,
     bottom: 46,
     child: Card(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(width: 12, height: 12, child: ProgressRing(strokeWidth: 2)),
-          SizedBox(width: 6),
-          Text('加载更早历史…', style: TextStyle(fontSize: 11)),
+          const SizedBox(width: 12, height: 12, child: ProgressRing(strokeWidth: 2)),
+          const SizedBox(width: 6),
+          Text(AppLocalizations.of(context).loadingHistory, style: const TextStyle(fontSize: 11)),
         ],
       ),
     ),
@@ -245,6 +247,7 @@ class _PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final color = plan.decision == 'LONG_SETUP' ? Colors.green : plan.decision == 'SHORT_SETUP' ? Colors.red : Colors.warningPrimaryColor;
     return Positioned(
       right: 76,
@@ -264,11 +267,11 @@ class _PlanCard extends StatelessWidget {
                 children: [
                   Text(_decisionLabel(plan.decision), style: TextStyle(color: color, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 3),
-                  Text('开仓区：${plan.isSetup || showWaitZone ? _entryRange(plan) : '-'}', style: const TextStyle(fontSize: 12)),
-                  Text('止损：${plan.isSetup ? _price(plan.stopLoss) : '-'}', style: const TextStyle(fontSize: 12)),
-                  Text('止盈：${plan.isSetup ? (plan.takeProfits.isEmpty ? '未提供' : plan.takeProfits.take(3).map(_price).join(' / ')) : '-'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                  Text(loc.planEntryZone(plan.isSetup || showWaitZone ? _entryRange(plan) : '-'), style: const TextStyle(fontSize: 12)),
+                  Text(loc.planStopLoss(plan.isSetup ? _price(plan.stopLoss) : '-'), style: const TextStyle(fontSize: 12)),
+                  Text(loc.planTakeProfit(plan.isSetup ? (plan.takeProfits.isEmpty ? loc.notProvided : plan.takeProfits.take(3).map(_price).join(' / ')) : '-'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
                   const SizedBox(height: 4),
-                  Text('点击查看完整 JSON 解析', style: TextStyle(fontSize: 11, color: FluentTheme.of(context).resources.textFillColorSecondary)),
+                  Text(loc.viewFullJson, style: TextStyle(fontSize: 11, color: FluentTheme.of(context).resources.textFillColorSecondary)),
                 ],
               ),
             ),
@@ -280,37 +283,40 @@ class _PlanCard extends StatelessWidget {
 
   void _showDetails(BuildContext context) => showDialog<void>(
     context: context,
-    builder: (context) => ContentDialog(
-      title: Text('${_decisionLabel(plan.decision)}：JSON 解析结果'),
-      content: SizedBox(
-        width: 680,
-        height: 520,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (plan.summary.isNotEmpty) ...[Text(plan.summary), const SizedBox(height: 12)],
-            const Text('完整 JSON', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            Expanded(child: Card(padding: const EdgeInsets.all(10), child: SingleChildScrollView(child: SelectableText(plan.parsedJson, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))))),
-          ],
+    builder: (context) {
+      final loc = AppLocalizations.of(context);
+      return ContentDialog(
+        title: Text(loc.jsonResultTitle(_decisionLabel(plan.decision))),
+        content: SizedBox(
+          width: 680,
+          height: 520,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (plan.summary.isNotEmpty) ...[Text(plan.summary), const SizedBox(height: 12)],
+              Text(loc.fullJson, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              Expanded(child: Card(padding: const EdgeInsets.all(10), child: SingleChildScrollView(child: SelectableText(plan.parsedJson, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))))),
+            ],
+          ),
         ),
-      ),
-      actions: [Button(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
-    ),
+        actions: [Button(onPressed: () => Navigator.pop(context), child: Text(loc.close))],
+      );
+    },
   );
 }
 
 String _decisionLabel(String decision) => switch (decision) {
-  'LONG_SETUP' => '做多方案', 'SHORT_SETUP' => '做空方案', 'WAIT' => '等待',
-  'NO_TRADE' => '不交易', 'DATA_INSUFFICIENT' => '数据不足', _ => decision,
+  'LONG_SETUP' => appL10n.decisionLongSetup, 'SHORT_SETUP' => appL10n.decisionShortSetup, 'WAIT' => appL10n.decisionWait,
+  'NO_TRADE' => appL10n.decisionNoTrade, 'DATA_INSUFFICIENT' => appL10n.decisionDataInsufficient, _ => decision,
 };
 
 String _entryRange(TradePlan plan) {
   final low = plan.entryLow;
   final high = plan.entryHigh;
-  if (low == null && high == null) return '未提供';
+  if (low == null && high == null) return appL10n.notProvided;
   if (low == null || high == null || low == high) return _price(low ?? high);
   return '${_price(low)} — ${_price(high)}';
 }
 
-String _price(double? value) => value == null ? '未提供' : formatMarketPrice(value);
+String _price(double? value) => value == null ? appL10n.notProvided : formatMarketPrice(value);

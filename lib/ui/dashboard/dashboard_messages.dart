@@ -4,6 +4,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../../domain/models/trade_plan.dart';
 import '../../utils/display_formatters.dart';
 import 'dashboard_controller.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class ConversationMessage extends StatelessWidget {
   const ConversationMessage(this.message, {super.key});
@@ -151,11 +152,15 @@ class PlanCard extends StatelessWidget {
       runSpacing: 4,
       children: [
         Text(
-          '决策：${plan.decision}',
+          AppLocalizations.of(context).planCardDecision(plan.decision),
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         if (plan.entryLow != null || plan.entryHigh != null)
-          Text('开仓 ${_price(plan.entryLow)} – ${_price(plan.entryHigh)}'),
+          Text(
+            AppLocalizations.of(
+              context,
+            ).planCardEntry(_price(plan.entryLow), _price(plan.entryHigh)),
+          ),
         if (plan.stopLoss != null) Text('SL ${_price(plan.stopLoss)}'),
         if (plan.takeProfits.isNotEmpty)
           Text('TP ${plan.takeProfits.map(_price).join(' / ')}'),

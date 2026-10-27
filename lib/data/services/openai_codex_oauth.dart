@@ -10,6 +10,7 @@ import '../../app_constants.dart';
 import '../../domain/models/llm_model_info.dart';
 import '../../utils/network.dart';
 import 'storage/secure_key_store.dart';
+import '../../l10n/app_languages.dart';
 
 class OpenAiCodexAuthService {
   OpenAiCodexAuthService({
@@ -36,7 +37,7 @@ class OpenAiCodexAuthService {
     CancelToken? cancelToken,
   }) async {
     final saved = await _keyStore.readCodexOAuth();
-    if (saved == null) throw Exception('请先登录 ChatGPT。');
+    if (saved == null) throw Exception(appL10n.signInChatGptFirst);
     if (saved.expiresAt.isAfter(
       DateTime.now().add(const Duration(minutes: 5)),
     )) {
@@ -92,7 +93,7 @@ class OpenAiCodexAuthService {
       );
       await request.response.close();
       if (!matchesState || code == null) {
-        throw Exception(error ?? 'OAuth 回调无效，请重试。');
+        throw Exception(error ?? appL10n.oauthCallbackInvalid);
       }
       final credentials = await _exchangeCode(
         code,

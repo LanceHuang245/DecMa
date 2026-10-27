@@ -10,6 +10,7 @@ import '../../app_constants.dart';
 import '../../domain/models/app_settings.dart';
 import '../../utils/dio_client.dart';
 import '../../utils/network.dart';
+import '../../l10n/app_languages.dart';
 
 // Fixed backend configuration replaces constructor-only provider subclasses.
 Map<String, McpServerConfig> mcpServerConfigs(
@@ -103,7 +104,7 @@ class McpHub {
     _nansenKey = nansenApiKey;
     _cancel = cancel;
     if (settings.useNansen && (nansenApiKey?.isEmpty ?? true)) {
-      warnings.add('Nansen MCP: API Key 未配置。');
+      warnings.add(appL10n.nansenKeyMissing);
     }
     await _ensureConnected(cancel);
     if (_tools.isEmpty) return const [];

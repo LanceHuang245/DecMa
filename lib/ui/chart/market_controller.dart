@@ -7,6 +7,7 @@ import '../../domain/models/candle.dart';
 import '../../data/services/bybit_service.dart';
 import '../../utils/network.dart';
 import 'candle_series.dart';
+import '../../l10n/app_languages.dart';
 
 // Own market selection, polling and pagination without analysis or news state.
 class MarketController extends ChangeNotifier {
@@ -112,7 +113,7 @@ class MarketController extends ChangeNotifier {
         if (wait != null || ++_pollFailures < 5) return const [];
       }
       _timer?.cancel();
-      error = 'K 线加载失败：$failure';
+      error = appL10n.klineLoadFailed(failure);
       showLoading = false;
       _notify();
       if (cancel != null) rethrow;
@@ -190,7 +191,7 @@ class MarketController extends ChangeNotifier {
     } catch (failure) {
       if (isRequestCancelled(failure)) return;
       if (!_disposed && generation == _generation) {
-        historyError = '更早历史加载失败：$failure';
+        historyError = appL10n.historyLoadFailed(failure);
       }
     } finally {
       if (identical(_historyRequest, token)) _historyRequest = null;

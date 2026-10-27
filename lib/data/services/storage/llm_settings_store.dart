@@ -11,6 +11,7 @@ class LlmSettingsStore {
   static const _connectionsKey = 'decma.llm.connections';
   static const _activeConnectionKey = 'decma.llm.active_connection';
   static const _lastViewedSymbolKey = 'decma.dashboard.last_viewed_symbol';
+  static const _localeCodeKey = 'decma.app.locale_code';
   static const _legacyProviderKey = 'decma.llm.provider';
   static const _legacyEndpointKey = 'decma.llm.endpoint';
   static const _legacyModelKey = 'decma.llm.model';
@@ -30,6 +31,11 @@ class LlmSettingsStore {
 
   Future<void> saveLastViewedSymbol(String symbol) =>
       _preferences.setString(_lastViewedSymbolKey, symbol.toUpperCase());
+
+  Future<String?> readLocaleCode() => _preferences.getString(_localeCodeKey);
+
+  Future<void> saveLocaleCode(String code) =>
+      _preferences.setString(_localeCodeKey, code);
 
   Future<LlmConnectionSettings> readConnections() async {
     final saved = await _preferences.getString(_connectionsKey);

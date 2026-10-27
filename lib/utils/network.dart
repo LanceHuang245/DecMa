@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../l10n/app_languages.dart';
+
 enum AppFailureKind {
   cancelled,
   networkUnavailable,
@@ -78,17 +80,20 @@ class AppFailure implements Exception {
   }
 
   String get message {
-    final prefix = provider == null ? '' : '$provider：';
-    final summary = switch (kind) {
-      AppFailureKind.cancelled => '$prefix请求已取消。',
-      AppFailureKind.networkUnavailable => '$prefix网络不可用，请检查连接后重试。',
-      AppFailureKind.timeout => '$prefix请求超时，请稍后重试。',
-      AppFailureKind.authentication => '$prefix认证失败，请检查 API Key 或登录状态。',
-      AppFailureKind.rateLimited => '$prefix请求过于频繁，请稍后重试。',
-      AppFailureKind.upstream => '$prefix服务暂时不可用，请稍后重试。',
-      AppFailureKind.invalidResponse => '$prefix服务返回了无效响应。',
-      AppFailureKind.configuration => '$prefix服务配置不完整。',
-    };
+    final l10n = appL10n;
+    final prefix = provider == null ? '' : l10n.failurePrefix(provider!);
+    final summary =
+        prefix +
+        switch (kind) {
+          AppFailureKind.cancelled => l10n.failureCancelled,
+          AppFailureKind.networkUnavailable => l10n.failureNetworkUnavailable,
+          AppFailureKind.timeout => l10n.failureTimeout,
+          AppFailureKind.authentication => l10n.failureAuthentication,
+          AppFailureKind.rateLimited => l10n.failureRateLimited,
+          AppFailureKind.upstream => l10n.failureUpstream,
+          AppFailureKind.invalidResponse => l10n.failureInvalidResponse,
+          AppFailureKind.configuration => l10n.failureConfiguration,
+        };
     return detail == null ? summary : '$summary $detail';
   }
 

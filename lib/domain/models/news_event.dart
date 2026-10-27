@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../l10n/app_languages.dart';
+
 enum NewsSourceTier { primary, highQualityNews, aggregator, discovery }
 
 enum NewsVerificationStatus {
@@ -47,15 +49,15 @@ extension NewsVerificationLabels on NewsVerificationStatus {
 
 extension NewsCategoryLabels on NewsCategory {
   String get label => switch (this) {
-    NewsCategory.macro => '宏观',
+    NewsCategory.macro => appL10n.categoryMacro,
     NewsCategory.crypto => 'Crypto',
-    NewsCategory.regulation => '监管',
-    NewsCategory.centralBank => '央行',
-    NewsCategory.exchange => '交易所',
-    NewsCategory.security => '安全',
-    NewsCategory.project => '项目',
-    NewsCategory.market => '市场',
-    NewsCategory.other => '其他',
+    NewsCategory.regulation => appL10n.categoryRegulation,
+    NewsCategory.centralBank => appL10n.categoryCentralBank,
+    NewsCategory.exchange => appL10n.categoryExchange,
+    NewsCategory.security => appL10n.categorySecurity,
+    NewsCategory.project => appL10n.categoryProject,
+    NewsCategory.market => appL10n.categoryMarket,
+    NewsCategory.other => appL10n.categoryOther,
   };
 }
 

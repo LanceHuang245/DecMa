@@ -5,6 +5,7 @@ import '../../data/services/openai_codex_oauth.dart';
 import '../../data/services/storage/secure_key_store.dart';
 import '../../utils/display_formatters.dart';
 import 'codex_settings.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 // Own the editable connection draft, leaving data-source settings to the dialog.
 class LlmConnectionEditor extends StatefulWidget {
@@ -24,6 +25,7 @@ class LlmConnectionEditor extends StatefulWidget {
 }
 
 class LlmConnectionEditorState extends State<LlmConnectionEditor> {
+  AppLocalizations get loc => AppLocalizations.of(context);
   late final List<LlmSettings> _connections = List.of(
     widget.connections.connections,
   );
@@ -40,9 +42,9 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
   // Validate and return the existing storage contract without another settings DTO.
   ({LlmConnectionSettings connections, String? apiKey}) readSettings() {
     final name = _name.text.trim();
-    if (name.isEmpty) throw Exception('配置名称不能为空。');
+    if (name.isEmpty) throw Exception(loc.connectionNameEmpty);
     if (_connections.any((item) => item.id != _id && item.name == name)) {
-      throw Exception('配置名称已存在。');
+      throw Exception(loc.connectionNameExists);
     }
     final connection = LlmSettings(
       id: _id,
@@ -84,7 +86,7 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
   void _create() {
     final connection = LlmSettings(
       id: 'connection-${DateTime.now().microsecondsSinceEpoch}',
-      name: '新建配置',
+      name: loc.newConnection,
       provider: LlmProvider.openAiResponses,
       endpoint: LlmProvider.openAiResponses.defaultEndpoint,
       model: 'gpt-4.1',
@@ -107,14 +109,17 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Text('LLM 连接', style: TextStyle(fontWeight: FontWeight.w600)),
+      Text(
+        loc.llmConnection,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
       const SizedBox(height: 10),
       Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
             child: InfoLabel(
-              label: '已保存的配置',
+              label: loc.savedConnections,
               child: ComboBox<String>(
                 value: _id,
                 isExpanded: true,
@@ -129,19 +134,19 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
             ),
           ),
           const SizedBox(width: 12),
-          FilledButton(onPressed: _create, child: const Text('新建配置')),
+          FilledButton(onPressed: _create, child: Text(loc.newConnection)),
           const SizedBox(width: 12),
-          Button(onPressed: _delete, child: const Text('删除配置')),
+          Button(onPressed: _delete, child: Text(loc.deleteConnection)),
         ],
       ),
       const SizedBox(height: 8),
       InfoLabel(
-        label: '配置名称',
+        label: loc.connectionName,
         child: TextBox(controller: _name),
       ),
       const SizedBox(height: 8),
       InfoLabel(
-        label: '接口类型',
+        label: loc.apiType,
         child: ComboBox<LlmProvider>(
           value: _provider,
           isExpanded: true,
@@ -183,7 +188,7 @@ class LlmConnectionEditorState extends State<LlmConnectionEditor> {
           child: TextBox(
             controller: _key,
             obscureText: true,
-            placeholder: '输入新密钥以加密保存',
+            placeholder: loc.encryptedKeyPlaceholder,
             onTap: () {
               if (_mask != null && _key.text == _mask) {
                 _key.selection = TextSelection(

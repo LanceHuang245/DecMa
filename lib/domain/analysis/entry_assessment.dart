@@ -1,6 +1,7 @@
 import '../models/candle.dart';
 import '../models/trade_plan.dart';
 import 'candle_integrity_validator.dart';
+import '../../l10n/app_languages.dart';
 
 enum EntryState { waiting, ready, paused, realized, invalid, unverified }
 
@@ -12,12 +13,12 @@ class EntryAssessment {
   bool get terminal =>
       state == EntryState.realized || state == EntryState.invalid;
   String get label => switch (state) {
-    EntryState.waiting => '等待触发',
-    EntryState.ready => '当前可参考入场',
-    EntryState.paused => '等待回踩',
-    EntryState.realized => '机会已兑现',
-    EntryState.invalid => '已失效',
-    EntryState.unverified => '等待确认',
+    EntryState.waiting => appL10n.entryWaiting,
+    EntryState.ready => appL10n.entryReady,
+    EntryState.paused => appL10n.entryPaused,
+    EntryState.realized => appL10n.entryRealized,
+    EntryState.invalid => appL10n.entryInvalid,
+    EntryState.unverified => appL10n.entryUnverified,
   };
 }
 
@@ -41,7 +42,9 @@ class EntryEvaluator {
     EntryAssessment result(EntryState state, String reason) =>
         EntryAssessment(state, reason, now);
     if (previous?.terminal == true) return previous!;
-    if (!plan.isSetup) return result(EntryState.unverified, '没有可核验的开仓计划');
+    if (!plan.isSetup) {
+      return result(EntryState.unverified, appL10n.entryNoPlan);
+    }
     final low = plan.entryLow, high = plan.entryHigh, stop = plan.stopLoss;
     if (low == null ||
         high == null ||
@@ -49,7 +52,7 @@ class EntryEvaluator {
         plan.targets.isEmpty ||
         !price.isFinite ||
         price <= 0) {
-      return result(EntryState.unverified, '价格或目标不完整');
+      return result(EntryState.unverified, appL10n.entryIncomplete);
     }
     final long = plan.decision == 'LONG_SETUP';
     final firstTarget = plan.targets.first.price;
@@ -74,16 +77,24 @@ class EntryEvaluator {
       final targetHit = reached(long ? candle.high : candle.low);
       final stopHit = invalid(long ? candle.low : candle.high);
       if (candle.time.isBefore(start) && (targetHit || stopHit)) {
-        return result(EntryState.unverified, '起始分钟内事件时间不明确，请重新分析');
+        return result(EntryState.unverified, appL10n.entryAmbiguousStart);
       }
       if (stopHit && targetHit) {
-        return result(EntryState.invalid, '同分钟触及失效与目标，路径不确定');
+        return result(EntryState.invalid, appL10n.entryAmbiguousPath);
       }
-      if (stopHit) return result(EntryState.invalid, '入场前结构已失效');
-      if (targetHit) return result(EntryState.realized, '未入场已到 TP1，需要新计划');
+      if (stopHit) {
+        return result(EntryState.invalid, appL10n.entryInvalidBeforeEntry);
+      }
+      if (targetHit) {
+        return result(EntryState.realized, appL10n.entryTargetReached);
+      }
     }
-    if (invalid(price)) return result(EntryState.invalid, '结构已失效');
-    if (reached(price)) return result(EntryState.realized, '未入场已到 TP1，需要新计划');
+    if (invalid(price)) {
+      return result(EntryState.invalid, appL10n.entryStructureInvalid);
+    }
+    if (reached(price)) {
+      return result(EntryState.realized, appL10n.entryTargetReached);
+    }
     final rule = plan.conditions;
     final ttlMinutes = rule.timeframeMinutes * 3;
     final defaultExpiry = createdAt.add(Duration(minutes: ttlMinutes));
@@ -91,19 +102,23 @@ class EntryEvaluator {
         rule.expiresAt != null && rule.expiresAt!.isBefore(defaultExpiry)
         ? rule.expiresAt!
         : defaultExpiry;
-    if (!now.isBefore(expiry)) return result(EntryState.invalid, '候选计划已过期');
-    if (!fresh) return result(EntryState.unverified, '行情已过期或价格路径不完整');
+    if (!now.isBefore(expiry)) {
+      return result(EntryState.invalid, appL10n.entryExpired);
+    }
+    if (!fresh) return result(EntryState.unverified, appL10n.entryStale);
     if (!rule.supported || rule.stopReference != 'LastPrice') {
-      return result(EntryState.unverified, '仍需确认入场条件，以最新行情为准');
+      return result(EntryState.unverified, appL10n.entryNeedsConfirmation);
     }
     final executable = entryPrice ?? price;
     final chase = plan.maximumChasePrice;
-    if (chase == null) return result(EntryState.unverified, '最大追价未定义');
+    if (chase == null) {
+      return result(EntryState.unverified, appL10n.entryChaseUndefined);
+    }
     if (long ? executable > chase : executable < chase) {
-      return result(EntryState.paused, '超过最大追价，等待回踩并重新核验');
+      return result(EntryState.paused, appL10n.entryAboveChase);
     }
     if (long ? executable < low : executable > high) {
-      return result(EntryState.waiting, '尚未进入允许开仓区域');
+      return result(EntryState.waiting, appL10n.entryOutsideZone);
     }
     // Reuse a fresh closed signal initially; a risk pause requires a new full bar.
     var triggerStart = triggerAfter;
@@ -120,9 +135,9 @@ class EntryEvaluator {
       }
     }
     if (!triggered(plan, triggerCandles, triggerStart, now)) {
-      return result(EntryState.waiting, '等待新的完整触发 K 线');
+      return result(EntryState.waiting, appL10n.entryAwaitTriggerCandle);
     }
-    return result(EntryState.ready, '当前参考行情的入场触发已确认；价格变化后需要重新检查');
+    return result(EntryState.ready, appL10n.entryTriggerConfirmed);
   }
 
   // Exchange-native bars avoid reconstructing long timeframes from minute history.

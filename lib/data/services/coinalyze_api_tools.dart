@@ -5,6 +5,7 @@ import 'package:genkit/genkit.dart';
 import 'package:schemantic/schemantic.dart';
 
 import '../../utils/network.dart';
+import '../../l10n/app_languages.dart';
 
 // Expose in-process API operations as native Genkit tools, not MCP descriptors.
 class CoinalyzeApiTools {
@@ -126,7 +127,7 @@ class CoinalyzeApiTools {
   List<Tool> configure({required bool enabled, String? apiKey}) {
     warnings.clear();
     _apiKey = enabled && apiKey?.isNotEmpty == true ? apiKey : null;
-    if (enabled && _apiKey == null) warnings.add('Coinalyze API: API Key 未配置。');
+    if (enabled && _apiKey == null) warnings.add(appL10n.coinalyzeKeyMissing);
     if (_apiKey == null) return const [];
     return [
       for (final definition in _definitions)

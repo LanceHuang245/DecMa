@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_constants.dart';
+import 'l10n/app_languages.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'providers/app_providers.dart';
 import 'data/services/storage/llm_settings_store.dart';
 import 'data/services/node_runtime_service.dart';
@@ -28,6 +30,9 @@ Future<void> main() async {
   });
   final nodeAvailable = await NodeRuntimeService.isAvailable();
   final settingsStore = LlmSettingsStore();
+  localeCodeNotifier.value = determineLocaleCode(
+    await settingsStore.readLocaleCode(),
+  );
   final initialSettings = AppInitialSettings(
     nodeAvailable: nodeAvailable,
     llmConnections: await settingsStore.readConnections(),
@@ -51,14 +56,21 @@ class DecmaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FluentApp(
-      title: AppConstants.appName,
-      themeMode: ThemeMode.dark,
-      darkTheme: FluentThemeData(
-        brightness: Brightness.dark,
-        accentColor: Colors.blue,
+    // Rebuild the app locale whenever the language picker changes it.
+    return ValueListenableBuilder<String>(
+      valueListenable: localeCodeNotifier,
+      builder: (context, _, _) => FluentApp(
+        title: AppConstants.appName,
+        locale: appLocale,
+        supportedLocales: supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        themeMode: ThemeMode.dark,
+        darkTheme: FluentThemeData(
+          brightness: Brightness.dark,
+          accentColor: Colors.blue,
+        ),
+        home: const DashboardPage(),
       ),
-      home: const DashboardPage(),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import '../../domain/models/news_event.dart';
 import '../../data/repositories/news_repository.dart';
 import '../../utils/display_formatters.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class NewsSourceStatus extends StatelessWidget {
   const NewsSourceStatus({super.key, required this.statuses});
@@ -11,6 +12,7 @@ class NewsSourceStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final enabled = statuses.values.where(
       (s) => s.state != NewsProviderState.disabled,
     );
@@ -18,12 +20,12 @@ class NewsSourceStatus extends StatelessWidget {
         .where((s) => s.state != NewsProviderState.active)
         .length;
     final label = statuses.isEmpty
-        ? '数据源启动中…'
+        ? loc.sourcesStarting
         : enabled.isEmpty
-        ? '未启用新闻源'
+        ? loc.noNewsSources
         : errors > 0
-        ? '$errors 个来源暂不可用'
-        : '${enabled.length} 个来源可用';
+        ? loc.sourcesUnavailable(errors)
+        : loc.sourcesAvailable(enabled.length);
     // Failed attempts must not appear as successful news updates.
     final updates =
         enabled
@@ -46,7 +48,7 @@ class NewsSourceStatus extends StatelessWidget {
               message: statuses.values
                   .map(
                     (status) =>
-                        '${status.id}：${_label(status.state)}${status.message == null ? '' : '\n${status.message}'}',
+                        '${status.id}：${_label(loc, status.state)}${status.message == null ? '' : '\n${status.message}'}',
                   )
                   .join('\n'),
               child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -55,10 +57,12 @@ class NewsSourceStatus extends StatelessWidget {
           const SizedBox(width: 8),
           Tooltip(
             message: updatedAt == null
-                ? '暂无成功更新时间'
-                : '最近成功更新：${formatLocalDateTime(updatedAt)}',
+                ? loc.noSuccessfulUpdate
+                : loc.lastSuccessfulUpdate(formatLocalDateTime(updatedAt)),
             child: Text(
-              updatedAt == null ? '更新于 —' : '更新于 ${formatLocalTime(updatedAt)}',
+              updatedAt == null
+                  ? loc.updatedAtNone
+                  : loc.updatedAt(formatLocalTime(updatedAt)),
             ),
           ),
         ],
@@ -66,10 +70,11 @@ class NewsSourceStatus extends StatelessWidget {
     );
   }
 
-  String _label(NewsProviderState state) => switch (state) {
-    NewsProviderState.active => '可用',
-    NewsProviderState.disabled => '未启用',
-    NewsProviderState.error => '连接失败',
-    NewsProviderState.rateLimited => '请求受限',
-  };
+  String _label(AppLocalizations loc, NewsProviderState state) =>
+      switch (state) {
+        NewsProviderState.active => loc.providerActive,
+        NewsProviderState.disabled => loc.providerDisabled,
+        NewsProviderState.error => loc.providerError,
+        NewsProviderState.rateLimited => loc.providerRateLimited,
+      };
 }

@@ -6,6 +6,7 @@ import 'package:decma/ui/chart/candle_series.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:decma/l10n/generated/app_localizations.dart';
 
 void main() {
   group('CandleSeries', () {
@@ -103,7 +104,11 @@ void main() {
     addTearDown(() => tester.view.resetPhysicalSize());
     final candles = List.generate(100000, _candle);
     await tester.pumpWidget(
-      FluentApp(home: CandleChart(candles: candles)),
+      FluentApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: CandleChart(candles: candles),
+      ),
     );
 
     await tester.sendEventToBinding(
