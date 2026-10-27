@@ -179,7 +179,6 @@ void main() {
             onStop: () => stops++,
             onClear: () {},
             onScrollToBottom: () {},
-            onOpenSettings: () {},
           ),
         ),
       ),

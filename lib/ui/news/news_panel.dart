@@ -16,14 +16,12 @@ class NewsPanel extends StatefulWidget {
     required this.currentSymbol,
     required this.providerStatuses,
     required this.isRefreshing,
-    required this.onOpenSettings,
   });
 
   final List<NewsEvent> events;
   final String currentSymbol;
   final Map<String, NewsProviderStatus> providerStatuses;
   final bool isRefreshing;
-  final VoidCallback onOpenSettings;
 
   @override
   State<NewsPanel> createState() => _NewsPanelState();
@@ -89,13 +87,6 @@ class _NewsPanelState extends State<NewsPanel> {
                     ),
                   ),
                 ),
-              Tooltip(
-                message: loc.newsSettings,
-                child: IconButton(
-                  icon: const Icon(FluentIcons.settings),
-                  onPressed: widget.onOpenSettings,
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 12),

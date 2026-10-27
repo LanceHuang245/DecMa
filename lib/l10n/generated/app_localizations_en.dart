@@ -12,9 +12,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get language => 'Language';
 
   @override
-  String get cancel => 'Cancel';
-
-  @override
   String get save => 'Save';
 
   @override
@@ -22,9 +19,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get close => 'Close';
-
-  @override
-  String get retry => 'Retry';
 
   @override
   String get notProvided => 'Not provided';
@@ -167,12 +161,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chartLatest => 'Last';
 
   @override
-  String get loadingKlines => 'Loading Bybit perpetual candles…';
-
-  @override
-  String get loadingHistory => 'Loading earlier history…';
-
-  @override
   String planEntryZone(Object value) {
     return 'Entry zone: $value';
   }
@@ -224,16 +212,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String modelListFailed(Object error) {
-    return 'Failed to fetch models: $error';
-  }
-
-  @override
-  String modelSaveFailed(Object error) {
-    return 'Failed to save model: $error';
-  }
-
-  @override
   String get fetchingModels => 'Fetching models…';
 
   @override
@@ -267,9 +245,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get updatingNews => 'Updating news';
-
-  @override
-  String get newsSettings => 'News settings';
 
   @override
   String get allSources => 'All sources';
@@ -403,11 +378,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get coinalyzeDocs => 'View Coinalyze API docs';
 
   @override
-  String codexLoginFailed(Object error) {
-    return 'OpenAI Codex sign-in failed: $error';
-  }
-
-  @override
   String get codexSignedIn => 'Signed in to ChatGPT; using your Codex subscription quota.';
 
   @override
@@ -506,16 +476,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String quickAnalyzePrompt(Object symbol) {
     return 'Analyze whether $symbol is better suited to going long, going short, or waiting right now. Based on the current price, state directly whether an entry is possible now; if the opportunity has already played out, explain what conditions to wait for.';
-  }
-
-  @override
-  String planCardDecision(Object decision) {
-    return 'Decision: $decision';
-  }
-
-  @override
-  String planCardEntry(Object high, Object low) {
-    return 'Entry $low – $high';
   }
 
   @override
@@ -864,4 +824,53 @@ class AppLocalizationsEn extends AppLocalizations {
   String enrichmentInvalid(Object sources) {
     return 'FULL_SOURCE_ENRICHMENT: $sources were attempted but returned no valid data.';
   }
+
+  @override
+  String get home => 'Home';
+
+  @override
+  String get settings => 'Settings';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get loadingKlines => 'Loading Bybit perpetual candles…';
+
+  @override
+  String get loadingHistory => 'Loading earlier history…';
+
+  @override
+  String modelListFailed(Object error) {
+    return 'Failed to fetch models: $error';
+  }
+
+  @override
+  String modelSaveFailed(Object error) {
+    return 'Failed to save model: $error';
+  }
+
+  @override
+  String codexLoginFailed(Object error) {
+    return 'OpenAI Codex sign-in failed: $error';
+  }
+
+  @override
+  String planCardDecision(Object decision) {
+    return 'Decision: $decision';
+  }
+
+  @override
+  String planCardEntry(Object high, Object low) {
+    return 'Entry $low – $high';
+  }
+
+  @override
+  String get languageDescription => 'Change the display language of the app';
+
+  @override
+  String get agentSettingsDescription => 'LLM connections, MCP servers and data APIs';
+
+  @override
+  String get newsSettingsDescription => 'News providers and official data sources';
 }

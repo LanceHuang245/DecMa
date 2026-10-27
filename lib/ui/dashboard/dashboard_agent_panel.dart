@@ -31,7 +31,6 @@ class DashboardAgentPanel extends StatelessWidget {
     required this.onStop,
     required this.onClear,
     required this.onScrollToBottom,
-    required this.onOpenSettings,
   });
 
   final TradePlan? plan;
@@ -51,7 +50,6 @@ class DashboardAgentPanel extends StatelessWidget {
   final VoidCallback onStop;
   final VoidCallback onClear;
   final VoidCallback onScrollToBottom;
-  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -61,20 +59,10 @@ class DashboardAgentPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Trading Agent',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(FluentIcons.settings),
-                onPressed: onOpenSettings,
-              ),
-            ],
+          const Text(
+            'Trading Agent',
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           if (plan != null && trading == null) ...[

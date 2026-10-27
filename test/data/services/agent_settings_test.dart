@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:decma/domain/models/app_settings.dart';
 import 'package:decma/data/services/openai_codex_oauth.dart';
 import 'package:decma/data/services/storage/secure_key_store.dart';
-import 'package:decma/ui/settings/agent_settings_dialog.dart';
+import 'package:decma/ui/settings/agent_settings_section.dart';
 import 'package:decma/ui/settings/llm_connection_editor.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,7 +85,7 @@ void main() {
       FluentApp(
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
-        home: AgentSettingsDialog(
+        home: AgentSettingsSection(
           llm: codex,
           llmConnections: LlmConnectionSettings(
             connections: const [codex, anthropic],

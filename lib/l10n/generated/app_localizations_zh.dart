@@ -12,9 +12,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get language => '语言';
 
   @override
-  String get cancel => '取消';
-
-  @override
   String get save => '保存';
 
   @override
@@ -22,9 +19,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get close => '关闭';
-
-  @override
-  String get retry => '重试';
 
   @override
   String get notProvided => '未提供';
@@ -167,12 +161,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chartLatest => '最新';
 
   @override
-  String get loadingKlines => '正在加载 Bybit 永续合约 K 线…';
-
-  @override
-  String get loadingHistory => '加载更早历史…';
-
-  @override
   String planEntryZone(Object value) {
     return '开仓区：$value';
   }
@@ -224,16 +212,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String modelListFailed(Object error) {
-    return '模型列表获取失败：$error';
-  }
-
-  @override
-  String modelSaveFailed(Object error) {
-    return '模型保存失败：$error';
-  }
-
-  @override
   String get fetchingModels => '正在获取模型…';
 
   @override
@@ -267,9 +245,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get updatingNews => '正在更新新闻';
-
-  @override
-  String get newsSettings => '新闻设置';
 
   @override
   String get allSources => '全部来源';
@@ -403,11 +378,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get coinalyzeDocs => '查看 Coinalyze API 文档';
 
   @override
-  String codexLoginFailed(Object error) {
-    return 'OpenAI Codex 登录失败：$error';
-  }
-
-  @override
   String get codexSignedIn => '已登录 ChatGPT，使用 Codex 订阅额度。';
 
   @override
@@ -506,16 +476,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String quickAnalyzePrompt(Object symbol) {
     return '分析 $symbol 现在更适合做多、做空还是等待。请结合当前价格，直接说明现在能否入场；如果机会已经走完，说明应该等待什么条件。';
-  }
-
-  @override
-  String planCardDecision(Object decision) {
-    return '决策：$decision';
-  }
-
-  @override
-  String planCardEntry(Object high, Object low) {
-    return '开仓 $low – $high';
   }
 
   @override
@@ -864,4 +824,53 @@ class AppLocalizationsZh extends AppLocalizations {
   String enrichmentInvalid(Object sources) {
     return 'FULL_SOURCE_ENRICHMENT：$sources 已尝试，但未返回有效数据。';
   }
+
+  @override
+  String get home => '首页';
+
+  @override
+  String get settings => '设置';
+
+  @override
+  String get retry => '重试';
+
+  @override
+  String get loadingKlines => '正在加载 Bybit 永续合约 K 线…';
+
+  @override
+  String get loadingHistory => '加载更早历史…';
+
+  @override
+  String modelListFailed(Object error) {
+    return '模型列表获取失败：$error';
+  }
+
+  @override
+  String modelSaveFailed(Object error) {
+    return '模型保存失败：$error';
+  }
+
+  @override
+  String codexLoginFailed(Object error) {
+    return 'OpenAI Codex 登录失败：$error';
+  }
+
+  @override
+  String planCardDecision(Object decision) {
+    return '决策：$decision';
+  }
+
+  @override
+  String planCardEntry(Object high, Object low) {
+    return '开仓 $low – $high';
+  }
+
+  @override
+  String get languageDescription => '更改应用的显示语言';
+
+  @override
+  String get agentSettingsDescription => 'LLM 连接、MCP 服务与数据 API';
+
+  @override
+  String get newsSettingsDescription => '新闻提供方与官方数据源';
 }

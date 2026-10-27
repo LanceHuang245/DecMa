@@ -5,10 +5,7 @@ import '../../providers/app_providers.dart';
 import '../../data/services/node_runtime_service.dart';
 import '../../utils/display_formatters.dart';
 import '../chart/candle_chart_colors.dart';
-import '../core/window_title_bar.dart';
 import '../news/news_panel.dart';
-import '../news/news_settings_dialog.dart';
-import '../settings/agent_settings_dialog.dart';
 import 'dashboard_agent_panel.dart';
 import 'dashboard_chart_panel.dart';
 import 'dashboard_controller.dart';
@@ -22,8 +19,12 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   DashboardController get _controller => ref.read(dashboardControllerProvider);
+
+  // Keep the chart, polling and conversation alive while Settings is shown.
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -82,34 +83,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  void _openSettings() {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AgentSettingsDialog(
-        llm: _controller.llm,
-        llmConnections: _controller.llmConnections,
-        mcp: _controller.mcp,
-        api: _controller.api,
-        keyStatus: _controller.apiKeyStatus,
-        nodeAvailable: ref.read(appInitialSettingsProvider).nodeAvailable,
-        onSave: _controller.saveSettings,
-      ),
-    );
-  }
-
-  void _openNewsSettings() {
-    showDialog<void>(
-      context: context,
-      builder: (context) => NewsSettingsDialog(
-        settings: _controller.news,
-        keyStatus: _controller.apiKeyStatus,
-        onSave: _controller.saveNewsSettings,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     // Keep the page-scoped controller alive only while this page watches it.
     ref.watch(dashboardControllerProvider);
     return AnimatedBuilder(
@@ -121,59 +97,49 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           currentSymbol: _controller.activeSymbol,
           providerStatuses: _controller.newsProviderStatuses,
           isRefreshing: _controller.refreshingNews,
-          onOpenSettings: _openNewsSettings,
         ),
       ),
       builder: (context, newsPanel) {
         final latest = _controller.candles.isEmpty
             ? null
             : _controller.candles.last;
-        return SafeArea(
+        return Padding(
+          padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              const WindowTitleBar(),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            _controller.activeSymbol,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (latest != null) ...[
-                            const SizedBox(width: 12),
-                            Text(
-                              '${formatMarketPrice(latest.close)} USD',
-                              style: TextStyle(
-                                color: candleColor(latest),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        // Keep market, news, and Agent as three independent desktop columns.
-                        child: Row(
-                          children: [
-                            Expanded(flex: 4, child: _chartPanel()),
-                            const SizedBox(width: 12),
-                            Expanded(flex: 2, child: newsPanel!),
-                            const SizedBox(width: 12),
-                            Expanded(flex: 3, child: _agentPanel()),
-                          ],
-                        ),
-                      ),
-                    ],
+              Row(
+                children: [
+                  Text(
+                    _controller.activeSymbol,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
+                  if (latest != null) ...[
+                    const SizedBox(width: 12),
+                    Text(
+                      '${formatMarketPrice(latest.close)} USD',
+                      style: TextStyle(
+                        color: candleColor(latest),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                // Keep market, news, and Agent as three independent desktop columns.
+                child: Row(
+                  children: [
+                    Expanded(flex: 4, child: _chartPanel()),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 2, child: newsPanel!),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 3, child: _agentPanel()),
+                  ],
                 ),
               ),
             ],
@@ -222,6 +188,5 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     onStop: _controller.stopAgent,
     onClear: _controller.clearAgentContext,
     onScrollToBottom: _controller.scrollConversationToBottom,
-    onOpenSettings: _openSettings,
   );
 }

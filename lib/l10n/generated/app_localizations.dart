@@ -101,12 +101,6 @@ abstract class AppLocalizations {
   /// **'Language'**
   String get language;
 
-  /// No description provided for @cancel.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel'**
-  String get cancel;
-
   /// No description provided for @save.
   ///
   /// In en, this message translates to:
@@ -124,12 +118,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Close'**
   String get close;
-
-  /// No description provided for @retry.
-  ///
-  /// In en, this message translates to:
-  /// **'Retry'**
-  String get retry;
 
   /// No description provided for @notProvided.
   ///
@@ -395,18 +383,6 @@ abstract class AppLocalizations {
   /// **'Last'**
   String get chartLatest;
 
-  /// No description provided for @loadingKlines.
-  ///
-  /// In en, this message translates to:
-  /// **'Loading Bybit perpetual candles…'**
-  String get loadingKlines;
-
-  /// No description provided for @loadingHistory.
-  ///
-  /// In en, this message translates to:
-  /// **'Loading earlier history…'**
-  String get loadingHistory;
-
   /// No description provided for @planEntryZone.
   ///
   /// In en, this message translates to:
@@ -485,18 +461,6 @@ abstract class AppLocalizations {
   /// **'Failed to load earlier history: {error}'**
   String historyLoadFailed(Object error);
 
-  /// No description provided for @modelListFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to fetch models: {error}'**
-  String modelListFailed(Object error);
-
-  /// No description provided for @modelSaveFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to save model: {error}'**
-  String modelSaveFailed(Object error);
-
   /// No description provided for @fetchingModels.
   ///
   /// In en, this message translates to:
@@ -562,12 +526,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Updating news'**
   String get updatingNews;
-
-  /// No description provided for @newsSettings.
-  ///
-  /// In en, this message translates to:
-  /// **'News settings'**
-  String get newsSettings;
 
   /// No description provided for @allSources.
   ///
@@ -815,12 +773,6 @@ abstract class AppLocalizations {
   /// **'View Coinalyze API docs'**
   String get coinalyzeDocs;
 
-  /// No description provided for @codexLoginFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'OpenAI Codex sign-in failed: {error}'**
-  String codexLoginFailed(Object error);
-
   /// No description provided for @codexSignedIn.
   ///
   /// In en, this message translates to:
@@ -994,18 +946,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Analyze whether {symbol} is better suited to going long, going short, or waiting right now. Based on the current price, state directly whether an entry is possible now; if the opportunity has already played out, explain what conditions to wait for.'**
   String quickAnalyzePrompt(Object symbol);
-
-  /// No description provided for @planCardDecision.
-  ///
-  /// In en, this message translates to:
-  /// **'Decision: {decision}'**
-  String planCardDecision(Object decision);
-
-  /// No description provided for @planCardEntry.
-  ///
-  /// In en, this message translates to:
-  /// **'Entry {low} – {high}'**
-  String planCardEntry(Object high, Object low);
 
   /// No description provided for @majorEventCancel.
   ///
@@ -1612,6 +1552,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'FULL_SOURCE_ENRICHMENT: {sources} were attempted but returned no valid data.'**
   String enrichmentInvalid(Object sources);
+
+  /// No description provided for @home.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get home;
+
+  /// No description provided for @settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settings;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @loadingKlines.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading Bybit perpetual candles…'**
+  String get loadingKlines;
+
+  /// No description provided for @loadingHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading earlier history…'**
+  String get loadingHistory;
+
+  /// No description provided for @modelListFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to fetch models: {error}'**
+  String modelListFailed(Object error);
+
+  /// No description provided for @modelSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save model: {error}'**
+  String modelSaveFailed(Object error);
+
+  /// No description provided for @codexLoginFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenAI Codex sign-in failed: {error}'**
+  String codexLoginFailed(Object error);
+
+  /// No description provided for @planCardDecision.
+  ///
+  /// In en, this message translates to:
+  /// **'Decision: {decision}'**
+  String planCardDecision(Object decision);
+
+  /// No description provided for @planCardEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'Entry {low} – {high}'**
+  String planCardEntry(Object high, Object low);
+
+  /// No description provided for @languageDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Change the display language of the app'**
+  String get languageDescription;
+
+  /// No description provided for @agentSettingsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'LLM connections, MCP servers and data APIs'**
+  String get agentSettingsDescription;
+
+  /// No description provided for @newsSettingsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'News providers and official data sources'**
+  String get newsSettingsDescription;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
