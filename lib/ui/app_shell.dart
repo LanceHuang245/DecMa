@@ -17,6 +17,9 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
 
+  // The app's single native window.
+  Window get _window => WindowManager.instance.getCurrent()!;
+
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
@@ -43,14 +46,10 @@ class _AppShellState extends State<AppShell> {
             backgroundColor: Colors.transparent,
           ),
         ),
-        onDragStarted: windowManager.startDragging,
-        onDoubleTap: () async {
-          if (await windowManager.isMaximized()) {
-            await windowManager.unmaximize();
-          } else {
-            await windowManager.maximize();
-          }
-        },
+        onDragStarted: () => _window.startDragging(),
+        // Double-clicking the title bar toggles maximize, like a native one.
+        onDoubleTap: () =>
+            _window.isMaximized ? _window.unmaximize() : _window.maximize(),
       ),
       pane: NavigationPane(
         selected: _index,

@@ -13,22 +13,15 @@ import 'ui/theme_mode.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await windowManager.ensureInitialized();
-  const windowOptions = WindowOptions(
-    size: Size(1280, 700),
-    minimumSize: Size(1280, 700),
-    center: true,
-    titleBarStyle: TitleBarStyle.hidden,
-  );
   // Hide the native title bar before Flutter paints the Fluent replacement.
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    await windowManager.setTitleBarStyle(
-      TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-    );
-    await windowManager.show();
-    await windowManager.focus();
-  });
+  WindowManager.instance.getCurrent()!
+    ..titleBarStyle = TitleBarStyle.hidden
+    ..isWindowControlButtonsVisible = false
+    ..setSize(const Size(1280, 700).toNative(), false)
+    ..minimumSize = const Size(1280, 700).toNative()
+    ..center()
+    ..show()
+    ..focus();
   final nodeAvailable = await NodeRuntimeService.isAvailable();
   final settingsStore = LlmSettingsStore();
   localeCodeNotifier.value = determineLocaleCode(

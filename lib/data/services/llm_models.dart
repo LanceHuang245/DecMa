@@ -265,7 +265,8 @@ void defineResponsesModel(
           ctx.cancel?.throwIfCancelled();
           accumulator.add(event);
           if (event is sdk.ErrorEvent) {
-            throw _responseFailure(event.code, event.message);
+            // The SDK now types the error code as nullable.
+            throw _responseFailure(event.code ?? 'failed', event.message);
           }
           if (event is sdk.ResponseFailedEvent) {
             final error = event.response.error;
